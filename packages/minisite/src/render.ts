@@ -114,7 +114,8 @@ const renderAddress = (card: MiniSiteCard): string => {
   const address = escapeHtml(card.address);
   return (
     `<section aria-labelledby="address"><h2 id="address">Как нас найти</h2><address>${address}</address>` +
-    `<iframe class="map" src="${escapeHtml(yandexMapEmbedUrl(card.address))}" width="600" height="300" loading="lazy" title="Карта: ${address}" referrerpolicy="no-referrer-when-downgrade"></iframe>` +
+    // Facade: the heavy map widget (~3 MB, third-party cookies) loads only when the visitor asks for it.
+    `<button type="button" class="map map-facade" data-map-src="${escapeHtml(yandexMapEmbedUrl(card.address))}" data-map-title="Карта: ${address}">Показать карту</button>` +
     externalLink(yandexRouteUrl(card.address), "Построить маршрут", "route", "btn") +
     `</section>`
   );
@@ -127,7 +128,10 @@ const metrikaTag = (counterId: number): string =>
   `(window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");` +
   `ym(${counterId},"init",{clickmap:true,trackLinks:true,accurateTrackBounce:true});` +
   `document.addEventListener("click",function(ev){var el=ev.target instanceof Element?ev.target.closest("[data-goal]"):null;` +
-  `if(el){ym(${counterId},"reachGoal",el.getAttribute("data-goal"));}});</script>` +
+  `if(el){ym(${counterId},"reachGoal",el.getAttribute("data-goal"));}` +
+  `var map=ev.target instanceof Element?ev.target.closest("[data-map-src]"):null;` +
+  `if(map){var f=document.createElement("iframe");f.className="map";f.src=map.getAttribute("data-map-src");f.title=map.getAttribute("data-map-title");` +
+  `f.width="600";f.height="300";f.setAttribute("referrerpolicy","no-referrer-when-downgrade");map.replaceWith(f);}});</script>` +
   `<noscript><div><img src="https://mc.yandex.ru/watch/${counterId}" style="position:absolute;left:-9999px" alt=""></div></noscript>`;
 
 const STYLES =
@@ -140,6 +144,7 @@ const STYLES =
   `.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}.photos img{width:100%;height:auto;border-radius:8px;display:block}` +
   `.hours div{display:flex;justify-content:space-between;padding:4px 0}.hours dt,.hours dd{margin:0}address{font-style:normal;margin-bottom:8px}` +
   `.map{display:block;width:100%;height:300px;border:0;border-radius:8px;margin-bottom:8px}` +
+  `.map-facade{background:#eef2f6;color:#1a1a1a;font:inherit;font-weight:600;cursor:pointer}` +
   `footer{color:#555;font-size:.8125rem;border-top:1px solid #e5e5e5}` +
   `@media (min-width:600px){.actions{grid-template-columns:repeat(2,1fr)}}`;
 
