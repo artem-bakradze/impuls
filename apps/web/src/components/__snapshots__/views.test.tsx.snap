@@ -1,0 +1,490 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SummaryView > shows the four numbers, the goal line, the service's actions and the clients question 1`] = `
+<div>
+  <div
+    class="ant-flex css-dev-only-do-not-override-1y106cm css-var-root ant-flex-align-stretch ant-flex-vertical"
+    style="gap: 16px;"
+  >
+    <div
+      class="ant-flex css-dev-only-do-not-override-1y106cm css-var-root ant-flex-wrap-wrap ant-flex-align-center ant-flex-justify-space-between"
+      style="gap: 8px;"
+    >
+      <h2
+        class="ant-typography css-dev-only-do-not-override-1y106cm css-var-root"
+        style="margin: 0px;"
+      >
+        Сводка
+      </h2>
+      <div
+        aria-label="segmented control"
+        aria-orientation="horizontal"
+        class="ant-segmented css-dev-only-do-not-override-1y106cm css-var-root"
+        role="radiogroup"
+        tabindex="0"
+      >
+        <div
+          class="ant-segmented-group"
+        >
+          <label
+            class="ant-segmented-item ant-segmented-item-selected ant-segmented-item-selected-text"
+          >
+            <input
+              checked=""
+              class="ant-segmented-item-input"
+              name="test-id"
+              type="radio"
+            />
+            <div
+              class="ant-segmented-item-label"
+              title="Неделя"
+            >
+              Неделя
+            </div>
+          </label>
+          <label
+            class="ant-segmented-item"
+          >
+            <input
+              class="ant-segmented-item-input"
+              name="test-id"
+              type="radio"
+            />
+            <div
+              class="ant-segmented-item-label"
+              title="Месяц"
+            >
+              Месяц
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div
+      class="stat-grid"
+    >
+      <div
+        class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+      >
+        <div
+          class="ant-card-body"
+        >
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+          >
+            Потрачено из бюджета месяца
+          </span>
+          <div
+            style="font-size: 24px; font-weight: 600;"
+          >
+            6 300 ₽ из 15 000 ₽
+          </div>
+          <div
+            aria-valuemax="100"
+            aria-valuemin="0"
+            aria-valuenow="42"
+            class="ant-progress ant-progress-status-normal ant-progress-line ant-progress-line-align-end ant-progress-line-position-outer ant-progress-show-info ant-progress-small css-dev-only-do-not-override-1y106cm css-var-root"
+            role="progressbar"
+          >
+            <div
+              class="ant-progress-body"
+              style="width: 100%;"
+            >
+              <div
+                class="ant-progress-rail"
+                style="height: 6px;"
+              >
+                <div
+                  class="ant-progress-track"
+                  style="width: 42%; height: 6px;"
+                />
+              </div>
+              <span
+                class="ant-progress-indicator ant-progress-indicator-end ant-progress-indicator-outer"
+                title="42%"
+              >
+                42%
+              </span>
+            </div>
+          </div>
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+            style="font-size: 13px;"
+          >
+            больше на 1 300 ₽, чем в прошлом периоде
+          </span>
+        </div>
+      </div>
+      <div
+        class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+      >
+        <div
+          class="ant-card-body"
+        >
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+          >
+            Обращения
+          </span>
+          <div
+            style="font-size: 24px; font-weight: 600;"
+          >
+            11
+          </div>
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+            style="font-size: 13px;"
+          >
+            больше на 3, чем в прошлом периоде
+          </span>
+        </div>
+      </div>
+      <div
+        class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+      >
+        <div
+          class="ant-card-body"
+        >
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+          >
+            Клиенты
+          </span>
+          <div
+            style="font-size: 24px; font-weight: 600;"
+          >
+            7
+          </div>
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+            style="font-size: 13px;"
+          >
+            больше на 2, чем в прошлом периоде
+          </span>
+        </div>
+      </div>
+      <div
+        class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+      >
+        <div
+          class="ant-card-body"
+        >
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+          >
+            Стоимость клиента
+          </span>
+          <div
+            style="font-size: 24px; font-weight: 600;"
+          >
+            900 ₽
+          </div>
+          <span
+            class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+            style="font-size: 13px;"
+          >
+            за неделю с 19 октября
+          </span>
+        </div>
+      </div>
+    </div>
+    <div
+      class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+      data-testid="goal-line"
+    >
+      <div
+        class="ant-card-body"
+      >
+        <div
+          class="ant-space css-dev-only-do-not-override-1y106cm ant-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-gap-col-small css-var-root"
+          style="flex-wrap: wrap;"
+        >
+          <div
+            class="ant-space-item"
+          >
+            <span
+              class="ant-typography css-dev-only-do-not-override-1y106cm css-var-root"
+            >
+              Цель: до 300 ₽ за обращение · Сейчас: 340 ₽ — дороже цели
+            </span>
+          </div>
+          <div
+            class="ant-space-item"
+          >
+            <span
+              class="ant-tag ant-tag-filled ant-tag-orange css-dev-only-do-not-override-1y106cm css-var-root"
+            >
+              Дороже цели
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <span
+      class="ant-typography ant-typography-secondary css-dev-only-do-not-override-1y106cm css-var-root"
+      style="font-size: 13px;"
+    >
+      Данные за последние 3 дня могут уточняться: Яндекс иногда пересчитывает расходы задним числом.
+    </span>
+    <div
+      class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+    >
+      <div
+        class="ant-card-head"
+      >
+        <div
+          class="ant-card-head-wrapper"
+        >
+          <div
+            class="ant-card-head-title"
+          >
+            Нужно ваше участие
+          </div>
+        </div>
+      </div>
+      <div
+        class="ant-card-body"
+      >
+        <div
+          class="ant-flex css-dev-only-do-not-override-1y106cm css-var-root ant-flex-align-stretch ant-flex-vertical"
+          style="gap: 12px;"
+        >
+          <div
+            class="ant-card ant-card-bordered ant-card-small ant-card-type-inner css-dev-only-do-not-override-1y106cm css-var-root"
+            data-testid="clients-question"
+          >
+            <div
+              class="ant-card-head"
+            >
+              <div
+                class="ant-card-head-wrapper"
+              >
+                <div
+                  class="ant-card-head-title"
+                >
+                  Сколько обращений стали клиентами?
+                </div>
+              </div>
+            </div>
+            <div
+              class="ant-card-body"
+            >
+              <div
+                class="ant-typography css-dev-only-do-not-override-1y106cm css-var-root"
+              >
+                С 
+                19 октября
+                 по 
+                25 октября
+                 было обращений: 
+                11
+                . Сколько из них стали вашими клиентами?
+              </div>
+              <div
+                class="ant-space css-dev-only-do-not-override-1y106cm ant-space-horizontal ant-space-align-center ant-space-gap-row-small ant-space-gap-col-small css-var-root"
+                style="flex-wrap: wrap;"
+              >
+                <div
+                  class="ant-space-item"
+                >
+                  <div
+                    class="ant-input-number ant-input-number-mode-input css-var-root ant-input-number-css-var css-dev-only-do-not-override-1y106cm ant-input-number-outlined"
+                  >
+                    <input
+                      aria-label="Сколько стали клиентами"
+                      aria-valuemax="11"
+                      aria-valuemin="0"
+                      autocomplete="off"
+                      class="ant-input-number-input"
+                      role="spinbutton"
+                      step="1"
+                      value=""
+                    />
+                    <div
+                      class="ant-input-number-actions"
+                    >
+                      <span
+                        aria-disabled="false"
+                        aria-label="Increase Value"
+                        class="ant-input-number-action ant-input-number-action-up"
+                        role="button"
+                        unselectable="on"
+                      >
+                        <span
+                          aria-label="up"
+                          class="anticon anticon-up"
+                          role="img"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            data-icon="up"
+                            fill="currentColor"
+                            focusable="false"
+                            height="1em"
+                            viewBox="64 64 896 896"
+                            width="1em"
+                          >
+                            <path
+                              d="M890.5 755.3L537.9 269.2c-12.8-17.6-39-17.6-51.7 0L133.5 755.3A8 8 0 00140 768h75c5.1 0 9.9-2.5 12.9-6.6L512 369.8l284.1 391.6c3 4.1 7.8 6.6 12.9 6.6h75c6.5 0 10.3-7.4 6.5-12.7z"
+                            />
+                          </svg>
+                        </span>
+                      </span>
+                      <span
+                        aria-disabled="false"
+                        aria-label="Decrease Value"
+                        class="ant-input-number-action ant-input-number-action-down"
+                        role="button"
+                        unselectable="on"
+                      >
+                        <span
+                          aria-label="down"
+                          class="anticon anticon-down"
+                          role="img"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            data-icon="down"
+                            fill="currentColor"
+                            focusable="false"
+                            height="1em"
+                            viewBox="64 64 896 896"
+                            width="1em"
+                          >
+                            <path
+                              d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"
+                            />
+                          </svg>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="ant-space-item"
+                >
+                  <button
+                    class="ant-btn css-dev-only-do-not-override-1y106cm css-var-root ant-btn-primary ant-btn-color-primary ant-btn-variant-solid"
+                    disabled=""
+                    type="button"
+                  >
+                    <span>
+                      Ответить
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="ant-card ant-card-bordered ant-card-small css-dev-only-do-not-override-1y106cm css-var-root"
+    >
+      <div
+        class="ant-card-head"
+      >
+        <div
+          class="ant-card-head-wrapper"
+        >
+          <div
+            class="ant-card-head-title"
+          >
+            Что я сделал за неделю
+          </div>
+        </div>
+      </div>
+      <div
+        class="ant-card-body"
+      >
+        <div
+          class="ant-list ant-list-split css-dev-only-do-not-override-1y106cm css-var-root"
+        >
+          <div
+            aria-busy="false"
+            aria-live="polite"
+            class="ant-spin css-dev-only-do-not-override-1y106cm css-var-root"
+          >
+            <div
+              class="ant-spin-container"
+            >
+              <ul
+                class="ant-list-items ant-list-container css-var-root"
+              >
+                <li
+                  class="ant-list-item"
+                >
+                  <div
+                    class="ant-list-item-meta"
+                  >
+                    <div
+                      class="ant-list-item-meta-content"
+                    >
+                      <h4
+                        class="ant-list-item-meta-title"
+                      >
+                        Отключил объявление «Маникюр без записи»: за 2 недели оно потратило 2 400 ₽.
+                      </h4>
+                      <div
+                        class="ant-list-item-meta-description"
+                      >
+                        27 октября в 09:00
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="ant-collapse ant-collapse-icon-placement-start css-dev-only-do-not-override-1y106cm css-var-root"
+    >
+      <div
+        class="ant-collapse-item"
+      >
+        <div
+          aria-disabled="false"
+          aria-expanded="false"
+          class="ant-collapse-header"
+          role="button"
+          tabindex="0"
+        >
+          <div
+            class="ant-collapse-expand-icon"
+          >
+            <span
+              aria-hidden="true"
+              aria-label="right"
+              class="anticon anticon-right ant-collapse-arrow"
+              role="img"
+            >
+              <svg
+                aria-hidden="true"
+                data-icon="right"
+                fill="currentColor"
+                focusable="false"
+                height="1em"
+                viewBox="64 64 896 896"
+                width="1em"
+              >
+                <path
+                  d="M765.7 486.8L314.9 134.7A7.97 7.97 0 00302 141v77.3c0 4.9 2.3 9.6 6.1 12.6l360 281.1-360 281.1c-3.9 3-6.1 7.7-6.1 12.6V883c0 6.7 7.7 10.4 12.9 6.3l450.8-352.1a31.96 31.96 0 000-50.4z"
+                />
+              </svg>
+            </span>
+          </div>
+          <span
+            class="ant-collapse-title"
+          >
+            Подробнее по направлениям
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
