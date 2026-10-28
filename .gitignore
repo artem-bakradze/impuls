@@ -7,3 +7,7 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts

@@ -15,5 +15,55 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # Full local stand: `docker compose --profile app up -d --build` (see docs/development.md).
+  # Apply migrations first: `pnpm db:migrate` with DATABASE_URL pointing at localhost:54329.
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgres://impuls:impuls@postgres:5432/impuls
+      DIRECT_API_MODE: simulator
+      AGENT_RUNTIME: idle
+      SMTP_URL: smtp://mailpit:1025
+      MAIL_FROM: "Импульс <noreply@impuls.test>"
+      APP_URL: http://localhost:3000
+      TEAM_ALERT_EMAIL: team@impuls.test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    # Secrets are passed through from the host shell; when unset, web refuses to start and lists them.
+    environment:
+      - DATABASE_URL=postgres://impuls:impuls@postgres:5432/impuls
+      - DIRECT_API_MODE=simulator
+      - AUTH_URL=http://localhost:3000
+      - AUTH_TRUST_HOST=true
+      - AUTH_SECRET
+      - AUTH_GOOGLE_ID
+      - AUTH_GOOGLE_SECRET
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      worker:
+        condition: service_started
+
+  mailpit:
+    profiles: ["app"]
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   pgdata:

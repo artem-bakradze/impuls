@@ -1,7 +1,7 @@
 import { IdlePolicy } from "@impuls/agent";
 import { JARGON_STOP_LIST, rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
-import { deliverNotifications, emailKinds, queueWeeklySummary, SmtpMailer, subjectFor } from "./email";
+import { deliverIncidents, deliverNotifications, emailKinds, queueWeeklySummary, SmtpMailer, subjectFor } from "./email";
 import type { EmailMessage, Mailer } from "./email";
 import { createLogger } from "./logger";
 import { SimulationDriver } from "./simulation";
@@ -56,6 +56,17 @@ describe("weekly summary", () => {
 
     await sim.store.saveBusiness({ ...(await sim.store.getBusiness("b1")), weeklySummaryEnabled: false });
     expect(await queueWeeklySummary(sim.ctx, "b1", "https://app.example")).toBe(false);
+  });
+});
+
+describe("team alerts", () => {
+  it("emails each incident to the team once", async () => {
+    const sim = await world();
+    await sim.store.openIncident({ kind: "budget_overrun", businessId: "b1", message: "Spend exceeds budget", openedAt: sim.clock.now() });
+    const mailer = new CapturingMailer();
+    expect(await deliverIncidents(sim.ctx, mailer, "team@impuls.test")).toBe(1);
+    expect(await deliverIncidents(sim.ctx, mailer, "team@impuls.test")).toBe(0);
+    expect(mailer.sent[0]).toMatchObject({ to: "team@impuls.test", subject: "[Impuls incident] budget_overrun (b1)" });
   });
 });
 

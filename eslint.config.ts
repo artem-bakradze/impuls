@@ -1,7 +1,7 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/dist/**", "**/drizzle/**", "openspec/**"] },
+  { ignores: ["**/node_modules/**", "**/dist/**", "**/drizzle/**", "openspec/**", "**/.next/**", "**/next-env.d.ts", "**/playwright-report/**", "**/test-results/**"] },
   ...tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {

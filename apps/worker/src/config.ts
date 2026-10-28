@@ -9,6 +9,8 @@ const ConfigSchema = z.object({
   /** SMTP for notification emails, e.g. smtp://localhost:1025 (Mailpit locally). */
   SMTP_URL: z.string().min(1),
   MAIL_FROM: z.string().min(1),
+  /** Where incidents are sent (team alert channel). */
+  TEAM_ALERT_EMAIL: z.email(),
   /** Public URL of the web app, used in email links. */
   APP_URL: z.url(),
   /** Optional: HTTPS proxy for OpenAI when hosted in Russia (design decision 12). */

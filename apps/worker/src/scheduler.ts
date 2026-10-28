@@ -2,7 +2,7 @@ import type { PgBoss } from "pg-boss";
 import type { JobContext } from "./context";
 import { dispatchHour } from "./dispatcher";
 import type { Logger } from "./logger";
-import { deliverNotifications, queueWeeklySummary } from "./email";
+import { deliverIncidents, deliverNotifications, queueWeeklySummary } from "./email";
 import type { Mailer } from "./email";
 import { handleWebJob, WEB_JOB_QUEUE } from "./web-jobs";
 import type { WebJob } from "./web-jobs";
@@ -18,7 +18,7 @@ export const startScheduler = async (
   ctx: JobContext,
   logger: Logger,
   beforeDispatch: () => void = () => undefined,
-  notifications?: { mailer: Mailer; appUrl: string },
+  notifications?: { mailer: Mailer; appUrl: string; teamEmail: string },
 ): Promise<void> => {
   await boss.createQueue(DISPATCH_QUEUE, { policy: "singleton", retryLimit: 0 });
   await boss.schedule(DISPATCH_QUEUE, "0 * * * *", null, { tz: "UTC" });
@@ -40,6 +40,7 @@ export const startScheduler = async (
           await queueWeeklySummary(ctx, business.id, notifications.appUrl);
         }
         await deliverNotifications(ctx, notifications.mailer, logger);
+        await deliverIncidents(ctx, notifications.mailer, notifications.teamEmail);
       }
       logger.info("Hourly dispatch completed", { durationMs: Date.now() - started });
     } catch (error) {

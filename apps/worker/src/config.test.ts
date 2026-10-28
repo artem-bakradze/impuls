@@ -9,6 +9,7 @@ const complete = {
   SMTP_URL: "smtp://localhost:1025",
   MAIL_FROM: "Импульс <noreply@impuls.test>",
   APP_URL: "https://app.example",
+  TEAM_ALERT_EMAIL: "team@impuls.test",
 };
 
 describe("loadConfig", () => {

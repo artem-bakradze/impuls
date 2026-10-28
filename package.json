@@ -13,6 +13,7 @@
     "test:bdd": "vitest run --project bdd",
     "test:integration": "vitest run --project integration",
     "test:contract": "vitest run --project contract",
+    "e2e": "pnpm --filter @impuls/web build && pnpm --filter @impuls/web e2e",
     "eval:agent": "node -e \"console.error('Agent eval requires the OpenAI Agents API runtime (task 10.12)'); process.exit(1)\"",
     "db:generate": "pnpm --filter @impuls/db db:generate",
     "db:migrate": "pnpm --filter @impuls/db db:migrate"

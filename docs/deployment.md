@@ -25,6 +25,7 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | `AGENT_RUNTIME` | `idle` until the OpenAI Agents API runtime exists |
 | `SMTP_URL`, `MAIL_FROM` | outgoing email |
 | `APP_URL` | public web URL for links in emails |
+| `TEAM_ALERT_EMAIL` | incidents are emailed here |
 | `OPENAI_PROXY_URL` | optional egress proxy |
 
 The worker refuses to start with missing or invalid values and prints every problem.

@@ -64,6 +64,24 @@ export const deliverNotifications = async (ctx: JobContext, mailer: Mailer, logg
   return sent;
 };
 
+/** Team alert channel (design decision 13): emails incidents opened since the last delivery. */
+export const deliverIncidents = async (ctx: JobContext, mailer: Mailer, teamEmail: string): Promise<number> => {
+  const since = (await ctx.store.getCursor("*", "incidents")) ?? new Date(0);
+  const fresh = (await ctx.store.incidents()).filter((i) => i.openedAt > since);
+  for (const incident of fresh) {
+    await mailer.send({
+      to: teamEmail,
+      subject: `[Impuls incident] ${incident.kind}${incident.businessId ? ` (${incident.businessId})` : ""}`,
+      text: `${incident.message}\nOpened at ${incident.openedAt.toISOString()}`,
+    });
+  }
+  const last = fresh.at(-1);
+  if (last) {
+    await ctx.store.setCursor("*", "incidents", last.openedAt);
+  }
+  return fresh.length;
+};
+
 export const WEEKLY_SUMMARY_HOUR = 10;
 
 const rub = (kopecks: number): string => `${Math.round(kopecks / 100).toLocaleString("ru-RU").replace(/ /g, " ")} ₽`;

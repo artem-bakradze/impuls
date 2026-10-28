@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f6f5fb;
+  color: #1f1f1f;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.test-banner {
+  background: #fff4d6;
+  color: #6b4a00;
+  text-align: center;
+  padding: 6px 16px;
+  font-size: 14px;
+}
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid #ecebf3;
+}
+.app-header-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.app-brand {
+  font-weight: 700;
+  font-size: 18px;
+  color: #5b3df5;
+  margin-right: auto;
+}
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.app-nav a {
+  color: #444;
+  text-decoration: none;
+  padding: 4px 2px;
+}
+.app-nav a[aria-current="page"] {
+  color: #5b3df5;
+  font-weight: 600;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.ad-preview-search {
+  border: 1px solid #ecebf3;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.ad-preview-search .ad-title {
+  color: #1a0dab;
+  font-size: 17px;
+}
+.ad-preview-search .ad-domain {
+  color: #006621;
+  font-size: 13px;
+}
+.ad-preview-network {
+  border: 1px solid #ecebf3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  max-width: 320px;
+}
+.ad-preview-network .ad-image {
+  background: linear-gradient(135deg, #ede9ff, #d9f2ff);
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5b3df5;
+  font-weight: 600;
+  padding: 8px;
+  text-align: center;
+}
+.ad-preview-network .ad-body {
+  padding: 12px;
+}
+pre.snippet {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #1f1f2e;
+  color: #e9e7ff;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}

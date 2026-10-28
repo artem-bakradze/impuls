@@ -1,0 +1,48 @@
+import { z } from "zod";
+
+/**
+ * Web configuration (No-Fallbacks policy): every required value must be set, otherwise the app does not start.
+ * `AUTH_TEST_LOGIN=enabled` turns on the e2e-only email login; it is off unless set explicitly and is refused
+ * together with `DIRECT_API_MODE=production`.
+ */
+const ConfigSchema = z
+  .object({
+    DATABASE_URL: z.string().min(1),
+    AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
+    AUTH_GOOGLE_ID: z.string().min(1),
+    AUTH_GOOGLE_SECRET: z.string().min(1),
+    DIRECT_API_MODE: z.enum(["simulator", "sandbox", "production"]),
+    /** Optional, documented: test-only login for e2e. Off when absent. */
+    AUTH_TEST_LOGIN: z.enum(["enabled"]).optional(),
+  })
+  .refine((c) => !(c.AUTH_TEST_LOGIN === "enabled" && c.DIRECT_API_MODE === "production"), {
+    message: "AUTH_TEST_LOGIN must not be enabled with DIRECT_API_MODE=production",
+    path: ["AUTH_TEST_LOGIN"],
+  });
+
+export type WebConfig = z.infer<typeof ConfigSchema>;
+
+export class WebConfigError extends Error {
+  constructor(readonly problems: string[]) {
+    super(`Invalid web configuration: ${problems.join("; ")}`);
+    this.name = "WebConfigError";
+  }
+}
+
+export const parseWebConfig = (env: Record<string, string | undefined>): WebConfig => {
+  const result = ConfigSchema.safeParse(env);
+  if (!result.success) {
+    throw new WebConfigError(result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
+  }
+  return result.data;
+};
+
+let cached: WebConfig | null = null;
+
+/** Validated once per process; instrumentation calls it at startup so a bad config stops the server. */
+export const webConfig = (): WebConfig => {
+  cached ??= parseWebConfig(process.env);
+  return cached;
+};
+
+export const isTestMode = (config: WebConfig): boolean => config.DIRECT_API_MODE !== "production";
