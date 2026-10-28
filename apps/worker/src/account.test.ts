@@ -18,9 +18,10 @@ describe("agent journal retention", () => {
     await sim.runDays(2);
     const first = (await sim.store.turns("b1"))[0];
     expect(first).toBeDefined();
-    sim.clock.advanceHours(24 * 89);
+    const day = 86_400_000;
+    sim.clock.set(new Date((first?.startedAt.getTime() ?? 0) + 89 * day));
     expect(await purgeOldTurns(sim.ctx)).toBe(0);
-    sim.clock.advanceHours(24 * 2);
+    sim.clock.set(new Date((first?.startedAt.getTime() ?? 0) + 91 * day));
     expect(await purgeOldTurns(sim.ctx)).toBeGreaterThan(0);
     expect((await sim.store.turns("b1")).some((t) => t.id === first?.id)).toBe(false);
   });
