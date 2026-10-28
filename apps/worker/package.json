@@ -11,6 +11,7 @@
     "cli": "tsx src/cli.ts"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "@impuls/db": "workspace:*",
     "@impuls/minisite": "workspace:*",
     "@impuls/platforms": "workspace:*",
+    "nodemailer": "^10.2.1",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.0",
     "zod": "^4.6.7"
