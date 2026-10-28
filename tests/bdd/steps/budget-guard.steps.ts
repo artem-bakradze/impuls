@@ -1,5 +1,5 @@
 import { allowedWeeklyTotal, monthBudget, rubles } from "@impuls/core";
-import { loadBusinessView } from "@impuls/worker";
+import { changeBudget, loadBusinessView, previewBudgetChange } from "@impuls/worker";
 import type { ExecutionResult, SimulationDriver } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
@@ -65,6 +65,30 @@ describeFeature(feature, ({ Scenario }) => {
     And("в истории объяснено, что лимит снижен, чтобы не выйти за бюджет", async () => {
       const changes = await sim.store.changes("b1");
       expect(changes.some((c) => c.reasonCode === "CABINET_LIMIT_CLAMP" && c.explanation.includes("чтобы не выйти за ваш бюджет"))).toBe(true);
+    });
+  });
+
+  Scenario("Пользователь уменьшил бюджет ниже уже потраченного", ({ Given, When, Then, And }) => {
+    let sim: SimulationDriver;
+    let lowerRub = 0;
+    let preview: Awaited<ReturnType<typeof previewBudgetChange>> | null = null;
+    Given("запущенная реклама с бюджетом 30 000 ₽ в месяц, которая работает 12 дней", async () => {
+      sim = await launchedWorld(30_000, { withBadAd: false });
+      await sim.runDays(12);
+    });
+    When("пользователь уменьшает бюджет до половины уже потраченного", async () => {
+      const view = await loadBusinessView(sim.store, "b1", sim.clock, sim.platform.capabilities());
+      lowerRub = Math.floor(view.spentMonth / 200);
+      preview = await previewBudgetChange(sim.ctx, "b1", lowerRub);
+    });
+    Then("до подтверждения его предупреждают, что реклама будет остановлена до 1-го числа", async () => {
+      expect(preview?.kind).toBe("will_stop");
+      expect(preview?.message).toContain("реклама будет остановлена до 1-го числа");
+      expect((await sim.store.directions("b1")).some((d) => d.status === "active")).toBe(true);
+    });
+    And("после подтверждения все кампании сервиса остановлены", async () => {
+      await changeBudget(sim.ctx, "b1", lowerRub, true);
+      expect((await sim.store.directions("b1")).every((d) => d.status === "paused")).toBe(true);
     });
   });
 

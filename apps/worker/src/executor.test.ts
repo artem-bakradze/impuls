@@ -86,6 +86,8 @@ describe("CommandExecutor", () => {
       turnId: null,
       createdAt: sim.clock.now(),
       error: null,
+      revertedById: null,
+      outcome: null,
     });
     await sim.platform.updateCampaign(direction!.platformCampaignId, { weeklyLimit: rubles(1_000) });
     sim.clock.advanceHours(1);
@@ -113,6 +115,8 @@ describe("CommandExecutor", () => {
       turnId: null,
       createdAt: sim.clock.now(),
       error: null,
+      revertedById: null,
+      outcome: null,
     });
     sim.clock.advanceHours(1);
     await sim.executor.recoverPending(5 * 60_000);

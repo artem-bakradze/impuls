@@ -19,6 +19,9 @@ export interface PlatformCampaign {
   weeklyLimit: Kopecks;
   strategyId: string;
   siteMonitoring: boolean;
+  /** Display schedule, e.g. "Пн–Вс 10:00–22:00"; optional until every adapter supports it. */
+  schedule?: string;
+  geoRadiusKm?: number;
 }
 
 export type ModerationStatus = "accepted" | "pending" | "rejected";
@@ -51,6 +54,8 @@ export interface CampaignPatch {
   weeklyLimit?: Kopecks;
   strategyId?: string;
   siteMonitoring?: boolean;
+  schedule?: string;
+  geoRadiusKm?: number;
 }
 
 export interface AdPatch {

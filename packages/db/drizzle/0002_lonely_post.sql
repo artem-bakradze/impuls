@@ -1,0 +1,1 @@
+ALTER TABLE "experiments" ADD COLUMN "variant_ad_id" text;

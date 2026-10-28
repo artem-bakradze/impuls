@@ -46,6 +46,7 @@ export class PgStore implements Store {
       csoSource,
       autonomy: row.autonomy,
       card: row.card as BusinessRecord["card"],
+      miniSite: (row.miniSite as BusinessRecord["miniSite"]) ?? null,
     };
   }
 
@@ -64,6 +65,7 @@ export class PgStore implements Store {
       csoValue: b.csoSource.kind === "user" ? b.csoSource.goal : b.csoSource.reference,
       autonomy: b.autonomy,
       card: b.card,
+      miniSite: b.miniSite,
     };
     await this.db.insert(schema.businesses).values(values).onConflictDoUpdate({ target: schema.businesses.id, set: values });
   }
@@ -83,6 +85,8 @@ export class PgStore implements Store {
       lastStrategyChangeOn: r.lastStrategyChangeOn,
       platformCampaignId: r.platformCampaignId,
       pausedByBudget: r.pausedByBudget,
+      schedule: r.schedule,
+      geoRadiusKm: r.geoRadiusKm,
     }));
   }
 
@@ -131,6 +135,8 @@ export class PgStore implements Store {
       turnId: r.turnId,
       createdAt: r.createdAt,
       error: r.error,
+      revertedById: r.revertedById,
+      outcome: r.outcome,
     };
   }
 
@@ -142,7 +148,7 @@ export class PgStore implements Store {
     return this.toChange(row);
   }
 
-  async updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error">>): Promise<void> {
+  async updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void> {
     await this.db.update(schema.changeLog).set(patch).where(eq(schema.changeLog.id, id));
   }
 
@@ -232,11 +238,31 @@ export class PgStore implements Store {
 
   async experiments(businessId: string): Promise<Experiment[]> {
     const rows = await this.db.select().from(schema.experiments).where(eq(schema.experiments.businessId, businessId));
-    return rows.map((r) => ({ id: r.id, businessId: r.businessId, directionId: r.campaignId, adId: r.adId, hypothesis: r.hypothesis, startedOn: r.startedOn, status: r.status }));
+    return rows.map((r) => ({
+      id: r.id,
+      businessId: r.businessId,
+      directionId: r.campaignId,
+      adId: r.adId,
+      variantAdId: r.variantAdId,
+      hypothesis: r.hypothesis,
+      startedOn: r.startedOn,
+      status: r.status,
+      outcome: (r.outcome as string | null) ?? null,
+    }));
   }
 
   async saveExperiment(e: Experiment): Promise<void> {
-    const values = { id: e.id, businessId: e.businessId, campaignId: e.directionId, adId: e.adId, hypothesis: e.hypothesis, startedOn: e.startedOn, status: e.status };
+    const values = {
+      id: e.id,
+      businessId: e.businessId,
+      campaignId: e.directionId,
+      adId: e.adId,
+      variantAdId: e.variantAdId,
+      hypothesis: e.hypothesis,
+      startedOn: e.startedOn,
+      status: e.status,
+      outcome: e.outcome,
+    };
     await this.db.insert(schema.experiments).values(values).onConflictDoUpdate({ target: schema.experiments.id, set: values });
   }
 

@@ -43,6 +43,7 @@ export const businesses = pgTable("businesses", {
   autonomy: text("autonomy", { enum: ["auto", "ask"] }).notNull().default("auto"),
   /** Public business card (allowlisted for the agent). */
   card: jsonb("card").notNull(),
+  miniSite: jsonb("mini_site"),
   onboardingStep: integer("onboarding_step").notNull().default(1),
   createdAt: createdAt(),
 });
@@ -74,6 +75,8 @@ export const campaigns = pgTable(
     lastLimitIncreaseOn: date("last_limit_increase_on"),
     lastStrategyChangeOn: date("last_strategy_change_on"),
     pausedByBudget: boolean("paused_by_budget").notNull().default(false),
+    schedule: text("schedule").notNull().default(""),
+    geoRadiusKm: integer("geo_radius_km").notNull().default(3),
   },
   (t) => [uniqueIndex("campaigns_platform_id").on(t.platformCampaignId), index("campaigns_business").on(t.businessId)],
 );
@@ -100,7 +103,7 @@ export const changeLog = pgTable(
     actor: actor("actor").notNull(),
     author: changeAuthor("author").notNull(),
     action: jsonb("action").notNull(),
-    objectKind: text("object_kind", { enum: ["direction", "ad", "business"] }).notNull(),
+    objectKind: text("object_kind", { enum: ["direction", "ad", "business", "minisite"] }).notNull(),
     objectId: text("object_id").notNull(),
     before: jsonb("before").notNull(),
     after: jsonb("after").notNull(),
@@ -110,6 +113,7 @@ export const changeLog = pgTable(
     turnId: text("turn_id"),
     revertedById: text("reverted_by_id"),
     error: text("error"),
+    outcome: text("outcome"),
     createdAt: createdAt(),
   },
   (t) => [index("change_log_business_time").on(t.businessId, t.createdAt), index("change_log_pending").on(t.status).where(sql`status = 'pending'`)],
@@ -158,6 +162,7 @@ export const experiments = pgTable("experiments", {
   businessId: text("business_id").notNull().references(() => businesses.id),
   campaignId: text("campaign_id").notNull().references(() => campaigns.id),
   adId: text("ad_id").notNull(),
+  variantAdId: text("variant_ad_id"),
   hypothesis: text("hypothesis").notNull(),
   startedOn: date("started_on").notNull(),
   status: text("status", { enum: ["running", "finished"] }).notNull(),

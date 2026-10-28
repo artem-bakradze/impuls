@@ -17,6 +17,7 @@
     "@impuls/agent": "workspace:*",
     "@impuls/core": "workspace:*",
     "@impuls/db": "workspace:*",
+    "@impuls/minisite": "workspace:*",
     "@impuls/platforms": "workspace:*",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.0",

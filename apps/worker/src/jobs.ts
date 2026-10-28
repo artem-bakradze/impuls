@@ -72,6 +72,8 @@ export const reconcile = async (ctx: JobContext, businessId: string): Promise<vo
             turnId: null,
             createdAt: ctx.clock.now(),
             error: null,
+            revertedById: null,
+            outcome: null,
           });
           if (!catalog.includes(campaign.strategyId)) {
             await exec(ctx, businessId, { type: "SetStrategy", directionId: direction.id, strategyId: direction.strategyId }, "budget_guard", "CABINET_STRATEGY_RESTORE", { name: direction.name });
@@ -124,6 +126,8 @@ export const reconcile = async (ctx: JobContext, businessId: string): Promise<vo
             turnId: null,
             createdAt: ctx.clock.now(),
             error: null,
+            revertedById: null,
+            outcome: null,
           });
         }
       }

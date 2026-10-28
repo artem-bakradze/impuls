@@ -2,11 +2,13 @@ import { guard, toLocalDate } from "@impuls/core";
 import type { Actor, Command } from "@impuls/core";
 import { PlatformError } from "@impuls/platforms";
 import type { AdPlatform, PlatformAd, PlatformCampaign } from "@impuls/platforms";
+import { publishMiniSite, renderMiniSite } from "@impuls/minisite";
+import type { MiniSiteCard, MiniSiteStore } from "@impuls/minisite";
 import type { Clock } from "./clock";
 import { businessLockKey } from "./locks";
 import type { LockManager } from "./locks";
 import { loadBusinessView } from "./state";
-import type { AdRecord, ChangeAuthor, ChangeEntry, DirectionRecord, Snapshot, Store } from "./store";
+import type { AdRecord, BusinessRecord, ChangeAuthor, ChangeEntry, DirectionRecord, Snapshot, Store } from "./store";
 
 export interface ExecutionRequest {
   businessId: string;
@@ -27,7 +29,8 @@ export type ExecutionResult =
 type Target =
   | { kind: "direction"; record: DirectionRecord }
   | { kind: "ad"; record: AdRecord }
-  | { kind: "business"; directions: DirectionRecord[] };
+  | { kind: "business"; directions: DirectionRecord[] }
+  | { kind: "minisite"; business: BusinessRecord & { miniSite: NonNullable<BusinessRecord["miniSite"]> } };
 
 export const directionSnapshot = (d: { status: string; weeklyLimit: number; strategyId: string }): Snapshot => ({
   status: d.status,
@@ -56,6 +59,8 @@ export class CommandExecutor {
       locks: LockManager;
       clock: Clock;
       platformFor: (businessId: string) => AdPlatform;
+      /** Static hosting for mini-sites; required only for mini-site commands. */
+      miniSites?: MiniSiteStore;
     },
   ) {}
 
@@ -67,13 +72,20 @@ export class CommandExecutor {
     const { store } = this.deps;
     switch (command.type) {
       case "PauseAd":
-      case "ResumeAd": {
+      case "ResumeAd":
+      case "UpdateAdText": {
         const ad = (await store.ads(businessId)).find((a) => a.id === command.adId);
         return ad ? { kind: "ad", record: ad } : null;
       }
       case "PauseAll":
       case "ResumeAll":
         return { kind: "business", directions: await store.directions(businessId) };
+      case "UpdateMiniSite":
+      case "PublishMiniSite": {
+        const business = await store.getBusiness(businessId);
+        const miniSite = business.miniSite;
+        return miniSite ? { kind: "minisite", business: { ...business, miniSite } } : null;
+      }
       default: {
         const direction = (await store.directions(businessId)).find((d) => d.id === command.directionId);
         return direction ? { kind: "direction", record: direction } : null;
@@ -93,12 +105,45 @@ export class CommandExecutor {
         const ad = ads.find((a) => a.id === target.record.platformAdId);
         return ad ? adSnapshot(ad) : {};
       }
+      case "minisite":
+        return { card: target.business.miniSite.card };
       case "business": {
         const campaigns = await platform.getCampaigns(target.directions.map((d) => d.platformCampaignId));
         const byId = new Map(campaigns.map((c) => [c.id, c.status]));
         return Object.fromEntries(target.directions.map((d) => [d.id, byId.get(d.platformCampaignId) ?? "missing"]));
       }
     }
+  }
+
+  /** Current platform state of a logged object — used by rollback to show differences. */
+  async currentPlatformSnapshot(businessId: string, objectKind: ChangeEntry["objectKind"], objectId: string): Promise<Snapshot> {
+    const { store } = this.deps;
+    const platform = this.deps.platformFor(businessId);
+    if (objectKind === "direction") {
+      const record = (await store.directions(businessId)).find((d) => d.id === objectId);
+      return record ? this.platformSnapshot(platform, { kind: "direction", record }, businessId) : {};
+    }
+    if (objectKind === "ad") {
+      const record = (await store.ads(businessId)).find((a) => a.id === objectId);
+      return record ? this.platformSnapshot(platform, { kind: "ad", record }, businessId) : {};
+    }
+    if (objectKind === "minisite") {
+      const business = await store.getBusiness(businessId);
+      return business.miniSite ? { card: business.miniSite.card } : {};
+    }
+    return this.platformSnapshot(platform, { kind: "business", directions: await store.directions(businessId) }, businessId);
+  }
+
+  /** Logged snapshot: platform-checked fields plus the field a settings command changes. */
+  private logSnapshot(target: Target, command: Command): Snapshot {
+    const base = this.storedSnapshot(target);
+    if (target.kind === "direction" && command.type === "UpdateSchedule") {
+      return { ...base, schedule: target.record.schedule };
+    }
+    if (target.kind === "direction" && command.type === "UpdateGeo") {
+      return { ...base, geoRadiusKm: target.record.geoRadiusKm };
+    }
+    return base;
   }
 
   private storedSnapshot(target: Target): Snapshot {
@@ -109,6 +154,8 @@ export class CommandExecutor {
         return adSnapshot(target.record);
       case "business":
         return businessSnapshot(target.directions);
+      case "minisite":
+        return { card: target.business.miniSite.card };
     }
   }
 
@@ -130,21 +177,24 @@ export class CommandExecutor {
       return { status: "rejected", code: verdict.reason.code, message: verdict.reason.message };
     }
     const command = verdict.command;
+    const logged = this.logSnapshot(target, command);
     const entry = await store.appendChange({
       businessId: request.businessId,
       actor: request.actor,
       author: authorOf(request.actor),
       action: command,
       objectKind: target.kind,
-      objectId: target.kind === "business" ? request.businessId : target.record.id,
-      before,
-      after: before,
+      objectId: target.kind === "business" || target.kind === "minisite" ? request.businessId : target.record.id,
+      before: logged,
+      after: logged,
       status: "pending",
       reasonCode: request.reasonCode,
       explanation: request.explanation,
       turnId: request.turnId ?? null,
       createdAt: clock.now(),
       error: null,
+      revertedById: null,
+      outcome: null,
     });
     try {
       const after = await this.apply(request.businessId, target, command, platform, view.today);
@@ -233,14 +283,88 @@ export class CommandExecutor {
           businessId,
           directionId: command.directionId,
           adId: command.adId,
+          variantAdId: command.variantAdId ?? null,
           hypothesis: command.hypothesis,
           startedOn: today,
           status: "running",
+          outcome: null,
         });
         return directionSnapshot(target.record);
       }
+      case "FinishExperiment": {
+        if (target.kind !== "direction") break;
+        const loser = (await store.ads(businessId)).find((a) => a.id === command.pauseAdId);
+        if (loser && loser.status === "active") {
+          const ad = await platform.updateAd(loser.platformAdId, { status: "paused" });
+          await saveAd(loser, ad);
+        }
+        const experiment = (await store.experiments(businessId)).find((e) => e.id === command.experimentId);
+        if (experiment) {
+          await store.saveExperiment({ ...experiment, status: "finished" });
+        }
+        return directionSnapshot(target.record);
+      }
+      case "UpdateSchedule": {
+        if (target.kind !== "direction") break;
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { schedule: command.schedule });
+        await saveCampaign(target.record, campaign, { schedule: command.schedule });
+        return { ...directionSnapshot(campaign), schedule: command.schedule };
+      }
+      case "UpdateGeo": {
+        if (target.kind !== "direction") break;
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { geoRadiusKm: command.radiusKm });
+        await saveCampaign(target.record, campaign, { geoRadiusKm: command.radiusKm });
+        return { ...directionSnapshot(campaign), geoRadiusKm: command.radiusKm };
+      }
+      case "UpdateMiniSite":
+      case "PublishMiniSite": {
+        if (target.kind !== "minisite") break;
+        const miniSite = command.type === "UpdateMiniSite" ? { ...target.business.miniSite, card: command.card } : target.business.miniSite;
+        await this.publish(miniSite);
+        if (command.type === "UpdateMiniSite") {
+          await store.saveBusiness({ ...target.business, miniSite });
+          await this.suggestAdUpdates(businessId, target.business.miniSite.card, command.card);
+        }
+        return { card: miniSite.card };
+      }
+      case "UpdateAdText": {
+        if (target.kind !== "ad") break;
+        const ad = await platform.updateAd(target.record.platformAdId, { title: command.title, text: command.text });
+        return saveAd(target.record, ad);
+      }
     }
     throw new Error(`Command ${command.type} does not match target ${target.kind}`);
+  }
+
+  private async publish(miniSite: NonNullable<BusinessRecord["miniSite"]>): Promise<void> {
+    if (!this.deps.miniSites) {
+      throw new Error("Mini-site store is not configured");
+    }
+    const card = JSON.parse(miniSite.card) as MiniSiteCard;
+    const rendered = renderMiniSite(card, { metrikaCounterId: miniSite.metrikaCounterId, advertiser: miniSite.advertiser });
+    await publishMiniSite(this.deps.miniSites, miniSite.slug, rendered);
+  }
+
+  /** When a price changes on the mini-site, offers to update ads that still mention the old price. */
+  private async suggestAdUpdates(businessId: string, beforeCard: string, afterCard: string): Promise<void> {
+    const before = JSON.parse(beforeCard) as MiniSiteCard;
+    const after = JSON.parse(afterCard) as MiniSiteCard;
+    const format = (kopecks: number): string => `${Math.round(kopecks / 100).toLocaleString("ru-RU").replace(/\u00a0/g, " ")} ₽`;
+    const ads = await this.deps.store.ads(businessId);
+    for (const service of before.services) {
+      const updated = after.services.find((s) => s.name === service.name);
+      if (!updated || updated.price === service.price) continue;
+      const oldPrice = format(service.price);
+      const stale = ads.filter((a) => `${a.title} ${a.text}`.includes(oldPrice));
+      if (stale.length > 0) {
+        await this.deps.store.notify({
+          businessId,
+          kind: "minisite_price_changed",
+          message: `Цена «${service.name}» теперь ${format(updated.price)}, а в объявлениях: ${stale.map((a) => `«${a.title}»`).join(", ")} — ещё ${oldPrice}. Обновить объявления?`,
+          at: this.deps.clock.now(),
+        });
+      }
+    }
   }
 
   /**
@@ -291,6 +415,8 @@ export class CommandExecutor {
         return { ...before, status: "active", ...(command.weeklyLimit !== undefined ? { weeklyLimit: command.weeklyLimit } : {}) };
       case "ResumeAd":
         return { ...before, status: "active" };
+      case "UpdateAdText":
+        return { ...before, title: command.title, text: command.text };
       default:
         return null;
     }

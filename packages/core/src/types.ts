@@ -56,7 +56,14 @@ export type Command =
   | { type: "ResumeDirection"; directionId: string; weeklyLimit?: Kopecks }
   | { type: "PauseAll" }
   | { type: "ResumeAll" }
-  | { type: "StartExperiment"; directionId: string; adId: string; hypothesis: string };
+  | { type: "StartExperiment"; directionId: string; adId: string; hypothesis: string; variantAdId?: string }
+  | { type: "FinishExperiment"; experimentId: string; directionId: string; keepAdId: string; pauseAdId: string }
+  | { type: "UpdateSchedule"; directionId: string; schedule: string }
+  | { type: "UpdateGeo"; directionId: string; radiusKm: number }
+  | { type: "UpdateAdText"; adId: string; title: string; text: string }
+  /** Mini-site card as JSON (the card type lives in @impuls/minisite). */
+  | { type: "UpdateMiniSite"; card: string }
+  | { type: "PublishMiniSite" };
 
 export type CommandType = Command["type"];
 

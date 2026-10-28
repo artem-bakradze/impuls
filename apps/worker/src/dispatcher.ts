@@ -1,5 +1,6 @@
 import { localHour } from "@impuls/core";
 import type { JobContext } from "./context";
+import { recordOutcomes } from "./history";
 import { budgetGuard, dailyEvaluation, HEARTBEAT_DISPATCHER, reconcile, syncStats, verifyBudget } from "./jobs";
 
 export const DAILY_EVALUATION_HOUR = 6;
@@ -20,6 +21,7 @@ export const dispatchHour = async (ctx: JobContext): Promise<void> => {
     if (localHour(now, business.timeZone) === DAILY_EVALUATION_HOUR) {
       await verifyBudget(ctx, business.id);
       await dailyEvaluation(ctx, business.id);
+      await recordOutcomes(ctx, business.id);
     }
   }
   await ctx.executor.recoverPending(5 * 60_000);

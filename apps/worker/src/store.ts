@@ -18,6 +18,8 @@ export interface BusinessRecord {
   launchedOn: LocalDate | null;
   csoSource: CsoSource;
   autonomy: "auto" | "ask";
+  /** Mini-site for businesses without their own site; `card` is MiniSiteCard JSON. */
+  miniSite: { slug: string; card: string; metrikaCounterId: number; advertiser: { name: string; inn: string } } | null;
   /** Public business card fields passed to the agent (allowlist). */
   card: { category: string; services: { name: string; priceRub: number | null }[]; area: string; hours: string; advantages: string[] };
 }
@@ -25,6 +27,8 @@ export interface BusinessRecord {
 export interface DirectionRecord extends Direction {
   platformCampaignId: string;
   pausedByBudget: boolean;
+  schedule: string;
+  geoRadiusKm: number;
 }
 
 export interface AdRecord extends Ad {
@@ -43,7 +47,7 @@ export interface ChangeEntry {
   actor: Actor;
   author: ChangeAuthor;
   action: LoggedAction;
-  objectKind: "direction" | "ad" | "business";
+  objectKind: "direction" | "ad" | "business" | "minisite";
   objectId: string;
   before: Snapshot;
   after: Snapshot;
@@ -53,6 +57,9 @@ export interface ChangeEntry {
   turnId: string | null;
   createdAt: Date;
   error: string | null;
+  revertedById: string | null;
+  /** «Что стало после», filled 7 days after an automated change. */
+  outcome: string | null;
 }
 
 export interface Evaluation {
@@ -69,9 +76,11 @@ export interface Experiment {
   businessId: string;
   directionId: string;
   adId: string;
+  variantAdId: string | null;
   hypothesis: string;
   startedOn: LocalDate;
   status: "running" | "finished";
+  outcome: string | null;
 }
 
 export interface AgentTurnRecord {
@@ -116,7 +125,7 @@ export interface Store {
   ads(businessId: string): Promise<AdRecord[]>;
   saveAd(ad: AdRecord): Promise<void>;
   appendChange(entry: Omit<ChangeEntry, "id">): Promise<ChangeEntry>;
-  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error">>): Promise<void>;
+  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void>;
   changes(businessId: string): Promise<ChangeEntry[]>;
   pendingChanges(): Promise<ChangeEntry[]>;
   upsertStats(businessId: string, rows: readonly DailyStatRow[]): Promise<void>;
@@ -196,7 +205,7 @@ export class MemoryStore implements Store {
     this.changeLog.push(stored);
     return Promise.resolve(structuredClone(stored));
   }
-  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error">>): Promise<void> {
+  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void> {
     const entry = this.changeLog.find((c) => c.id === id);
     if (!entry) {
       return Promise.reject(new Error(`Change ${id} not found`));

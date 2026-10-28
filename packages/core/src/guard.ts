@@ -113,7 +113,7 @@ const budgetCheck = (state: GuardState, command: Command): Verdict => {
 };
 
 /** Optimization guardrails for automated actors (agent and safety net). */
-const optimizationCheck = (state: GuardState, command: Command): Verdict => {
+const optimizationCheck = (state: GuardState, command: Command, actor: Actor): Verdict => {
   switch (command.type) {
     case "SetSpendLimit": {
       const direction = state.directions.find((d) => d.id === command.directionId);
@@ -206,6 +206,18 @@ const optimizationCheck = (state: GuardState, command: Command): Verdict => {
         ? reject("EXPERIMENT_SLOTS_FULL", "уже идут 2 эксперимента")
         : { kind: "allow", command };
     }
+    case "UpdateSchedule":
+    case "UpdateGeo":
+      return state.directions.some((d) => d.id === command.directionId) ? { kind: "allow", command } : NOT_FOUND();
+    case "UpdateAdText":
+      return state.ads.some((a) => a.id === command.adId) ? { kind: "allow", command } : NOT_FOUND();
+    case "UpdateMiniSite":
+    case "PublishMiniSite":
+      return reject("NOT_ALLOWED_FOR_AUTOMATION", "мини-сайт меняет только владелец бизнеса");
+    case "FinishExperiment":
+      return actor === "agent"
+        ? reject("EXPERIMENT_VERDICT_LOCKED", "итог эксперимента определяет расчёт, агент не может его менять")
+        : { kind: "allow", command };
     case "PauseAll":
     case "ResumeAll":
       return reject("NOT_ALLOWED_FOR_AUTOMATION", "это действие доступно только пользователю и защите бюджета");
@@ -223,7 +235,7 @@ export const guard = (state: GuardState, command: Command, actor: Actor): Verdic
   let current: Command = command;
   let clampReason: GuardReason | null = null;
   if (actor === "agent" || actor === "safety_net") {
-    const verdict = optimizationCheck(state, current);
+    const verdict = optimizationCheck(state, current, actor);
     if (verdict.kind === "reject") {
       return verdict;
     }

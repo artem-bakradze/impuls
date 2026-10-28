@@ -7,6 +7,7 @@ import { ManualClock } from "./clock";
 import type { JobContext } from "./context";
 import { dispatchHour } from "./dispatcher";
 import { CommandExecutor } from "./executor";
+import { InMemoryMiniSiteStore } from "@impuls/minisite";
 import { MemoryLockManager } from "./locks";
 import type { LockManager } from "./locks";
 import { MemoryStore } from "./store";
@@ -36,6 +37,7 @@ export interface SimulatedDirection {
 export class SimulationDriver {
   readonly clock: ManualClock;
   readonly store: Store;
+  readonly miniSites = new InMemoryMiniSiteStore();
   readonly locks: LockManager;
   readonly platform: SimulatedPlatform;
   readonly executor: CommandExecutor;
@@ -55,7 +57,13 @@ export class SimulationDriver {
       now: () => this.clock.now(),
       truthFor: () => this.pendingTruths.shift() ?? fallback,
     });
-    this.executor = new CommandExecutor({ store: this.store, locks: this.locks, clock: this.clock, platformFor: () => this.platform });
+    this.executor = new CommandExecutor({
+      store: this.store,
+      locks: this.locks,
+      clock: this.clock,
+      platformFor: () => this.platform,
+      miniSites: this.miniSites,
+    });
     this.ctx = {
       store: this.store,
       clock: this.clock,
@@ -82,6 +90,7 @@ export class SimulationDriver {
       launchedOn: input.launchedOn,
       csoSource: input.csoSource,
       autonomy: "auto",
+      miniSite: null,
       card: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "10:00–22:00", advantages: ["Работаем до 22:00"] },
     };
     await this.store.saveBusiness(business);
@@ -107,6 +116,8 @@ export class SimulationDriver {
         lastStrategyChangeOn: null,
         platformCampaignId: campaign.id,
         pausedByBudget: false,
+        schedule: "Пн–Вс 10:00–22:00",
+        geoRadiusKm: 3,
       });
       let m = 1;
       for (const ad of direction.ads) {

@@ -53,6 +53,9 @@ importers:
       '@impuls/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@impuls/minisite':
+        specifier: workspace:*
+        version: link:../../packages/minisite
       '@impuls/platforms':
         specifier: workspace:*
         version: link:../../packages/platforms
@@ -96,6 +99,12 @@ importers:
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
+
+  packages/minisite:
+    dependencies:
+      '@impuls/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/platforms:
     dependencies:

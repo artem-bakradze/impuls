@@ -12,3 +12,5 @@ export * from "./simulation";
 export * from "./monitoring";
 export * from "./pg-locks";
 export * from "./pg-store";
+export * from "./history";
+export * from "./budget-settings";
