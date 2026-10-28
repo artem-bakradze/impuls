@@ -41,6 +41,7 @@ export const businesses = pgTable("businesses", {
   csoMode: text("cso_mode", { enum: ["user", "auto"] }).notNull(),
   csoValue: kopecks("cso_value").notNull(),
   autonomy: text("autonomy", { enum: ["auto", "ask"] }).notNull().default("auto"),
+  weeklySummaryEnabled: boolean("weekly_summary_enabled").notNull().default(true),
   /** Public business card (allowlisted for the agent). */
   card: jsonb("card").notNull(),
   miniSite: jsonb("mini_site"),

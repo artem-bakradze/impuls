@@ -16,6 +16,7 @@ describe("launch from the wizard", () => {
       csoSource: { kind: "user", goal: 30_000 },
       autonomy: "auto",
       miniSite: null,
+      weeklySummaryEnabled: true,
       card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "Пн–Вс 10:00–22:00", advantages: [] },
     });
     const plan = {

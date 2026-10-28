@@ -2,9 +2,19 @@ import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "./config";
 import { createLogger, redact } from "./logger";
 
+const complete = {
+  DATABASE_URL: "postgres://x",
+  DIRECT_API_MODE: "simulator",
+  AGENT_RUNTIME: "idle",
+  SMTP_URL: "smtp://localhost:1025",
+  MAIL_FROM: "Импульс <noreply@impuls.test>",
+  APP_URL: "https://app.example",
+};
+
 describe("loadConfig", () => {
   it("fails fast when a required variable is missing", () => {
     expect(() => loadConfig({ DIRECT_API_MODE: "simulator", AGENT_RUNTIME: "idle" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...complete, SMTP_URL: undefined })).toThrow(ConfigError);
     try {
       loadConfig({ DIRECT_API_MODE: "simulator", AGENT_RUNTIME: "idle" });
     } catch (error) {
@@ -13,11 +23,11 @@ describe("loadConfig", () => {
   });
 
   it("rejects unknown modes instead of falling back", () => {
-    expect(() => loadConfig({ DATABASE_URL: "postgres://x", DIRECT_API_MODE: "prod", AGENT_RUNTIME: "idle" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "prod" })).toThrow(ConfigError);
   });
 
   it("accepts a complete configuration; the proxy is optional", () => {
-    expect(loadConfig({ DATABASE_URL: "postgres://x", DIRECT_API_MODE: "sandbox", AGENT_RUNTIME: "idle" })).toMatchObject({ DIRECT_API_MODE: "sandbox" });
+    expect(loadConfig({ ...complete, DIRECT_API_MODE: "sandbox" })).toMatchObject({ DIRECT_API_MODE: "sandbox" });
   });
 });
 

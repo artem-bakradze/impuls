@@ -18,6 +18,8 @@ export interface BusinessRecord {
   launchedOn: LocalDate | null;
   csoSource: CsoSource;
   autonomy: "auto" | "ask";
+  /** The weekly summary email can be switched off; critical emails cannot. */
+  weeklySummaryEnabled: boolean;
   /** Mini-site for businesses without their own site; `card` is MiniSiteCard JSON. */
   miniSite: { slug: string; card: string; metrikaCounterId: number; advertiser: { name: string; inn: string } } | null;
   /** Public business card fields passed to the agent (allowlist). */
@@ -147,6 +149,11 @@ export interface Notification {
   at: Date;
 }
 
+export interface StoredNotification extends Notification {
+  id: string;
+  sentAt: Date | null;
+}
+
 /** Persistence port used by the executor and jobs. Implemented in memory (tests, simulation) and in PostgreSQL. */
 export interface Store {
   getBusiness(id: string): Promise<BusinessRecord>;
@@ -190,6 +197,10 @@ export interface Store {
   incidents(): Promise<Incident[]>;
   notify(notification: Notification): Promise<void>;
   notifications(businessId: string): Promise<Notification[]>;
+  unsentNotifications(): Promise<StoredNotification[]>;
+  markNotificationSent(id: string, at: Date): Promise<void>;
+  /** Owner's email for notifications; the only place personal data leaves the store. */
+  ownerEmail(businessId: string): Promise<string>;
 }
 
 export class MemoryStore implements Store {
@@ -210,7 +221,8 @@ export class MemoryStore implements Store {
   private readonly flags = new Map<string, boolean>();
   private readonly beats = new Map<string, Date>();
   private readonly incidentList: Incident[] = [];
-  private readonly notificationList: Notification[] = [];
+  private readonly notificationList: StoredNotification[] = [];
+  readonly emails = new Map<string, string>();
   private seq = 1;
 
   getBusiness(id: string): Promise<BusinessRecord> {
@@ -377,10 +389,24 @@ export class MemoryStore implements Store {
     return Promise.resolve([...this.incidentList]);
   }
   notify(notification: Notification): Promise<void> {
-    this.notificationList.push(notification);
+    this.notificationList.push({ ...notification, id: `ntf-${this.seq++}`, sentAt: null });
     return Promise.resolve();
   }
+  unsentNotifications(): Promise<StoredNotification[]> {
+    return Promise.resolve(this.notificationList.filter((n) => n.sentAt === null).map((n) => ({ ...n })));
+  }
+  markNotificationSent(id: string, at: Date): Promise<void> {
+    const n = this.notificationList.find((x) => x.id === id);
+    if (n) {
+      n.sentAt = at;
+    }
+    return Promise.resolve();
+  }
+  ownerEmail(businessId: string): Promise<string> {
+    const email = this.emails.get(businessId);
+    return email ? Promise.resolve(email) : Promise.reject(new Error(`No owner email for ${businessId}`));
+  }
   notifications(businessId: string): Promise<Notification[]> {
-    return Promise.resolve(this.notificationList.filter((n) => n.businessId === businessId));
+    return Promise.resolve(this.notificationList.filter((n) => n.businessId === businessId).map(({ businessId: b, kind, message, at }) => ({ businessId: b, kind, message, at })));
   }
 }

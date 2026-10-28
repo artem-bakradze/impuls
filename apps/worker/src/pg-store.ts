@@ -19,6 +19,7 @@ import type {
   Incident,
   Notification,
   Snapshot,
+  StoredNotification,
   Store,
 } from "./store";
 
@@ -50,6 +51,7 @@ export class PgStore implements Store {
       autonomy: row.autonomy,
       card: row.card as BusinessRecord["card"],
       miniSite: (row.miniSite as BusinessRecord["miniSite"]) ?? null,
+      weeklySummaryEnabled: row.weeklySummaryEnabled,
     };
   }
 
@@ -69,6 +71,7 @@ export class PgStore implements Store {
       autonomy: b.autonomy,
       card: b.card,
       miniSite: b.miniSite,
+      weeklySummaryEnabled: b.weeklySummaryEnabled,
     };
     await this.db.insert(schema.businesses).values(values).onConflictDoUpdate({ target: schema.businesses.id, set: values });
   }
@@ -373,6 +376,23 @@ export class PgStore implements Store {
 
   async notify(n: Notification): Promise<void> {
     await this.db.insert(schema.notifications).values({ id: randomUUID(), businessId: n.businessId, kind: n.kind, message: n.message, createdAt: n.at });
+  }
+
+  async unsentNotifications(): Promise<StoredNotification[]> {
+    const rows = await this.db.select().from(schema.notifications).where(isNull(schema.notifications.sentAt)).orderBy(asc(schema.notifications.createdAt));
+    return rows.map((r) => ({ id: r.id, businessId: r.businessId, kind: r.kind, message: r.message, at: r.createdAt, sentAt: r.sentAt }));
+  }
+
+  async markNotificationSent(id: string, at: Date): Promise<void> {
+    await this.db.update(schema.notifications).set({ sentAt: at }).where(eq(schema.notifications.id, id));
+  }
+
+  async ownerEmail(businessId: string): Promise<string> {
+    const [row] = await this.db.select({ email: schema.users.email }).from(schema.businesses).innerJoin(schema.users, eq(schema.businesses.userId, schema.users.id)).where(eq(schema.businesses.id, businessId));
+    if (!row) {
+      throw new Error(`No owner email for ${businessId}`);
+    }
+    return row.email;
   }
 
   async notifications(businessId: string): Promise<Notification[]> {

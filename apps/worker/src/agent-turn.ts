@@ -162,6 +162,12 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
         status: "pending",
         decidedAt: null,
       });
+      await ctx.store.notify({
+        businessId,
+        kind: "approval_request",
+        message: `Я предлагаю изменение и жду вашего решения: ${justification.text} Ответьте в разделе «Нужно ваше участие» — без ответа предложение отменится через 48 часов.`,
+        at: ctx.clock.now(),
+      });
       return toolResult("queued", "отправлено владельцу на подтверждение");
     };
 

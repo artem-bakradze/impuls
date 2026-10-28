@@ -6,6 +6,11 @@ const ConfigSchema = z.object({
   DIRECT_API_MODE: z.enum(["simulator", "sandbox", "production"]),
   /** Which AgentRuntime to run. Only policies exist until the Agents API spike (task 0.6). */
   AGENT_RUNTIME: z.enum(["idle"]),
+  /** SMTP for notification emails, e.g. smtp://localhost:1025 (Mailpit locally). */
+  SMTP_URL: z.string().min(1),
+  MAIL_FROM: z.string().min(1),
+  /** Public URL of the web app, used in email links. */
+  APP_URL: z.url(),
   /** Optional: HTTPS proxy for OpenAI when hosted in Russia (design decision 12). */
   OPENAI_PROXY_URL: z.url().optional(),
 });

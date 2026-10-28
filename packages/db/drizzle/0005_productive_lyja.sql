@@ -1,0 +1,1 @@
+ALTER TABLE "businesses" ADD COLUMN "weekly_summary_enabled" boolean DEFAULT true NOT NULL;

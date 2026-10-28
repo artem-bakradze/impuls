@@ -22,8 +22,15 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
+      mailpit:
+        image: axllent/mailpit
+        ports:
+          - 1025:1025
+          - 8025:8025
     env:
       DATABASE_URL: postgres://impuls:impuls@localhost:54329/impuls
+      MAILPIT_SMTP_URL: smtp://localhost:1025
+      MAILPIT_API_URL: http://localhost:8025
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

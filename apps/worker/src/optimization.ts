@@ -98,6 +98,7 @@ export const evaluateExperiments = async (ctx: JobContext, businessId: string): 
       if (updated) {
         await ctx.store.saveExperiment({ ...updated, outcome: explanation });
       }
+      await ctx.store.notify({ businessId, kind: "experiment_finished", message: explanation, at: ctx.clock.now() });
       await enqueueAgentEvent(ctx, businessId, { kind: "experiment_finished", experimentIds: [experiment.id] });
       finished++;
     }

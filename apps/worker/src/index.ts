@@ -21,3 +21,4 @@ export * from "./scheduler";
 export * from "./config";
 export * from "./logger";
 export * from "./launch";
+export * from "./email";

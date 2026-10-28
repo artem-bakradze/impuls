@@ -94,6 +94,7 @@ export class SimulationDriver {
       csoSource: input.csoSource,
       autonomy: "auto",
       miniSite: null,
+      weeklySummaryEnabled: true,
       card: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "10:00–22:00", advantages: ["Работаем до 22:00"] },
     };
     await this.store.saveBusiness(business);

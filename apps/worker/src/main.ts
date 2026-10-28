@@ -12,6 +12,7 @@ import { createLogger } from "./logger";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { startScheduler } from "./scheduler";
+import { SmtpMailer } from "./email";
 
 const logger = createLogger();
 
@@ -42,7 +43,7 @@ const main = async (): Promise<void> => {
   const boss = new PgBoss(config.DATABASE_URL);
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
-  await startScheduler(boss, ctx, logger, advance);
+  await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL });
   logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME });
 
   const shutdown = async (): Promise<void> => {
