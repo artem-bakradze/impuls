@@ -22,3 +22,4 @@ export * from "./config";
 export * from "./logger";
 export * from "./launch";
 export * from "./email";
+export * from "./account";

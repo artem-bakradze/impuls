@@ -76,6 +76,7 @@ export const campaigns = pgTable(
     lastLimitIncreaseOn: date("last_limit_increase_on"),
     lastStrategyChangeOn: date("last_strategy_change_on"),
     pausedByBudget: boolean("paused_by_budget").notNull().default(false),
+    pausedByUser: boolean("paused_by_user").notNull().default(false),
     schedule: text("schedule").notNull().default(""),
     geoRadiusKm: integer("geo_radius_km").notNull().default(3),
   },

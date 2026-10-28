@@ -43,6 +43,13 @@
       "when": 1793199634702,
       "tag": "0005_productive_lyja",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793200197854,
+      "tag": "0006_oval_firebrand",
+      "breakpoints": true
     }
   ]
 }

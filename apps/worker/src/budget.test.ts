@@ -63,6 +63,18 @@ describe("budget change during the month", () => {
   });
 });
 
+describe("owner pause", () => {
+  it("is not lifted by the budget guard on the 1st, only by the owner", async () => {
+    const sim = await world(40_000, { start: "2026-10-20T00:00:00Z" });
+    const pause = await sim.executor.execute({ businessId: "b1", command: { type: "PauseAll" }, actor: "user", reasonCode: "USER_PAUSE", explanation: "Вы поставили рекламу на паузу" });
+    expect(pause.status).toBe("applied");
+    await sim.runDays(14);
+    expect((await sim.store.directions("b1")).every((d) => d.status === "paused")).toBe(true);
+    await sim.executor.execute({ businessId: "b1", command: { type: "ResumeAll" }, actor: "user", reasonCode: "USER_RESUME", explanation: "Вы возобновили рекламу" });
+    expect((await sim.store.directions("b1")).every((d) => d.status === "active")).toBe(true);
+  });
+});
+
 describe("daily spend verification", () => {
   it("opens an incident when the reported spend exceeds the month budget", async () => {
     const sim = await world(5_000);

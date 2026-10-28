@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 export * as schema from "./schema";
 /** Query operators re-exported so every package uses the same drizzle-orm instance. */
-export { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+export { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 
 /** Requires DATABASE_URL; fails fast when it is missing (No-Fallbacks policy). */
 export const databaseUrl = (): string => {

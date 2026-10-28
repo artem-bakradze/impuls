@@ -54,6 +54,7 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
       lastStrategyChangeOn: null,
       platformCampaignId: campaign.id,
       pausedByBudget: false,
+      pausedByUser: false,
       schedule: business.card.hours,
       geoRadiusKm: 3,
     });

@@ -3,6 +3,7 @@ import { checkModerationAndBalance, reconcileStats } from "./analytics";
 import { adviseOnGoal, evaluateExperiments } from "./optimization";
 import type { JobContext } from "./context";
 import { recordOutcomes } from "./history";
+import { purgeDeletedAccounts } from "./account";
 import { expireApprovals, processAgentInbox } from "./agent-turn";
 import { budgetGuard, dailyEvaluation, HEARTBEAT_DISPATCHER, reconcile, syncStats, verifyBudget } from "./jobs";
 
@@ -36,6 +37,7 @@ export const dispatchHour = async (ctx: JobContext): Promise<void> => {
     }
   }
   await ctx.executor.recoverPending(5 * 60_000);
+  await purgeDeletedAccounts(ctx);
   await ctx.store.beat(HEARTBEAT_DISPATCHER, now);
 };
 

@@ -3,7 +3,7 @@ import { schema } from "@impuls/db";
 import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
-import { and, asc, eq, gte, inArray, isNull, lte } from "@impuls/db";
+import { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
 import type {
   AdRecord,
   AgentTurnRecord,
@@ -91,6 +91,7 @@ export class PgStore implements Store {
       lastStrategyChangeOn: r.lastStrategyChangeOn,
       platformCampaignId: r.platformCampaignId,
       pausedByBudget: r.pausedByBudget,
+      pausedByUser: r.pausedByUser,
       schedule: r.schedule,
       geoRadiusKm: r.geoRadiusKm,
     }));
@@ -385,6 +386,24 @@ export class PgStore implements Store {
 
   async markNotificationSent(id: string, at: Date): Promise<void> {
     await this.db.update(schema.notifications).set({ sentAt: at }).where(eq(schema.notifications.id, id));
+  }
+
+  async revokePlatformAccount(businessId: string, at: Date): Promise<void> {
+    await this.db.update(schema.platformAccounts).set({ revokedAt: at, accessTokenEnc: "", refreshTokenEnc: null }).where(eq(schema.platformAccounts.businessId, businessId));
+  }
+
+  async markOwnerDeleted(businessId: string, at: Date): Promise<void> {
+    const business = await this.getBusiness(businessId);
+    await this.db.update(schema.users).set({ deletedAt: at }).where(eq(schema.users.id, business.userId));
+  }
+
+  async purgeDeletedOwners(before: Date): Promise<number> {
+    const rows = await this.db
+      .update(schema.users)
+      .set({ email: sql`'deleted-' || ${schema.users.id} || '@invalid'`, name: null, googleSub: sql`'deleted-' || ${schema.users.id}` })
+      .where(and(lt(schema.users.deletedAt, before), sql`${schema.users.email} NOT LIKE 'deleted-%@invalid'`))
+      .returning({ id: schema.users.id });
+    return rows.length;
   }
 
   async ownerEmail(businessId: string): Promise<string> {

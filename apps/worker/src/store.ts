@@ -29,6 +29,8 @@ export interface BusinessRecord {
 export interface DirectionRecord extends Direction {
   platformCampaignId: string;
   pausedByBudget: boolean;
+  /** Paused by the owner («Поставить рекламу на паузу») — never resumed automatically. */
+  pausedByUser: boolean;
   schedule: string;
   geoRadiusKm: number;
 }
@@ -201,6 +203,11 @@ export interface Store {
   markNotificationSent(id: string, at: Date): Promise<void>;
   /** Owner's email for notifications; the only place personal data leaves the store. */
   ownerEmail(businessId: string): Promise<string>;
+  /** Account deletion (auth spec): revoke stored OAuth tokens and mark the owner deleted. */
+  revokePlatformAccount(businessId: string, at: Date): Promise<void>;
+  markOwnerDeleted(businessId: string, at: Date): Promise<void>;
+  /** Anonymizes owners deleted before `before`; returns how many were purged. */
+  purgeDeletedOwners(before: Date): Promise<number>;
 }
 
 export class MemoryStore implements Store {
@@ -223,6 +230,8 @@ export class MemoryStore implements Store {
   private readonly incidentList: Incident[] = [];
   private readonly notificationList: StoredNotification[] = [];
   readonly emails = new Map<string, string>();
+  readonly revokedAccounts = new Map<string, Date>();
+  readonly deletedOwners = new Map<string, Date>();
   private seq = 1;
 
   getBusiness(id: string): Promise<BusinessRecord> {
@@ -401,6 +410,24 @@ export class MemoryStore implements Store {
       n.sentAt = at;
     }
     return Promise.resolve();
+  }
+  revokePlatformAccount(businessId: string, at: Date): Promise<void> {
+    this.revokedAccounts.set(businessId, at);
+    return Promise.resolve();
+  }
+  markOwnerDeleted(businessId: string, at: Date): Promise<void> {
+    this.deletedOwners.set(businessId, at);
+    return Promise.resolve();
+  }
+  purgeDeletedOwners(before: Date): Promise<number> {
+    let purged = 0;
+    for (const [businessId, at] of this.deletedOwners) {
+      if (at < before && this.emails.has(businessId)) {
+        this.emails.delete(businessId);
+        purged++;
+      }
+    }
+    return Promise.resolve(purged);
   }
   ownerEmail(businessId: string): Promise<string> {
     const email = this.emails.get(businessId);

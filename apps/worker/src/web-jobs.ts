@@ -4,6 +4,7 @@ import { confirmClients } from "./analytics";
 import { changeBudget } from "./budget-settings";
 import type { JobContext } from "./context";
 import { rollback } from "./history";
+import { deleteAccount } from "./account";
 import { launchAds } from "./launch";
 import type { LaunchPlan } from "./launch";
 
@@ -14,7 +15,8 @@ export type WebJob =
   | { kind: "budget"; businessId: string; monthlyBudgetRub: number; confirmed: boolean }
   | { kind: "approval"; businessId: string; approvalId: string; approve: boolean }
   | { kind: "clients"; businessId: string; week: LocalDate; clients: number }
-  | { kind: "launch"; businessId: string; plan: LaunchPlan };
+  | { kind: "launch"; businessId: string; plan: LaunchPlan }
+  | { kind: "delete_account"; businessId: string };
 
 export const WEB_JOB_QUEUE = "web-job";
 
@@ -51,5 +53,7 @@ export const handleWebJob = async (ctx: JobContext, job: WebJob): Promise<unknow
       return { ok: true };
     case "launch":
       return launchAds(ctx, job.businessId, job.plan);
+    case "delete_account":
+      return deleteAccount(ctx, job.businessId);
   }
 };

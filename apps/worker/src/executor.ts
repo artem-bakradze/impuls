@@ -197,7 +197,7 @@ export class CommandExecutor {
       outcome: null,
     });
     try {
-      const after = await this.apply(request.businessId, target, command, platform, view.today);
+      const after = await this.apply(request.businessId, target, command, platform, view.today, request.actor);
       await store.updateChange(entry.id, { status: "applied", after });
       return verdict.kind === "clamp"
         ? { status: "clamped", entryId: entry.id, command, message: verdict.reason.message }
@@ -215,6 +215,7 @@ export class CommandExecutor {
     command: Command,
     platform: AdPlatform,
     today: string,
+    actor: Actor,
   ): Promise<Snapshot> {
     const { store } = this.deps;
     const saveCampaign = async (record: DirectionRecord, campaign: PlatformCampaign, patch: Partial<DirectionRecord> = {}) => {
@@ -258,15 +259,24 @@ export class CommandExecutor {
       case "PauseAll":
       case "ResumeAll": {
         if (target.kind !== "business") break;
+        // The budget guard and the owner pause independently: the 1st of the month only resumes budget pauses.
         const pausing = command.type === "PauseAll";
+        const marker = actor === "budget_guard" ? "pausedByBudget" : "pausedByUser";
         const updated: DirectionRecord[] = [];
         for (const direction of target.directions) {
           if (pausing && direction.status === "active") {
             const campaign = await platform.updateCampaign(direction.platformCampaignId, { status: "paused" });
-            updated.push({ ...direction, status: campaign.status, pausedByBudget: true });
-          } else if (!pausing && direction.pausedByBudget) {
+            updated.push({ ...direction, status: campaign.status, [marker]: true });
+          } else if (pausing && direction.status === "paused" && actor !== "budget_guard" && direction.pausedByBudget) {
+            updated.push({ ...direction, pausedByUser: true });
+          } else if (!pausing && direction[marker]) {
+            const stillHeld = marker === "pausedByBudget" ? direction.pausedByUser : false;
+            if (stillHeld) {
+              updated.push({ ...direction, pausedByBudget: false });
+              continue;
+            }
             const campaign = await platform.updateCampaign(direction.platformCampaignId, { status: "active" });
-            updated.push({ ...direction, status: campaign.status, pausedByBudget: false });
+            updated.push({ ...direction, status: campaign.status, pausedByBudget: false, pausedByUser: false });
           } else {
             updated.push(direction);
           }

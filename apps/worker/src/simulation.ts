@@ -120,6 +120,7 @@ export class SimulationDriver {
         lastStrategyChangeOn: null,
         platformCampaignId: campaign.id,
         pausedByBudget: false,
+        pausedByUser: false,
         schedule: "Пн–Вс 10:00–22:00",
         geoRadiusKm: 3,
       });
