@@ -32,6 +32,8 @@ export interface HistoryItem {
   diff: DiffRow[];
   explanation: string;
   outcome: string | null;
+  /** Agent turn that made the change, for «Как сервис принял это решение». */
+  turnId: string | null;
   status: "pending" | "applied" | "failed";
   reverted: boolean;
   rollback: { kind: "available"; consequences: string[] } | { kind: "unavailable"; reason: string };

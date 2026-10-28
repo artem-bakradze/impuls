@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Button, Card, Empty, Flex, Select, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -36,6 +38,9 @@ export function HistoryEntry({ item, timeZone, onRollback }: { item: HistoryItem
               </li>
             ))}
           </ul>
+        ) : null}
+        {item.turnId ? (
+          <Link href={`/history/turn/${item.turnId}`}>Как сервис принял это решение</Link>
         ) : null}
         {item.outcome ? (
           <Typography.Text>

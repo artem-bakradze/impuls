@@ -14,6 +14,7 @@ const item = (id: string, author: HistoryItem["author"], at: string, type: Histo
   diff: [],
   explanation: id,
   outcome: null,
+  turnId: null,
   status: "applied",
   reverted: false,
   rollback: { kind: "available", consequences: [] },

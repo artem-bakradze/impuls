@@ -70,8 +70,8 @@ export const finishWizard = async (page: Page): Promise<void> => {
   await page.waitForURL("**/summary");
 };
 
-export const launchNewBusiness = async (page: Page, prefix: string): Promise<void> => {
-  await login(page, uniqueEmail(prefix));
+export const launchNewBusiness = async (page: Page, prefix: string, email: string = uniqueEmail(prefix)): Promise<void> => {
+  await login(page, email);
   await page.waitForURL("**/wizard");
   await fillFirstSteps(page);
   await fillBudget(page);

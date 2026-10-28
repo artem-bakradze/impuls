@@ -19,6 +19,7 @@ const scheduleChange: HistoryItem = {
   diff: [{ label: "Время показа", before: "Пн–Вс 10:00–20:00", after: "Пн–Вс 10:00–21:00" }],
   explanation: "Вы изменили время показа.",
   outcome: null,
+  turnId: null,
   status: "applied",
   reverted: false,
   rollback: { kind: "available", consequences: ["вернётся прежнее расписание показов"] },

@@ -51,6 +51,7 @@ export const buildHistory = async (businessId: string): Promise<{ items: History
         diff: describeDiff(entry.before, entry.after, names),
         explanation: entry.explanation,
         outcome: entry.outcome,
+        turnId: entry.turnId,
         status: entry.status,
         reverted: entry.revertedById !== null,
         rollback: reason === null ? { kind: "available", consequences: ACTION_META[entry.action.type].rollbackConsequences } : { kind: "unavailable", reason },
