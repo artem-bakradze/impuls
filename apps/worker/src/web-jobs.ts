@@ -16,7 +16,9 @@ export type WebJob =
   | { kind: "approval"; businessId: string; approvalId: string; approve: boolean }
   | { kind: "clients"; businessId: string; week: LocalDate; clients: number }
   | { kind: "launch"; businessId: string; plan: LaunchPlan }
-  | { kind: "delete_account"; businessId: string };
+  | { kind: "delete_account"; businessId: string }
+  /** Creates the mini-site on first save, then updates it through the executor (history, rollback). */
+  | { kind: "minisite_save"; businessId: string; slug: string; card: string; metrikaCounterId: number; advertiser: { name: string; inn: string } };
 
 export const WEB_JOB_QUEUE = "web-job";
 
@@ -55,5 +57,15 @@ export const handleWebJob = async (ctx: JobContext, job: WebJob): Promise<unknow
       return launchAds(ctx, job.businessId, job.plan);
     case "delete_account":
       return deleteAccount(ctx, job.businessId);
+    case "minisite_save": {
+      const business = await ctx.store.getBusiness(job.businessId);
+      const settings = { slug: job.slug, metrikaCounterId: job.metrikaCounterId, advertiser: job.advertiser };
+      if (business.miniSite === null) {
+        await ctx.store.saveBusiness({ ...business, miniSite: { ...settings, card: job.card } });
+        return ctx.executor.execute({ businessId: job.businessId, command: { type: "PublishMiniSite" }, actor: "user", reasonCode: "USER_MINISITE", explanation: "Вы опубликовали мини-сайт." });
+      }
+      await ctx.store.saveBusiness({ ...business, miniSite: { ...business.miniSite, ...settings } });
+      return ctx.executor.execute({ businessId: job.businessId, command: { type: "UpdateMiniSite", card: job.card }, actor: "user", reasonCode: "USER_MINISITE", explanation: "Вы изменили мини-сайт." });
+    }
   }
 };

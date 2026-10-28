@@ -10,6 +10,7 @@ const complete = {
   MAIL_FROM: "Импульс <noreply@impuls.test>",
   APP_URL: "https://app.example",
   TEAM_ALERT_EMAIL: "team@impuls.test",
+  MINISITE_DIR: "/tmp/minisites",
 };
 
 describe("loadConfig", () => {

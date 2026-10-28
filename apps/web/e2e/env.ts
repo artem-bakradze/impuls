@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 export const E2E_PORT = 3100;
 
 /** The e2e stack needs a real PostgreSQL server; there is no default (No-Fallbacks policy). */
@@ -36,6 +39,9 @@ export const e2eWebEnv = (): Record<string, string> => ({
   DIRECT_API_MODE: "simulator",
 });
 
+/** Published mini-sites of the e2e worker (a temp directory, recreated per run by global setup). */
+export const e2eMiniSiteDir = (): string => join(tmpdir(), "impuls-e2e-minisites");
+
 /** Worker on the simulator; emails go to the local Mailpit inbox from docs/development.md. */
 export const e2eWorkerEnv = (): Record<string, string> => ({
   DATABASE_URL: e2eDatabaseUrl(),
@@ -45,4 +51,5 @@ export const e2eWorkerEnv = (): Record<string, string> => ({
   MAIL_FROM: "Импульс e2e <noreply@impuls.test>",
   APP_URL: `http://localhost:${E2E_PORT}`,
   TEAM_ALERT_EMAIL: "team@impuls.test",
+  MINISITE_DIR: e2eMiniSiteDir(),
 });

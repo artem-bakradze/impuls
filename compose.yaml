@@ -30,6 +30,9 @@ services:
       MAIL_FROM: "Импульс <noreply@impuls.test>"
       APP_URL: http://localhost:3000
       TEAM_ALERT_EMAIL: team@impuls.test
+      MINISITE_DIR: /data/minisites
+    volumes:
+      - minisites:/data/minisites
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,3 +70,4 @@ services:
 
 volumes:
   pgdata:
+  minisites:

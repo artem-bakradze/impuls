@@ -4,6 +4,8 @@ export interface SettingsModel {
   timeZone: string;
   card: { category: string; services: { name: string; priceRub: number | null }[]; advantages: string[] };
   siteUrl: string | null;
+  /** Published mini-site, or the card data to prefill its form when the business has no own site. */
+  miniSite: { published: boolean; slug: string; businessName: string; phone: string; address: string; hours: string; telegram: string; metrikaCounterId: number | null; advertiserName: string; advertiserInn: string; services: { name: string; priceRub: number }[] };
   radiusKm: number;
   schedule: { raw: string; days: (typeof DAY_OPTIONS)[number]; from: string; to: string } | { raw: string; days: null; from: null; to: null };
   monthlyBudgetRub: number;

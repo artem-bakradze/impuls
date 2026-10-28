@@ -11,6 +11,8 @@ const ConfigSchema = z.object({
   MAIL_FROM: z.string().min(1),
   /** Where incidents are sent (team alert channel). */
   TEAM_ALERT_EMAIL: z.email(),
+  /** Directory with published mini-sites (served as static files on the mini-site domain). */
+  MINISITE_DIR: z.string().min(1),
   /** Public URL of the web app, used in email links. */
   APP_URL: z.url(),
   /** Optional: HTTPS proxy for OpenAI when hosted in Russia (design decision 12). */

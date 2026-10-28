@@ -13,6 +13,7 @@ import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { startScheduler } from "./scheduler";
 import { SmtpMailer } from "./email";
+import { FileMiniSiteStore } from "./minisite-store";
 
 const logger = createLogger();
 
@@ -37,7 +38,7 @@ const main = async (): Promise<void> => {
     throw new Error(`DIRECT_API_MODE=${config.DIRECT_API_MODE} requires the Yandex Direct adapter (task 3.3), which is not implemented yet`);
   }
 
-  const executor = new CommandExecutor({ store, locks, clock: systemClock, platformFor: () => platform });
+  const executor = new CommandExecutor({ store, locks, clock: systemClock, platformFor: () => platform, miniSites: new FileMiniSiteStore(config.MINISITE_DIR) });
   const ctx: JobContext = { store, clock: systemClock, locks, executor, platformFor: () => platform, agent: new IdlePolicy() };
 
   const boss = new PgBoss(config.DATABASE_URL);
