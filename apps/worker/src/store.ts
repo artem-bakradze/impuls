@@ -12,6 +12,7 @@ import type { DailyStatRow } from "@impuls/platforms";
 
 export interface BusinessRecord {
   id: string;
+  userId: string;
   timeZone: string;
   monthlyBudgetRub: number;
   launchedOn: LocalDate | null;

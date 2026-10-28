@@ -11,3 +11,4 @@ export * from "./dispatcher";
 export * from "./simulation";
 export * from "./monitoring";
 export * from "./pg-locks";
+export * from "./pg-store";

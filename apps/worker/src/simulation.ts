@@ -8,8 +8,9 @@ import type { JobContext } from "./context";
 import { dispatchHour } from "./dispatcher";
 import { CommandExecutor } from "./executor";
 import { MemoryLockManager } from "./locks";
+import type { LockManager } from "./locks";
 import { MemoryStore } from "./store";
-import type { BusinessRecord } from "./store";
+import type { BusinessRecord, Store } from "./store";
 
 export interface SimulationOptions {
   start: Date;
@@ -17,6 +18,9 @@ export interface SimulationOptions {
   agent: AgentRuntime;
   timeZone?: string;
   defaultTruth?: AdTruth;
+  /** Defaults to in-memory implementations; integration tests pass PostgreSQL ones. */
+  store?: Store;
+  locks?: LockManager;
 }
 
 export interface SimulatedDirection {
@@ -31,8 +35,8 @@ export interface SimulatedDirection {
  */
 export class SimulationDriver {
   readonly clock: ManualClock;
-  readonly store = new MemoryStore();
-  readonly locks = new MemoryLockManager();
+  readonly store: Store;
+  readonly locks: LockManager;
   readonly platform: SimulatedPlatform;
   readonly executor: CommandExecutor;
   readonly ctx: JobContext;
@@ -41,6 +45,8 @@ export class SimulationDriver {
 
   constructor(options: SimulationOptions) {
     this.clock = new ManualClock(options.start);
+    this.store = options.store ?? new MemoryStore();
+    this.locks = options.locks ?? new MemoryLockManager();
     this.timeZone = options.timeZone ?? "Europe/Moscow";
     const fallback: AdTruth = options.defaultTruth ?? { impressionsPerDay: 400, ctr: 0.05, cr: 0.05, costPerClick: rubles(25) };
     this.platform = new SimulatedPlatform({
@@ -70,6 +76,7 @@ export class SimulationDriver {
   }): Promise<BusinessRecord> {
     const business: BusinessRecord = {
       id: input.id,
+      userId: `user-${input.id}`,
       timeZone: this.timeZone,
       monthlyBudgetRub: input.monthlyBudgetRub,
       launchedOn: input.launchedOn,
