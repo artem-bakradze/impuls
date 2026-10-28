@@ -121,6 +121,14 @@ export interface ApprovalRequest {
   decidedAt: Date | null;
 }
 
+/** Weekly answer «сколько обращений стали клиентами». */
+export interface ClientConfirmation {
+  businessId: string;
+  weekStart: LocalDate;
+  clients: number;
+  leads: number;
+}
+
 export type FlagName = "agent_enabled" | "automation_enabled";
 export type IncidentKind = "budget_overrun" | "agent_unavailable" | "stuck_command" | "stats_mismatch" | "heartbeat_stale";
 
@@ -169,6 +177,8 @@ export interface Store {
   pendingInbox(businessId: string): Promise<InboxEvent[]>;
   consumeInbox(ids: readonly string[], turnId: string): Promise<void>;
   saveApproval(request: ApprovalRequest): Promise<void>;
+  saveClientConfirmation(confirmation: ClientConfirmation): Promise<void>;
+  clientConfirmations(businessId: string): Promise<ClientConfirmation[]>;
   approvals(businessId: string): Promise<ApprovalRequest[]>;
   saveNotes(businessId: string, notes: readonly string[]): Promise<void>;
   /** Flags are enabled unless explicitly switched off (documented default). Per-business values override global. */
@@ -196,6 +206,7 @@ export class MemoryStore implements Store {
   private readonly noteMap = new Map<string, string[]>();
   private readonly inbox: InboxEvent[] = [];
   private readonly approvalMap = new Map<string, ApprovalRequest>();
+  private readonly confirmations = new Map<string, ClientConfirmation>();
   private readonly flags = new Map<string, boolean>();
   private readonly beats = new Map<string, Date>();
   private readonly incidentList: Incident[] = [];
@@ -332,6 +343,13 @@ export class MemoryStore implements Store {
   }
   approvals(businessId: string): Promise<ApprovalRequest[]> {
     return Promise.resolve([...this.approvalMap.values()].filter((a) => a.businessId === businessId).map((a) => structuredClone(a)));
+  }
+  saveClientConfirmation(c: ClientConfirmation): Promise<void> {
+    this.confirmations.set(`${c.businessId}|${c.weekStart}`, { ...c });
+    return Promise.resolve();
+  }
+  clientConfirmations(businessId: string): Promise<ClientConfirmation[]> {
+    return Promise.resolve([...this.confirmations.values()].filter((c) => c.businessId === businessId).map((c) => ({ ...c })));
   }
   getFlag(name: FlagName, businessId: string | null): Promise<boolean> {
     const global = this.flags.get(`${name}|*`) ?? true;

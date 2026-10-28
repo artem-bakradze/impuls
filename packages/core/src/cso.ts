@@ -34,8 +34,9 @@ const median = (values: readonly number[]): number => {
  * The suggestion is the median actual cost, rounded to 50 ₽.
  */
 export const goalAdvice = (costPerLeadByDirection: readonly (Kopecks | null)[], cso: Kopecks): GoalAdvice => {
+  // A direction past learning without any lead (null) is not within the goal either.
   const known = costPerLeadByDirection.filter((value): value is Kopecks => value !== null);
-  if (known.length === 0 || known.length !== costPerLeadByDirection.length || known.some((value) => value <= cso)) {
+  if (known.length === 0 || known.some((value) => value <= cso)) {
     return { kind: "reachable" };
   }
   const med = median(known);

@@ -1,4 +1,6 @@
-import { localHour } from "@impuls/core";
+import { localHour, toLocalDate, weekStart } from "@impuls/core";
+import { checkModerationAndBalance, reconcileStats } from "./analytics";
+import { adviseOnGoal, evaluateExperiments } from "./optimization";
 import type { JobContext } from "./context";
 import { recordOutcomes } from "./history";
 import { expireApprovals, processAgentInbox } from "./agent-turn";
@@ -19,12 +21,18 @@ export const dispatchHour = async (ctx: JobContext): Promise<void> => {
     await reconcile(ctx, business.id);
     await syncStats(ctx, business.id);
     await budgetGuard(ctx, business.id);
+    await checkModerationAndBalance(ctx, business.id);
     await expireApprovals(ctx, business.id);
     await processAgentInbox(ctx, business.id);
     if (localHour(now, business.timeZone) === DAILY_EVALUATION_HOUR) {
       await verifyBudget(ctx, business.id);
+      await evaluateExperiments(ctx, business.id);
       await dailyEvaluation(ctx, business.id);
+      await adviseOnGoal(ctx, business.id);
       await recordOutcomes(ctx, business.id);
+      if (weekStart(toLocalDate(now, business.timeZone)) === toLocalDate(now, business.timeZone)) {
+        await reconcileStats(ctx, business.id);
+      }
     }
   }
   await ctx.executor.recoverPending(5 * 60_000);

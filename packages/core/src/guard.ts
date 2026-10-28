@@ -196,7 +196,16 @@ const optimizationCheck = (state: GuardState, command: Command, actor: Actor): V
       const id = command.type === "ResumeAd" ? command.adId : command.directionId;
       const exists =
         command.type === "ResumeAd" ? state.ads.some((a) => a.id === id) : state.directions.some((d) => d.id === id);
-      return exists ? { kind: "allow", command } : NOT_FOUND();
+      if (!exists) {
+        return NOT_FOUND();
+      }
+      // An automated actor must not revive what the classification marks as ineffective.
+      const ineffective =
+        command.type === "ResumeAd"
+          ? state.adClasses.get(id) === "ineffective"
+          : costPerLead(state.directionStats14.get(id) ?? { impressions: 0, clicks: 0, leads: 0, spend: 0 }) === null &&
+            (state.directionStats14.get(id)?.spend ?? 0) >= 3 * state.cso;
+      return ineffective ? reject("RESUME_INEFFECTIVE", "нельзя включать рекламу, которая не приводит клиентов") : { kind: "allow", command };
     }
     case "StartExperiment": {
       if (!state.ads.some((a) => a.id === command.adId && a.directionId === command.directionId)) {

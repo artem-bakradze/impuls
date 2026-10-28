@@ -19,6 +19,8 @@ export interface SimulationOptions {
   agent: AgentRuntime;
   timeZone?: string;
   defaultTruth?: AdTruth;
+  /** Daily probability of a retroactive stats correction (default 5%). */
+  correctionProbability?: number;
   /** Defaults to in-memory implementations; integration tests pass PostgreSQL ones. */
   store?: Store;
   locks?: LockManager;
@@ -56,6 +58,7 @@ export class SimulationDriver {
       timeZone: this.timeZone,
       now: () => this.clock.now(),
       truthFor: () => this.pendingTruths.shift() ?? fallback,
+      ...(options.correctionProbability !== undefined ? { correctionProbability: options.correctionProbability } : {}),
     });
     this.executor = new CommandExecutor({
       store: this.store,

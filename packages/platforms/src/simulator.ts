@@ -192,6 +192,18 @@ export class SimulatedPlatform implements AdPlatform {
     this.record(ad.campaignId, "CHILDREN");
   }
 
+  /** Moderation verdict from the platform side. */
+  moderate(adId: string, moderation: PlatformAd["moderation"], rejectionReason: string | null = null): void {
+    const ad = this.ad(adId);
+    ad.moderation = moderation;
+    ad.rejectionReason = rejectionReason;
+    this.record(ad.campaignId, "CHILDREN");
+  }
+
+  setBalance(balance: Kopecks): void {
+    this.balance = balance;
+  }
+
   setTruth(adId: string, truth: AdTruth): void {
     this.truths.set(adId, truth);
   }

@@ -222,7 +222,8 @@ const runSafetyNet = async (
   const view = await loadBusinessView(ctx.store, businessId, ctx.clock, platform.capabilities());
   const touched = new Set(
     (await ctx.store.changes(businessId))
-      .filter((c) => c.actor === "agent" && c.status === "applied" && c.createdAt >= evaluatedAt)
+      // Resuming does not count as handling the problem, so it never postpones the safety net.
+      .filter((c) => c.actor === "agent" && c.status === "applied" && c.createdAt >= evaluatedAt && !["ResumeAd", "ResumeDirection", "ResumeAll"].includes(c.action.type))
       .map((c) => c.objectId),
   );
   const leads14 = new Map([...view.directionStats14].map(([id, s]) => [id, s.leads]));

@@ -8,6 +8,7 @@ import type {
   AdRecord,
   AgentTurnRecord,
   ApprovalRequest,
+  ClientConfirmation,
   InboxEvent,
   BusinessRecord,
   ChangeEntry,
@@ -323,6 +324,17 @@ export class PgStore implements Store {
   async approvals(businessId: string): Promise<ApprovalRequest[]> {
     const rows = await this.db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.businessId, businessId)).orderBy(asc(schema.approvalRequests.createdAt));
     return rows.map((r) => ({ ...r, command: r.command as ApprovalRequest["command"] }));
+  }
+
+  async saveClientConfirmation(c: ClientConfirmation): Promise<void> {
+    await this.db
+      .insert(schema.clientConfirmations)
+      .values(c)
+      .onConflictDoUpdate({ target: [schema.clientConfirmations.businessId, schema.clientConfirmations.weekStart], set: { clients: c.clients, leads: c.leads } });
+  }
+
+  async clientConfirmations(businessId: string): Promise<ClientConfirmation[]> {
+    return this.db.select().from(schema.clientConfirmations).where(eq(schema.clientConfirmations.businessId, businessId));
   }
 
   async getFlag(name: FlagName, businessId: string | null): Promise<boolean> {

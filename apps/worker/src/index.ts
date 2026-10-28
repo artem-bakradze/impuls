@@ -14,3 +14,5 @@ export * from "./pg-locks";
 export * from "./pg-store";
 export * from "./history";
 export * from "./budget-settings";
+export * from "./analytics";
+export * from "./optimization";
