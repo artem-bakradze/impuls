@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | Unit | `pnpm test` | core, platforms (incl. Direct adapter with fake fetch), agent, minisite, worker on the simulator |
 | BDD | `pnpm test:bdd` | `tests/bdd/features/<capability>/*.feature` (`# language: ru`), steps in `tests/bdd/steps/` |
-| Integration | `pnpm test:integration` | PostgreSQL (`PgStore`, advisory locks, pg-boss) and Mailpit; needs `DATABASE_URL`, `MAILPIT_SMTP_URL`, `MAILPIT_API_URL` |
+| Integration | `pnpm test:integration` | PostgreSQL (`PgStore`, advisory locks, pg-boss) and Mailpit; needs `DATABASE_URL`, `MAILPIT_SMTP_URL`, `MAILPIT_API_URL`, `S3_TEST_ENDPOINT` (S3Mock) |
 | Contract | `pnpm test:contract` | Yandex Direct sandbox; needs `DIRECT_SANDBOX_TOKEN`, fails fast without it |
 | Agent eval | `pnpm eval:agent` | not available until the OpenAI Agents API runtime exists (task 10.12) |
 

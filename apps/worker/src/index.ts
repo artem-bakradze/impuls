@@ -24,3 +24,4 @@ export * from "./launch";
 export * from "./email";
 export * from "./account";
 export * from "./minisite-store";
+export * from "./photos";

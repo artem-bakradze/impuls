@@ -13,7 +13,8 @@ pnpm db:migrate
 pnpm lint && pnpm type-check
 pnpm test            # unit
 pnpm test:bdd        # Russian BDD scenarios
-MAILPIT_SMTP_URL=smtp://localhost:1025 MAILPIT_API_URL=http://localhost:8025 pnpm test:integration
+docker run -d --rm --name impuls-s3 -p 9000:9090 adobe/s3mock   # S3-compatible store for photo tests
+MAILPIT_SMTP_URL=smtp://localhost:1025 MAILPIT_API_URL=http://localhost:8025 S3_TEST_ENDPOINT=http://localhost:9000 pnpm test:integration
 ```
 
 ## Running the worker locally (simulator)

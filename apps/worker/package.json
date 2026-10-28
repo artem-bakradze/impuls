@@ -15,11 +15,13 @@
     "@types/pg": "^8.23.1"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
     "@impuls/agent": "workspace:*",
     "@impuls/core": "workspace:*",
     "@impuls/db": "workspace:*",
     "@impuls/minisite": "workspace:*",
     "@impuls/platforms": "workspace:*",
+    "image-size": "^2.0.4",
     "nodemailer": "^10.2.1",
     "pg": "^8.23.1",
     "pg-boss": "^12.38.0",

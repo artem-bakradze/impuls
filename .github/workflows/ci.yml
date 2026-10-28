@@ -27,10 +27,15 @@ jobs:
         ports:
           - 1025:1025
           - 8025:8025
+      s3:
+        image: adobe/s3mock
+        ports:
+          - 9000:9090
     env:
       DATABASE_URL: postgres://impuls:impuls@localhost:54329/impuls
       MAILPIT_SMTP_URL: smtp://localhost:1025
       MAILPIT_API_URL: http://localhost:8025
+      S3_TEST_ENDPOINT: http://localhost:9000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -45,3 +50,5 @@ jobs:
       - run: pnpm test:bdd
       - run: pnpm db:migrate
       - run: pnpm test:integration
+      - run: docker build -f docker/worker.Dockerfile -t impuls-worker .
+      - run: docker build -f apps/web/Dockerfile -t impuls-web .
