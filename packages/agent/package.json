@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@impuls/core": "workspace:*",
-    "@impuls/platforms": "workspace:*"
+    "@impuls/platforms": "workspace:*",
+    "zod": "^4.6.7"
   }
 }

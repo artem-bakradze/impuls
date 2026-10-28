@@ -84,6 +84,26 @@ export class RandomPolicy implements AgentRuntime {
   }
 }
 
+export interface VerdictChange {
+  turn: number;
+  call: number;
+  command: Command["type"];
+  before: string;
+  after: string;
+}
+
+const verdictOf = (call: ToolCallRecord): string => (call.result.status === "rejected" ? `rejected:${call.result.code}` : call.result.status);
+
+/** Report for guardrail regressions: which recorded calls now get a different verdict. */
+export const compareVerdicts = (recorded: readonly TurnResult[], replayed: readonly TurnResult[]): VerdictChange[] =>
+  recorded.flatMap((turn, t) =>
+    turn.calls.flatMap((call, c) => {
+      const now = replayed[t]?.calls[c];
+      const after = now ? verdictOf(now) : "missing";
+      return verdictOf(call) === after ? [] : [{ turn: t, call: c, command: call.command.type, before: verdictOf(call), after }];
+    }),
+  );
+
 /** Replays recorded turns through current guards (regression of guardrail changes). */
 export class ReplayPolicy implements AgentRuntime {
   readonly name = "policy:replay";

@@ -40,6 +40,8 @@ export interface Justification {
 export type ToolResult =
   | { status: "applied"; message: string }
   | { status: "clamped"; message: string }
+  /** «Спрашивать перед крупными изменениями»: sent to the owner for approval. */
+  | { status: "queued"; message: string }
   | { status: "rejected"; code: string; message: string };
 
 /** Tools are bound to the turn's business on the server; arguments never select the business. */

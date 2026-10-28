@@ -3,10 +3,12 @@ import { schema } from "@impuls/db";
 import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
-import { and, asc, eq, gte, lte } from "@impuls/db";
+import { and, asc, eq, gte, inArray, isNull, lte } from "@impuls/db";
 import type {
   AdRecord,
   AgentTurnRecord,
+  ApprovalRequest,
+  InboxEvent,
   BusinessRecord,
   ChangeEntry,
   DirectionRecord,
@@ -110,11 +112,21 @@ export class PgStore implements Store {
       text: ad.text,
       createdOn: ad.createdOn,
       platformAdId: ad.platformAdId,
+      moderation: ad.moderation,
     }));
   }
 
   async saveAd(a: AdRecord): Promise<void> {
-    const values = { id: a.id, campaignId: a.directionId, platformAdId: a.platformAdId, status: a.status, title: a.title, text: a.text, createdOn: a.createdOn };
+    const values = {
+      id: a.id,
+      campaignId: a.directionId,
+      platformAdId: a.platformAdId,
+      status: a.status,
+      title: a.title,
+      text: a.text,
+      moderation: a.moderation,
+      createdOn: a.createdOn,
+    };
     await this.db.insert(schema.ads).values(values).onConflictDoUpdate({ target: schema.ads.id, set: values });
   }
 
@@ -286,6 +298,31 @@ export class PgStore implements Store {
       .insert(schema.agentNotes)
       .values({ businessId, notes: [...notes] })
       .onConflictDoUpdate({ target: schema.agentNotes.businessId, set: { notes: [...notes] } });
+  }
+
+  async addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
+    await this.db.insert(schema.agentInbox).values({ id: randomUUID(), businessId: event.businessId, event: event.trigger, createdAt: event.createdAt });
+  }
+
+  async pendingInbox(businessId: string): Promise<InboxEvent[]> {
+    const rows = await this.db.select().from(schema.agentInbox).where(and(eq(schema.agentInbox.businessId, businessId), isNull(schema.agentInbox.consumedByTurnId))).orderBy(asc(schema.agentInbox.createdAt));
+    return rows.map((r) => ({ id: r.id, businessId: r.businessId, trigger: r.event as InboxEvent["trigger"], createdAt: r.createdAt, consumedByTurnId: r.consumedByTurnId }));
+  }
+
+  async consumeInbox(ids: readonly string[], turnId: string): Promise<void> {
+    if (ids.length > 0) {
+      await this.db.update(schema.agentInbox).set({ consumedByTurnId: turnId }).where(inArray(schema.agentInbox.id, [...ids]));
+    }
+  }
+
+  async saveApproval(r: ApprovalRequest): Promise<void> {
+    const values = { ...r, command: r.command };
+    await this.db.insert(schema.approvalRequests).values(values).onConflictDoUpdate({ target: schema.approvalRequests.id, set: values });
+  }
+
+  async approvals(businessId: string): Promise<ApprovalRequest[]> {
+    const rows = await this.db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.businessId, businessId)).orderBy(asc(schema.approvalRequests.createdAt));
+    return rows.map((r) => ({ ...r, command: r.command as ApprovalRequest["command"] }));
   }
 
   async getFlag(name: FlagName, businessId: string | null): Promise<boolean> {

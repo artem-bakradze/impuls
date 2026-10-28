@@ -90,6 +90,7 @@ export const ads = pgTable(
     status: objectStatus("status").notNull(),
     title: text("title").notNull(),
     text: text("text").notNull(),
+    moderation: text("moderation", { enum: ["accepted", "pending", "rejected"] }).notNull().default("pending"),
     createdOn: date("created_on").notNull(),
   },
   (t) => [uniqueIndex("ads_platform_id").on(t.platformAdId), index("ads_campaign").on(t.campaignId)],
@@ -223,6 +224,19 @@ export const agentInbox = pgTable("agent_inbox", {
   event: jsonb("event").notNull(),
   createdAt: createdAt(),
   consumedByTurnId: text("consumed_by_turn_id"),
+});
+
+export const approvalRequests = pgTable("approval_requests", {
+  id: text("id").primaryKey(),
+  businessId: text("business_id").notNull().references(() => businesses.id),
+  command: jsonb("command").notNull(),
+  objectId: text("object_id").notNull(),
+  reasonCode: text("reason_code").notNull(),
+  explanation: text("explanation").notNull(),
+  turnId: text("turn_id").notNull(),
+  status: text("status", { enum: ["pending", "approved", "declined", "expired"] }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
 });
 
 /** Kill switches; business_id '*' is the global value. */

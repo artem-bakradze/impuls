@@ -33,6 +33,7 @@ export interface DirectionRecord extends Direction {
 
 export interface AdRecord extends Ad {
   platformAdId: string;
+  moderation: "accepted" | "pending" | "rejected";
 }
 
 export type Snapshot = Record<string, string | number | boolean | null>;
@@ -97,6 +98,29 @@ export interface AgentTurnRecord {
   summary: string | null;
 }
 
+/** An event waiting for the next agent turn; several events are merged into one turn. */
+export interface InboxEvent {
+  id: string;
+  businessId: string;
+  trigger: { kind: string; adIds?: string[]; experimentIds?: string[] };
+  createdAt: Date;
+  consumedByTurnId: string | null;
+}
+
+/** «Спрашивать перед крупными изменениями»: an agent action waiting for the owner. */
+export interface ApprovalRequest {
+  id: string;
+  businessId: string;
+  command: Command;
+  objectId: string;
+  reasonCode: string;
+  explanation: string;
+  turnId: string;
+  createdAt: Date;
+  status: "pending" | "approved" | "declined" | "expired";
+  decidedAt: Date | null;
+}
+
 export type FlagName = "agent_enabled" | "automation_enabled";
 export type IncidentKind = "budget_overrun" | "agent_unavailable" | "stuck_command" | "stats_mismatch" | "heartbeat_stale";
 
@@ -141,6 +165,11 @@ export interface Store {
   saveTurn(turn: AgentTurnRecord): Promise<void>;
   turns(businessId: string): Promise<AgentTurnRecord[]>;
   notes(businessId: string): Promise<string[]>;
+  addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void>;
+  pendingInbox(businessId: string): Promise<InboxEvent[]>;
+  consumeInbox(ids: readonly string[], turnId: string): Promise<void>;
+  saveApproval(request: ApprovalRequest): Promise<void>;
+  approvals(businessId: string): Promise<ApprovalRequest[]>;
   saveNotes(businessId: string, notes: readonly string[]): Promise<void>;
   /** Flags are enabled unless explicitly switched off (documented default). Per-business values override global. */
   getFlag(name: FlagName, businessId: string | null): Promise<boolean>;
@@ -165,6 +194,8 @@ export class MemoryStore implements Store {
   private readonly experimentMap = new Map<string, Experiment>();
   private readonly turnList: AgentTurnRecord[] = [];
   private readonly noteMap = new Map<string, string[]>();
+  private readonly inbox: InboxEvent[] = [];
+  private readonly approvalMap = new Map<string, ApprovalRequest>();
   private readonly flags = new Map<string, boolean>();
   private readonly beats = new Map<string, Date>();
   private readonly incidentList: Incident[] = [];
@@ -279,6 +310,28 @@ export class MemoryStore implements Store {
   saveNotes(businessId: string, notes: readonly string[]): Promise<void> {
     this.noteMap.set(businessId, [...notes]);
     return Promise.resolve();
+  }
+  addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
+    this.inbox.push({ ...structuredClone(event), id: `inbox-${this.seq++}`, consumedByTurnId: null });
+    return Promise.resolve();
+  }
+  pendingInbox(businessId: string): Promise<InboxEvent[]> {
+    return Promise.resolve(this.inbox.filter((e) => e.businessId === businessId && e.consumedByTurnId === null).map((e) => structuredClone(e)));
+  }
+  consumeInbox(ids: readonly string[], turnId: string): Promise<void> {
+    for (const event of this.inbox) {
+      if (ids.includes(event.id)) {
+        event.consumedByTurnId = turnId;
+      }
+    }
+    return Promise.resolve();
+  }
+  saveApproval(request: ApprovalRequest): Promise<void> {
+    this.approvalMap.set(request.id, structuredClone(request));
+    return Promise.resolve();
+  }
+  approvals(businessId: string): Promise<ApprovalRequest[]> {
+    return Promise.resolve([...this.approvalMap.values()].filter((a) => a.businessId === businessId).map((a) => structuredClone(a)));
   }
   getFlag(name: FlagName, businessId: string | null): Promise<boolean> {
     const global = this.flags.get(`${name}|*`) ?? true;

@@ -131,6 +131,7 @@ export class SimulationDriver {
           text: ad.title,
           createdOn: input.launchedOn,
           platformAdId: platformAd.id,
+          moderation: "accepted",
         });
       }
     }
