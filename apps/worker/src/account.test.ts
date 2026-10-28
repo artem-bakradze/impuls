@@ -1,9 +1,30 @@
 import { AdversarialPolicy } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
-import { deleteAccount, purgeDeletedAccounts } from "./account";
+import { deleteAccount, purgeDeletedAccounts, purgeOldTurns } from "./account";
 import { SimulationDriver } from "./simulation";
 import type { MemoryStore } from "./store";
+
+describe("agent journal retention", () => {
+  it("keeps turns for 90 days and removes older ones", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 5, agent: new AdversarialPolicy() });
+    await sim.launchBusiness({
+      id: "b1",
+      monthlyBudgetRub: 30_000,
+      launchedOn: "2026-10-01",
+      csoSource: { kind: "user", goal: rubles(800) },
+      directions: [{ name: "Маникюр — Поиск", weeklyLimitRub: 2_000, ads: [{ title: "Маникюр у метро", truth: { impressionsPerDay: 100, ctr: 0.05, cr: 0.05, costPerClick: rubles(20) } }] }],
+    });
+    await sim.runDays(2);
+    const first = (await sim.store.turns("b1"))[0];
+    expect(first).toBeDefined();
+    sim.clock.advanceHours(24 * 89);
+    expect(await purgeOldTurns(sim.ctx)).toBe(0);
+    sim.clock.advanceHours(24 * 2);
+    expect(await purgeOldTurns(sim.ctx)).toBeGreaterThan(0);
+    expect((await sim.store.turns("b1")).some((t) => t.id === first?.id)).toBe(false);
+  });
+});
 
 describe("account deletion on the simulator", () => {
   it("stops campaigns, revokes tokens, deletes notes, keeps the agent off and purges personal data after 30 days", async () => {

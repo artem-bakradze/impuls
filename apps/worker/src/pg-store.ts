@@ -293,6 +293,10 @@ export class PgStore implements Store {
     return rows.map((r) => ({ ...r, calls: r.calls as unknown[] }));
   }
 
+  async purgeTurns(before: Date): Promise<number> {
+    return (await this.db.delete(schema.agentTurns).where(lt(schema.agentTurns.startedAt, before)).returning({ id: schema.agentTurns.id })).length;
+  }
+
   async notes(businessId: string): Promise<string[]> {
     const [row] = await this.db.select().from(schema.agentNotes).where(eq(schema.agentNotes.businessId, businessId));
     return (row?.notes as string[] | undefined) ?? [];

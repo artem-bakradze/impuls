@@ -181,6 +181,8 @@ export interface Store {
   saveExperiment(experiment: Experiment): Promise<void>;
   saveTurn(turn: AgentTurnRecord): Promise<void>;
   turns(businessId: string): Promise<AgentTurnRecord[]>;
+  /** Agent journal retention: deletes turns started before `before`; returns how many. */
+  purgeTurns(before: Date): Promise<number>;
   notes(businessId: string): Promise<string[]>;
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void>;
   pendingInbox(businessId: string): Promise<InboxEvent[]>;
@@ -332,6 +334,12 @@ export class MemoryStore implements Store {
       this.turnList.push(structuredClone(turn));
     }
     return Promise.resolve();
+  }
+  purgeTurns(before: Date): Promise<number> {
+    const keep = this.turnList.filter((t) => t.startedAt >= before);
+    const removed = this.turnList.length - keep.length;
+    this.turnList.splice(0, this.turnList.length, ...keep);
+    return Promise.resolve(removed);
   }
   turns(businessId: string): Promise<AgentTurnRecord[]> {
     return Promise.resolve(this.turnList.filter((t) => t.businessId === businessId).map((t) => structuredClone(t)));

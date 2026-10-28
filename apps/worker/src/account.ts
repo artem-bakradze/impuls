@@ -26,6 +26,12 @@ export const deleteAccount = async (ctx: JobContext, businessId: string): Promis
   return { message: "Реклама остановлена, данные будут удалены" };
 };
 
+export const AGENT_JOURNAL_RETENTION_DAYS = 90;
+
+/** Agent turn journal is kept for at least 90 days (ad-agent spec). */
+export const purgeOldTurns = (ctx: JobContext): Promise<number> =>
+  ctx.store.purgeTurns(new Date(ctx.clock.now().getTime() - AGENT_JOURNAL_RETENTION_DAYS * 86_400_000));
+
 /** Daily: anonymizes owners whose deletion is older than the retention period. */
 export const purgeDeletedAccounts = (ctx: JobContext): Promise<number> =>
   ctx.store.purgeDeletedOwners(new Date(ctx.clock.now().getTime() - PERSONAL_DATA_RETENTION_DAYS * 86_400_000));
