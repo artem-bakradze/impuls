@@ -72,6 +72,7 @@ export class SimulatedPlatform implements AdPlatform {
   private readonly rng: () => number;
   private nextId = 1;
   private balance: Kopecks;
+  private nextCreateError: PlatformError | null = null;
 
   constructor(private readonly options: SimulatorOptions) {
     this.rng = createRng(options.seed);
@@ -108,6 +109,11 @@ export class SimulatedPlatform implements AdPlatform {
   }
 
   createCampaign(input: NewCampaign): Promise<PlatformCampaign> {
+    if (this.nextCreateError) {
+      const error = this.nextCreateError;
+      this.nextCreateError = null;
+      return Promise.reject(error);
+    }
     const campaign: PlatformCampaign = { id: this.id("c"), status: "active", ...input };
     this.campaigns.set(campaign.id, campaign);
     return Promise.resolve({ ...campaign });
@@ -198,6 +204,11 @@ export class SimulatedPlatform implements AdPlatform {
     ad.moderation = moderation;
     ad.rejectionReason = rejectionReason;
     this.record(ad.campaignId, "CHILDREN");
+  }
+
+  /** The next campaign creation fails as the platform would (e.g. missing advertiser data). */
+  failNextCampaignCreation(error: PlatformError): void {
+    this.nextCreateError = error;
   }
 
   setBalance(balance: Kopecks): void {

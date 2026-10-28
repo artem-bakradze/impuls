@@ -4,6 +4,7 @@ import type { ExperimentsModel } from "@/lib/experiments-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { ExperimentsView } from "./experiments/ExperimentsView";
 import { SummaryView } from "./summary/SummaryView";
+import { AdvertiserDataNotice } from "./wizard/LaunchStep";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/summary", useSearchParams: () => new URLSearchParams() }));
 
@@ -82,6 +83,16 @@ const experiments: ExperimentsModel = {
     },
   ],
 };
+
+describe("AdvertiserDataNotice", () => {
+  it("explains the marking requirement and retries the launch on «Готово»", () => {
+    const onDone = vi.fn();
+    render(<AdvertiserDataNotice onDone={onDone} />);
+    expect(screen.getByText("Яндексу нужны данные о вашем бизнесе для маркировки рекламы")).toBeTruthy();
+    screen.getByRole("button", { name: "Готово" }).click();
+    expect(onDone).toHaveBeenCalledOnce();
+  });
+});
 
 describe("ExperimentsView («Проверяем»)", () => {
   it("shows the hypothesis in plain words, progress and the result of finished checks", () => {

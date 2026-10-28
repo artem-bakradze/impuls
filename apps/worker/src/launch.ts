@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { toLocalDate } from "@impuls/core";
 import type { Channel } from "@impuls/core";
+import { PlatformError } from "@impuls/platforms";
 import { enqueueAgentEvent } from "./agent-turn";
 import type { JobContext } from "./context";
 
@@ -18,7 +19,12 @@ export class LaunchError extends Error {
  * «Запустить» from the launch wizard (business-onboarding spec): one campaign per «услуги × канал»
  * with site monitoring, ads sent to moderation, a history entry «Реклама запущена» and a launch turn for the agent.
  */
-export const launchAds = async (ctx: JobContext, businessId: string, plan: LaunchPlan): Promise<{ directionIds: string[] }> => {
+export type LaunchResult =
+  | { status: "launched"; directionIds: string[] }
+  /** Direct refused because advertiser data for ad marking is missing (platform-integration spec). */
+  | { status: "needs_advertiser_data"; message: string };
+
+export const launchAds = async (ctx: JobContext, businessId: string, plan: LaunchPlan): Promise<LaunchResult> => {
   const business = await ctx.store.getBusiness(businessId);
   if (business.launchedOn !== null) {
     throw new LaunchError("ALREADY_LAUNCHED", "Реклама уже запущена");
@@ -34,12 +40,20 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
   }
   const directionIds: string[] = [];
   for (const direction of plan.directions) {
-    const campaign = await platform.createCampaign({
-      name: `[Импульс] ${direction.name}`,
-      weeklyLimit: direction.weeklyLimitRub * 100,
-      strategyId,
-      siteMonitoring: true,
-    });
+    let campaign;
+    try {
+      campaign = await platform.createCampaign({
+        name: `[Импульс] ${direction.name}`,
+        weeklyLimit: direction.weeklyLimitRub * 100,
+        strategyId,
+        siteMonitoring: true,
+      });
+    } catch (error) {
+      if (error instanceof PlatformError && error.code === "ADVERTISER_DATA_REQUIRED" && directionIds.length === 0) {
+        return { status: "needs_advertiser_data", message: "Яндексу нужны данные о вашем бизнесе для маркировки рекламы" };
+      }
+      throw error;
+    }
     const id = `dir-${randomUUID()}`;
     await ctx.store.saveDirection({
       id,
@@ -93,5 +107,5 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
     outcome: null,
   });
   await enqueueAgentEvent(ctx, businessId, { kind: "launch" });
-  return { directionIds };
+  return { status: "launched", directionIds };
 };

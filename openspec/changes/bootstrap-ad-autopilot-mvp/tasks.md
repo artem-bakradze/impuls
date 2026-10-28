@@ -10,7 +10,7 @@
 
 ## 1. Каркас проекта и инфраструктура
 
-- [ ] 1.1 Создать монорепозиторий (`apps/web`, `apps/worker`, `packages/core`, `packages/platforms`, `packages/agent`, `packages/db`, `e2e`) с общим строгим tsconfig, ESLint (`no-floating-promises` как ошибка), Vitest, vitest-cucumber и скриптами `type-check`, `lint`, `test`, `test:bdd`, `test:contract`, `eval:agent`, `db:generate`, `db:migrate` из `AGENTS.md`; проверка — `pnpm -r type-check`, `pnpm test` и `pnpm test:bdd` проходят на пустых пакетах
+- [x] 1.1 Создать монорепозиторий (`apps/web`, `apps/worker`, `packages/core`, `packages/platforms`, `packages/agent`, `packages/db`, `e2e`) с общим строгим tsconfig, ESLint (`no-floating-promises` как ошибка), Vitest, vitest-cucumber и скриптами `type-check`, `lint`, `test`, `test:bdd`, `test:contract`, `eval:agent`, `db:generate`, `db:migrate` из `AGENTS.md`; проверка — `pnpm -r type-check`, `pnpm test` и `pnpm test:bdd` проходят на пустых пакетах
 - [x] 1.2 Поднять PostgreSQL через docker-compose и Drizzle-миграции для базовых таблиц (users, businesses, platform_accounts, campaigns, ads, change_log, stats_daily, stats_intraday, experiments, client_confirmations, notifications, agent_turns, agent_notes, agent_inbox, runtime_flags, incidents, heartbeats); проверка — `pnpm db:generate` создаёт миграцию, её SQL проверен, `pnpm db:migrate` проходит на чистой БД без ошибок
 - [x] 1.3 Подключить pg-boss в воркере: обработчики задач отдельно от расписания, ежечасный диспетчер по часовым поясам бизнесов, внедряемый `Clock`, задачи-команды без автоповторов (`retryLimit: 0`); проверка — тест диспетчера: бизнесу в UTC+5 задача «06:00» ставится в 01:00 UTC
 - [ ] 1.4 Настроить CI (GitHub Actions): lint, типы, unit- и BDD-тесты, сборка Docker-образов `web` и `worker`; проверка — зелёный прогон на PR
@@ -38,7 +38,7 @@
 - [x] 3.7 Реализовать ежечасную сверку с кабинетом через `Changes.checkCampaigns` и `Changes.check`: сравнение с ожидаемым состоянием, урезание расходных изменений через `budget-guard`, запись «Изменено в кабинете Директа», перезагрузку статистики по `STAT`, сверку первой после простоя; проверка — BDD-сценарии сверки из `specs/platform-integration` и `specs/budget-guard` на симуляторе
 - [x] 3.8 Реализовать ежечасную проверку модерации и баланса с уведомлением, если денег хватит меньше чем на 3 дня; проверка — сценарий на симуляторе
 - [ ] 3.9 Включать мониторинг сайта (`ENABLE_SITE_MONITORING`) во всех кампаниях сервиса и реализовать собственную проверку доступности посадочных страниц раз в 15 минут с уведомлением; проверка — контрактный тест настройки в песочнице и BDD-сценарий «Посадочная страница не открывается»
-- [ ] 3.10 Реализовать обработку ошибок маркировки и данных рекламодателя с экраном-инструкцией; проверка — unit-тест маппинга кодов ошибок Директа
+- [x] 3.10 Реализовать обработку ошибок маркировки и данных рекламодателя с экраном-инструкцией; проверка — unit-тест маппинга кодов ошибок Директа
 
 ## 4. Исполнитель команд и история изменений (change-history)
 

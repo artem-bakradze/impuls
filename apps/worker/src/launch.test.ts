@@ -1,4 +1,5 @@
 import { IdlePolicy } from "@impuls/agent";
+import { PlatformError } from "@impuls/platforms";
 import { describe, expect, it } from "vitest";
 import { handleWebJob } from "./web-jobs";
 import { LaunchError } from "./launch";
@@ -25,6 +26,10 @@ describe("launch from the wizard", () => {
         { name: "Маникюр — Сайты-партнёры", channel: "network" as const, weeklyLimitRub: 1_000, ads: [{ title: "Маникюр рядом", text: "Работаем до 22:00" }] },
       ],
     };
+    sim.platform.failNextCampaignCreation(new PlatformError("ADVERTISER_DATA_REQUIRED", "Необходимо заполнить данные рекламодателя", false));
+    expect(await handleWebJob(sim.ctx, { kind: "launch", businessId: "b1", plan })).toEqual({ status: "needs_advertiser_data", message: "Яндексу нужны данные о вашем бизнесе для маркировки рекламы" });
+    expect(await sim.store.directions("b1")).toHaveLength(0);
+
     const result = (await handleWebJob(sim.ctx, { kind: "launch", businessId: "b1", plan })) as { directionIds: string[] };
     expect(result.directionIds).toHaveLength(2);
     const campaigns = await sim.platform.getCampaigns((await sim.store.directions("b1")).map((d) => d.platformCampaignId));
