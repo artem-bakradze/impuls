@@ -1,0 +1,33 @@
+{
+  "name": "impuls",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "type-check": "pnpm -r --if-present type-check",
+    "lint": "eslint .",
+    "test": "vitest run --project unit",
+    "test:bdd": "vitest run --project bdd",
+    "test:integration": "vitest run --project integration",
+    "test:contract": "vitest run --project contract",
+    "eval:agent": "node -e \"console.error('Agent eval requires the OpenAI Agents API runtime (task 10.12)'); process.exit(1)\"",
+    "db:generate": "pnpm --filter @impuls/db db:generate",
+    "db:migrate": "pnpm --filter @impuls/db db:migrate"
+  },
+  "devDependencies": {
+    "@amiceli/vitest-cucumber": "^8.0.0",
+    "@impuls/agent": "workspace:*",
+    "@impuls/core": "workspace:*",
+    "@impuls/worker": "workspace:*",
+    "@types/node": "^26.6.5",
+    "eslint": "^10.13.0",
+    "jiti": "^2.7.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  }
+}

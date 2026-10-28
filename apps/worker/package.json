@@ -1,0 +1,24 @@
+{
+  "name": "@impuls/worker",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json",
+    "start": "tsx src/main.ts"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  },
+  "dependencies": {
+    "@impuls/agent": "workspace:*",
+    "@impuls/core": "workspace:*",
+    "@impuls/db": "workspace:*",
+    "@impuls/platforms": "workspace:*",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
+    "zod": "^4.6.7"
+  }
+}

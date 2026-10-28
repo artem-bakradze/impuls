@@ -1,0 +1,31 @@
+import { localHour } from "@impuls/core";
+import type { JobContext } from "./context";
+import { budgetGuard, dailyEvaluation, HEARTBEAT_DISPATCHER, reconcile, syncStats, verifyBudget } from "./jobs";
+
+export const DAILY_EVALUATION_HOUR = 6;
+
+/**
+ * Hourly dispatcher (design decision 2). Runs per-business jobs in a fixed order:
+ * reconciliation first (also after downtime), then stats, budget guard, and the 06:00 local evaluation.
+ */
+export const dispatchHour = async (ctx: JobContext): Promise<void> => {
+  const now = ctx.clock.now();
+  for (const business of await ctx.store.listBusinesses()) {
+    if (business.launchedOn === null) {
+      continue;
+    }
+    await reconcile(ctx, business.id);
+    await syncStats(ctx, business.id);
+    await budgetGuard(ctx, business.id);
+    if (localHour(now, business.timeZone) === DAILY_EVALUATION_HOUR) {
+      await verifyBudget(ctx, business.id);
+      await dailyEvaluation(ctx, business.id);
+    }
+  }
+  await ctx.executor.recoverPending(5 * 60_000);
+  await ctx.store.beat(HEARTBEAT_DISPATCHER, now);
+};
+
+/** Which businesses get their 06:00 job at this instant — used by tests and the production scheduler. */
+export const businessesDueForDaily = (timeZones: readonly { id: string; timeZone: string }[], at: Date): string[] =>
+  timeZones.filter((b) => localHour(at, b.timeZone) === DAILY_EVALUATION_HOUR).map((b) => b.id);

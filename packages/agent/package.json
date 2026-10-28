@@ -1,0 +1,15 @@
+{
+  "name": "@impuls/agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@impuls/core": "workspace:*",
+    "@impuls/platforms": "workspace:*"
+  }
+}

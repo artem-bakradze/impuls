@@ -1,0 +1,49 @@
+schema: spec-driven
+
+context: |
+  Language: ru
+  All artifacts must be written in ru.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: «Импульс» — сервис автоматического управления рекламой для малого
+  бизнеса (салоны красоты, йога-студии и т. п.). Пользователь — владелец бизнеса
+  без маркетинговой экспертизы: описывает бизнес, задаёт бюджет, получает клиентов.
+  Площадка MVP: Яндекс Директ API v5 (песочница для разработки и тестов, боевой API
+  для пилота). Аналитика: Яндекс Метрика. Вход: Google OAuth.
+  Стек и правила работы с кодом — в AGENTS.md в корне репозитория.
+  Принципы:
+  - Рекламой управляет агент на OpenAI Agents API, но только через инструменты
+    сервиса. Бюджет, ограничители действий, страховочные правила и итог A/B-теста —
+    детерминированный код, который агент не может обойти.
+  - Месячный бюджет пользователя не превышается ни при каких условиях.
+  - Каждое автоматическое действие объясняется простым языком и откатывается.
+  - В пользовательских текстах нет рекламного жаргона.
+
+rules:
+  specs:
+    - Every requirement has at least one scenario with measurable thresholds where applicable
+  tasks:
+    - Group tasks by capability; each task is completable and verifiable on its own
+    - Business behavior is verified by BDD scenarios in tests/bdd (see AGENTS.md)
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

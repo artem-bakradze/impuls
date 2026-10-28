@@ -1,0 +1,137 @@
+import type { AgentRuntime } from "@impuls/agent";
+import { SimulatedPlatform } from "@impuls/platforms";
+import type { AdTruth } from "@impuls/platforms";
+import { rubles } from "@impuls/core";
+import type { CsoSource, LocalDate } from "@impuls/core";
+import { ManualClock } from "./clock";
+import type { JobContext } from "./context";
+import { dispatchHour } from "./dispatcher";
+import { CommandExecutor } from "./executor";
+import { MemoryLockManager } from "./locks";
+import { MemoryStore } from "./store";
+import type { BusinessRecord } from "./store";
+
+export interface SimulationOptions {
+  start: Date;
+  seed: number;
+  agent: AgentRuntime;
+  timeZone?: string;
+  defaultTruth?: AdTruth;
+}
+
+export interface SimulatedDirection {
+  name: string;
+  weeklyLimitRub: number;
+  ads: { title: string; truth: AdTruth }[];
+}
+
+/**
+ * Drives job handlers on a virtual clock against the market simulator (design decision 2).
+ * Lets tests run 30 days in seconds and model worker outages by skipping handlers.
+ */
+export class SimulationDriver {
+  readonly clock: ManualClock;
+  readonly store = new MemoryStore();
+  readonly locks = new MemoryLockManager();
+  readonly platform: SimulatedPlatform;
+  readonly executor: CommandExecutor;
+  readonly ctx: JobContext;
+  private readonly pendingTruths: AdTruth[] = [];
+  readonly timeZone: string;
+
+  constructor(options: SimulationOptions) {
+    this.clock = new ManualClock(options.start);
+    this.timeZone = options.timeZone ?? "Europe/Moscow";
+    const fallback: AdTruth = options.defaultTruth ?? { impressionsPerDay: 400, ctr: 0.05, cr: 0.05, costPerClick: rubles(25) };
+    this.platform = new SimulatedPlatform({
+      seed: options.seed,
+      timeZone: this.timeZone,
+      now: () => this.clock.now(),
+      truthFor: () => this.pendingTruths.shift() ?? fallback,
+    });
+    this.executor = new CommandExecutor({ store: this.store, locks: this.locks, clock: this.clock, platformFor: () => this.platform });
+    this.ctx = {
+      store: this.store,
+      clock: this.clock,
+      locks: this.locks,
+      executor: this.executor,
+      platformFor: () => this.platform,
+      agent: options.agent,
+    };
+  }
+
+  /** Creates a launched business with campaigns and ads, as the launch wizard would. */
+  async launchBusiness(input: {
+    id: string;
+    monthlyBudgetRub: number;
+    launchedOn: LocalDate;
+    csoSource: CsoSource;
+    directions: SimulatedDirection[];
+  }): Promise<BusinessRecord> {
+    const business: BusinessRecord = {
+      id: input.id,
+      timeZone: this.timeZone,
+      monthlyBudgetRub: input.monthlyBudgetRub,
+      launchedOn: input.launchedOn,
+      csoSource: input.csoSource,
+      autonomy: "auto",
+      card: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "10:00–22:00", advantages: ["Работаем до 22:00"] },
+    };
+    await this.store.saveBusiness(business);
+    let n = 1;
+    for (const direction of input.directions) {
+      const campaign = await this.platform.createCampaign({
+        name: `[Импульс] ${direction.name}`,
+        weeklyLimit: rubles(direction.weeklyLimitRub),
+        strategyId: "WB_MAXIMUM_CLICKS",
+        siteMonitoring: true,
+      });
+      const directionId = `${input.id}-d${n++}`;
+      await this.store.saveDirection({
+        id: directionId,
+        businessId: input.id,
+        name: direction.name,
+        channel: "search",
+        status: "active",
+        weeklyLimit: campaign.weeklyLimit,
+        strategyId: campaign.strategyId,
+        createdOn: input.launchedOn,
+        lastLimitIncreaseOn: null,
+        lastStrategyChangeOn: null,
+        platformCampaignId: campaign.id,
+        pausedByBudget: false,
+      });
+      let m = 1;
+      for (const ad of direction.ads) {
+        this.pendingTruths.push(ad.truth);
+        const platformAd = await this.platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.title });
+        await this.store.saveAd({
+          id: `${directionId}-a${m++}`,
+          directionId,
+          status: "active",
+          title: ad.title,
+          text: ad.title,
+          createdOn: input.launchedOn,
+          platformAdId: platformAd.id,
+        });
+      }
+    }
+    return business;
+  }
+
+  /** Advances the virtual clock hour by hour; `workerDown` skips job handlers to model outages. */
+  async runHours(hours: number, options: { workerDown?: (at: Date) => boolean } = {}): Promise<void> {
+    for (let i = 0; i < hours; i++) {
+      this.clock.advanceHours(1);
+      const at = this.clock.now();
+      this.platform.advanceHour(at);
+      if (!options.workerDown?.(at)) {
+        await dispatchHour(this.ctx);
+      }
+    }
+  }
+
+  runDays(days: number, options: { workerDown?: (at: Date) => boolean } = {}): Promise<void> {
+    return this.runHours(days * 24, options);
+  }
+}
