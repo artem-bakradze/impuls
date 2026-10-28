@@ -1,4 +1,5 @@
 import { allowedWeeklyTotal, budgetSignal } from "./budget";
+import { validateAdText } from "./creatives";
 import { daysBetween } from "./dates";
 import { costPerLead } from "./types";
 import type {
@@ -218,8 +219,13 @@ const optimizationCheck = (state: GuardState, command: Command, actor: Actor): V
     case "UpdateSchedule":
     case "UpdateGeo":
       return state.directions.some((d) => d.id === command.directionId) ? { kind: "allow", command } : NOT_FOUND();
-    case "UpdateAdText":
-      return state.ads.some((a) => a.id === command.adId) ? { kind: "allow", command } : NOT_FOUND();
+    case "UpdateAdText": {
+      if (!state.ads.some((a) => a.id === command.adId)) {
+        return NOT_FOUND();
+      }
+      const issues = validateAdText({ title: command.title, text: command.text });
+      return issues.length > 0 ? reject("AD_TEXT_INVALID", issues.map((i) => i.message).join("; ")) : { kind: "allow", command };
+    }
     case "UpdateMiniSite":
     case "PublishMiniSite":
       return reject("NOT_ALLOWED_FOR_AUTOMATION", "мини-сайт меняет только владелец бизнеса");
