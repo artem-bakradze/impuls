@@ -23,7 +23,8 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | `DATABASE_URL` | PostgreSQL connection string |
 | `DIRECT_API_MODE` | `simulator` \| `production` |
 | `TOKEN_ENCRYPTION_KEY` | required in `production`: base64 of 32 bytes, same as in web; decrypts Direct OAuth tokens |
-| `AGENT_RUNTIME` | `idle` until the OpenAI Agents API runtime exists |
+| `AGENT_RUNTIME` | `openai` (agent on the OpenAI Agents API) or `idle` (no agent: guards and safety net only) |
+| `OPENAI_AGENT_MODEL` | required with `AGENT_RUNTIME=openai`, e.g. `gpt-6.1-sol` |
 | `CREATIVES` | `openai` (card extraction and ad texts by the LLM) or `template` (card-only drafts, local stand and e2e) |
 | `OPENAI_API_KEY`, `OPENAI_TEXT_MODEL` | required with `CREATIVES=openai`; text model `gpt-6.1-terra` (see `docs/research/agents-api.md` for the agent model) |
 | `SMTP_URL`, `MAIL_FROM` | outgoing email |

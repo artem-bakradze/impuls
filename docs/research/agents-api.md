@@ -61,6 +61,30 @@ The Agents API fits design decision 14: one session per turn with environment `n
 read from the worker, cancel and delete. `gpt-6.1-sol` made the expected decision and explained it in plain language.
 Task 0.6 stays open only for the proxy check from the chosen hosting location (needs task 0.5).
 
+## Implementation (task 10.1)
+
+`OpenAiAgentRuntime` (`packages/agent/src/openai-runtime.ts`), enabled with `AGENT_RUNTIME=openai` and
+`OPENAI_AGENT_MODEL`:
+
+- tool calls are answered by the SDK `toolHandlers`; guard refusals come back as normal results;
+- the client runs with `maxRetries: 0`: the SDK retries 409 and 5xx by default, which would re-create a streaming
+  session (a second turn) or resend a tool result to a cancelled turn;
+- cancel on the worker's abort signal, 409 after it ends the turn as cancelled, the session is deleted in every
+  outcome;
+- offered tools: all action tools, `get_snapshot`, `get_notes`, `save_note` (`get_history` and `delete_note` are not
+  served by the worker's toolbox yet);
+- instructions are versioned in `packages/agent/src/instructions.ts` and stored with every turn.
+
+Contract tests replay a real turn recorded at the HTTP level (`fixtures/agent-turn-daily-review.json`, made by
+`spikes/record-agent-turn.ts`): the same tool calls are answered in the same order, the pause goes through the toolbox
+and the session is deleted. Synthetic streams cover cancel-with-409 and `turn.failed`.
+
+Live turns through the worker on the simulator (`apps/worker/spikes/live-agent-turn.ts`, 20 warmed-up days):
+25–28 s per turn, journal entry with runtime and instructions version. The first run showed that the snapshot had no
+signal for «held back by the limit», so the agent never scaled effective directions; `spend7Rub` was added to the
+snapshot and the scaling rule to the instructions (version 2026-10-29.2). With it the agent correctly left both
+directions alone because their weekly spend was below 90% of the limits.
+
 ## Not checked yet
 
 - Egress through `OPENAI_PROXY_URL` from a Russian host (no proxy available; the dev machine reaches OpenAI directly).

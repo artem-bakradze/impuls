@@ -55,6 +55,7 @@ export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promis
         class: view.directionClasses.get(d.id) ?? "learning",
         spend14Rub: toRub(stats.spend),
         leads14: stats.leads,
+        spend7Rub: toRub(view.spendLast7.get(d.id) ?? 0),
       };
     }),
     ads: view.ads.map((a) => {

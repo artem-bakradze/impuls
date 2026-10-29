@@ -43,6 +43,11 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...complete, CREATIVES: undefined })).toThrow(/CREATIVES/);
   });
 
+  it("requires the OpenAI key and agent model for the Agents API runtime", () => {
+    expect(() => loadConfig({ ...complete, AGENT_RUNTIME: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_AGENT_MODEL/);
+    expect(loadConfig({ ...complete, AGENT_RUNTIME: "openai", OPENAI_API_KEY: "k", OPENAI_AGENT_MODEL: "gpt-6.1-sol" })).toMatchObject({ AGENT_RUNTIME: "openai" });
+  });
+
   it("requires the token encryption key in production", () => {
     expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production" })).toThrow(/TOKEN_ENCRYPTION_KEY/);
     expect(loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toMatchObject({ DIRECT_API_MODE: "production" });

@@ -25,6 +25,8 @@ export interface TurnSnapshot {
     class: EffectivenessClass;
     spend14Rub: number;
     leads14: number;
+    /** Spend of the last 7 days: close to `weeklyLimitRub` means the direction is held back by its limit. */
+    spend7Rub: number;
   }[];
   ads: { id: string; directionId: string; status: ObjectStatus; title: string; text: string; class: EffectivenessClass; spend14Rub: number; leads14: number }[];
   userDecisions: { objectId: string; action: Command["type"]; on: LocalDate }[];

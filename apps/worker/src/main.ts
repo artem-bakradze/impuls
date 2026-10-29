@@ -1,5 +1,5 @@
-import { IdlePolicy, LlmCreativeEngine, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
-import type { CreativeEngine } from "@impuls/agent";
+import { IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
+import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { and, createDb, createPool, decryptToken, eq, isNull, parseTokenKey, schema } from "@impuls/db";
 import { SimulatedPlatform } from "@impuls/platforms";
@@ -66,13 +66,22 @@ const main = async (): Promise<void> => {
   } else {
     creatives = new TemplateCreativeEngine();
   }
-  const ctx: JobContext = { store, clock: systemClock, locks, executor, platformFor, agent: new IdlePolicy(), creatives };
+  let agent: AgentRuntime;
+  if (config.AGENT_RUNTIME === "openai") {
+    if (!config.OPENAI_API_KEY || !config.OPENAI_AGENT_MODEL) {
+      throw new Error("OPENAI_API_KEY and OPENAI_AGENT_MODEL are required with AGENT_RUNTIME=openai");
+    }
+    agent = new OpenAiAgentRuntime({ apiKey: config.OPENAI_API_KEY, model: config.OPENAI_AGENT_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) });
+  } else {
+    agent = new IdlePolicy();
+  }
+  const ctx: JobContext = { store, clock: systemClock, locks, executor, platformFor, agent, creatives };
 
   const boss = new PgBoss(config.DATABASE_URL);
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
   await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL, teamEmail: config.TEAM_ALERT_EMAIL });
-  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null });
+  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null });
 
   const shutdown = async (): Promise<void> => {
     await boss.stop();

@@ -7,6 +7,7 @@
 | Integration | `pnpm test:integration` | PostgreSQL (`PgStore`, advisory locks, pg-boss) and Mailpit; needs `DATABASE_URL`, `MAILPIT_SMTP_URL`, `MAILPIT_API_URL`, `S3_TEST_ENDPOINT` (S3Mock) |
 | Contract | `pnpm test:contract` | Production Direct API in a dedicated test account, drafts only; needs `DIRECT_CONTRACT_TOKEN` and `DIRECT_CONTRACT_LOGIN`, fails fast without them |
 | Creatives live check | `pnpm --filter @impuls/agent exec tsx spikes/creatives-live.ts [fixture]` | Card extraction, ads and a variant on the real model; paid (cents), on request only; needs `OPENAI_API_KEY`, `OPENAI_TEXT_MODEL` |
+| Live agent turn | `pnpm --filter @impuls/worker exec tsx spikes/live-agent-turn.ts` | One real Agents API turn through the worker on the simulator; paid (cents), on request only; needs `OPENAI_API_KEY`, `OPENAI_AGENT_MODEL` |
 | Agent eval | `pnpm eval:agent` | not available until the OpenAI Agents API runtime exists (task 10.12) |
 
 ## Simulator and time

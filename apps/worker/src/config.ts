@@ -12,8 +12,10 @@ const ConfigSchema = z.object({
   DATABASE_URL: z.string().min(1),
   /** `simulator` runs the market simulator; `production` calls the real Direct API with each business's token. */
   DIRECT_API_MODE: directApiMode,
-  /** Which AgentRuntime to run. Only policies exist until the Agents API spike (task 0.6). */
-  AGENT_RUNTIME: z.enum(["idle"]),
+  /** Which AgentRuntime to run: `openai` (Agents API) or `idle` (no agent: guards and safety net only). */
+  AGENT_RUNTIME: z.enum(["idle", "openai"]),
+  /** Required with AGENT_RUNTIME=openai, e.g. gpt-6.1-sol (docs/research/agents-api.md). */
+  OPENAI_AGENT_MODEL: z.string().min(1).optional(),
   /** SMTP for notification emails, e.g. smtp://localhost:1025 (Mailpit locally). */
   SMTP_URL: z.string().min(1),
   MAIL_FROM: z.string().min(1),
@@ -44,6 +46,13 @@ const ConfigSchema = z.object({
     for (const key of ["OPENAI_API_KEY", "OPENAI_TEXT_MODEL"] as const) {
       if (!config[key]) {
         ctx.addIssue({ code: "custom", path: [key], message: "is required with CREATIVES=openai" });
+      }
+    }
+  }
+  if (config.AGENT_RUNTIME === "openai") {
+    for (const key of ["OPENAI_API_KEY", "OPENAI_AGENT_MODEL"] as const) {
+      if (!config[key]) {
+        ctx.addIssue({ code: "custom", path: [key], message: "is required with AGENT_RUNTIME=openai" });
       }
     }
   }
