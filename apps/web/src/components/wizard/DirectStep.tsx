@@ -1,8 +1,10 @@
 "use client";
 
-import { Alert, Button, Flex, Typography } from "antd";
+import { ApiOutlined, CheckCircleFilled, ExperimentOutlined, LockOutlined } from "@ant-design/icons";
+import { Button } from "antd";
 import { DIRECT_OAUTH_MESSAGES } from "@/lib/direct-oauth";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
+import { Note } from "../ui/primitives";
 
 interface Props {
   directApiMode: "simulator" | "production";
@@ -12,6 +14,11 @@ interface Props {
   onConnect: () => void;
 }
 
+const PROMISES = [
+  { icon: <LockOutlined />, text: "Деньги списываются только с баланса вашего Директа — к ним мы доступа не получаем." },
+  { icon: <ApiOutlined />, text: "Управляем только кампаниями, которые создали сами. Ваша реклама в кабинете остаётся как есть." },
+];
+
 /**
  * In the simulator there is no real Direct account to connect. In production the owner grants access on the
  * Yandex page; the account is stored by the OAuth callback, and «Продолжить» moves on once it is connected.
@@ -19,24 +26,43 @@ interface Props {
 export function DirectStep({ directApiMode, connected, outcome, onConnect }: Props) {
   if (directApiMode === "simulator") {
     return (
-      <Flex vertical gap={16}>
-        <Alert type="warning" showIcon title="Тестовый режим — реклама не показывается" description="Подключать Яндекс Директ не нужно: объявления создаются в тестовой копии, деньги не тратятся." />
-        {connected ? <Typography.Text type="success">Тестовый режим включён.</Typography.Text> : null}
+      <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+        <div className="row" style={{ "--gap": "14px", flexWrap: "nowrap", alignItems: "flex-start" } as React.CSSProperties}>
+          <span className="icon-tile warning" style={{ width: 44, height: 44, fontSize: 20 }}>
+            <ExperimentOutlined />
+          </span>
+          <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
+            <h2 className="t-h3">Тестовый режим — реклама не показывается</h2>
+            <p className="t-body t-muted">Подключать Яндекс Директ не нужно: объявления создаются в тестовой копии, деньги не тратятся.</p>
+          </div>
+        </div>
+        {connected ? (
+          <Note tone="success" icon={<CheckCircleFilled />}>
+            Тестовый режим включён.
+          </Note>
+        ) : null}
         <Button type="primary" size="large" onClick={onConnect} style={{ alignSelf: "flex-start" }}>
           Продолжить в тестовом режиме
         </Button>
-      </Flex>
+      </div>
     );
   }
   return (
-    <Flex vertical gap={16}>
-      <Typography.Paragraph style={{ margin: 0 }}>
-        Реклама будет работать в вашем аккаунте Яндекс Директа: деньги списываются с его баланса, а мы управляем только теми кампаниями, которые создали сами.
-      </Typography.Paragraph>
-      {outcome === "denied" || outcome === "failed" ? <Alert type={outcome === "denied" ? "warning" : "error"} showIcon title={DIRECT_OAUTH_MESSAGES[outcome]} /> : null}
+    <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+      <ul className="benefits">
+        {PROMISES.map((p) => (
+          <li key={p.text}>
+            <span className="benefit-icon">{p.icon}</span>
+            <span>{p.text}</span>
+          </li>
+        ))}
+      </ul>
+      {outcome === "denied" || outcome === "failed" ? <Note tone="warning">{DIRECT_OAUTH_MESSAGES[outcome]}</Note> : null}
       {connected ? (
         <>
-          <Alert type="success" showIcon title="Яндекс Директ подключён" />
+          <Note tone="success" icon={<CheckCircleFilled />}>
+            Яндекс Директ подключён
+          </Note>
           <Button type="primary" size="large" onClick={onConnect} style={{ alignSelf: "flex-start" }}>
             Продолжить
           </Button>
@@ -46,9 +72,6 @@ export function DirectStep({ directApiMode, connected, outcome, onConnect }: Pro
           {outcome === "denied" || outcome === "failed" ? "Подключить ещё раз" : "Подключить Яндекс Директ"}
         </Button>
       )}
-      <Typography.Text type="secondary">
-        Если в этом аккаунте уже есть ваша собственная реклама, мы её не трогаем, и её расходы не входят в бюджет сервиса.
-      </Typography.Text>
-    </Flex>
+    </div>
   );
 }

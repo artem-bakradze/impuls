@@ -39,6 +39,11 @@ export interface SimulatorOptions {
   timeZone: string;
   now: () => Date;
   truthFor: (ad: PlatformAd) => AdTruth;
+  /**
+   * Prefix of object ids. The simulator keeps its state in memory, so a long-running stand passes a per-start
+   * prefix: ids of a restarted simulator must not collide with campaigns already stored in the database.
+   */
+  idPrefix?: string;
   /** Max delay before an hour of stats becomes visible. */
   maxStatsDelayHours?: number;
   /** Daily probability that a past day gets corrected (invalid clicks written off). */
@@ -92,7 +97,7 @@ export class SimulatedPlatform implements AdPlatform {
   }
 
   private id(prefix: string): string {
-    return `${prefix}-${this.nextId++}`;
+    return `${this.options.idPrefix ?? ""}${prefix}-${this.nextId++}`;
   }
 
   /** Manual edits happen strictly after any check made at the same virtual instant. */

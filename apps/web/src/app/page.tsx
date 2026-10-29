@@ -13,13 +13,11 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   }
   const { error } = await searchParams;
   return (
-    <main className="page" style={{ maxWidth: 480, paddingTop: 48 }}>
-      <LoginCard
-        errorText={loginErrorMessage(typeof error === "string" ? error : undefined)}
-        testLogin={webConfig().AUTH_TEST_LOGIN === "enabled"}
-        signInWithGoogle={signInWithGoogle}
-        signInForTests={signInForTests}
-      />
-    </main>
+    <LoginCard
+      errorText={loginErrorMessage(typeof error === "string" ? error : undefined)}
+      testLogin={webConfig().AUTH_TEST_LOGIN === "enabled"}
+      signInWithGoogle={signInWithGoogle}
+      signInForTests={signInForTests}
+    />
   );
 }

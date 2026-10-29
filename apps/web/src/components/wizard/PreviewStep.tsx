@@ -1,7 +1,9 @@
 "use client";
 
-import { Button, Divider, Flex, Typography } from "antd";
-import { hasOwnSite } from "@/lib/onboarding";
+import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Segmented } from "antd";
+import { useState } from "react";
+import { cityOf, hasOwnSite } from "@/lib/onboarding";
 import type { AdDraft } from "@/lib/onboarding";
 import { formatRub } from "@/lib/format";
 import { AdPreview } from "./AdPreview";
@@ -9,7 +11,7 @@ import type { StepProps } from "./Wizard";
 
 const hostOf = (url: string): string => {
   try {
-    return new URL(url).host;
+    return new URL(url).host.replace(/^www\./, "");
   } catch {
     return url;
   }
@@ -17,46 +19,73 @@ const hostOf = (url: string): string => {
 
 export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps & { onRegenerate: () => void; busy: boolean }) {
   const ads = draft.ads ?? { search: [], network: [] };
+  const [channel, setChannel] = useState<"search" | "network">("search");
   const domain = hasOwnSite(draft) ? hostOf(draft.sources.siteUrl) : "ваш сайт";
   const total = ads.search.length + ads.network.length;
-  const update = (channel: "search" | "network", list: AdDraft[]) => onChange({ ...draft, ads: { ...ads, [channel]: list } });
-  const section = (channel: "search" | "network", title: string, hint: string) => (
-    <Flex vertical gap={16}>
-      <div>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {title}
-        </Typography.Title>
-        <Typography.Text type="secondary">{hint}</Typography.Text>
-      </div>
-      {ads[channel].length === 0 ? <Typography.Text type="secondary">Здесь объявлений не будет.</Typography.Text> : null}
-      {ads[channel].map((ad, index) => (
-        <AdPreview
-          key={index}
-          ad={ad}
-          channel={channel}
-          domain={domain}
-          label={`${title}, объявление ${index + 1}`}
-          onChange={(next) => update(channel, ads[channel].map((a, i) => (i === index ? next : a)))}
-          onRemove={total > 1 ? () => update(channel, ads[channel].filter((_, i) => i !== index)) : null}
-        />
-      ))}
-    </Flex>
-  );
+  const update = (which: "search" | "network", list: AdDraft[]) => onChange({ ...draft, ads: { ...ads, [which]: list } });
+  const query = [draft.card.services.find((s) => s.name.trim() !== "")?.name ?? draft.card.category, cityOf(draft.card.address)].filter(Boolean).join(" ").toLowerCase();
+  const list = ads[channel];
+
   return (
-    <Flex vertical gap={16}>
-      <Typography.Paragraph style={{ margin: 0 }}>
-        Мы написали объявления по вашей карточке. Поправьте текст или удалите лишнее — до запуска их никто не увидит.
-      </Typography.Paragraph>
-      {section("search", "В поиске Яндекса", "Когда человек ищет вашу услугу в Яндексе")}
-      <Divider style={{ margin: 0 }} />
-      {section("network", "На сайтах-партнёрах Яндекса", "На сайтах и в приложениях, которые показывают рекламу Яндекса")}
-      <Divider style={{ margin: 0 }} />
-      <Typography.Text>
-        Зона показа: до {draft.card.radiusKm} км от адреса «{draft.card.address}». Бюджет: {formatRub((draft.budget.monthlyBudgetRub ?? 0) * 100)} в месяц.
-      </Typography.Text>
-      <Button onClick={onRegenerate} loading={busy} style={{ alignSelf: "flex-start" }}>
-        Написать объявления заново
-      </Button>
-    </Flex>
+    <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <Segmented
+          value={channel}
+          onChange={(value) => setChannel(value as "search" | "network")}
+          options={[
+            { value: "search", label: `В поиске Яндекса · ${ads.search.length}` },
+            { value: "network", label: `На сайтах-партнёрах · ${ads.network.length}` },
+          ]}
+        />
+        <Button type="text" icon={<ReloadOutlined aria-hidden="true" />} onClick={onRegenerate} loading={busy}>
+          Написать заново
+        </Button>
+      </div>
+
+      {channel === "search" ? (
+        <div className="serp">
+          <div className="serp-bar">
+            <SearchOutlined style={{ color: "var(--text-3)" }} />
+            <div className="serp-query">{query || "ваша услуга"}</div>
+          </div>
+          {list.length === 0 ? <div className="empty t-small">Здесь объявлений не будет.</div> : null}
+          {list.map((ad, index) => (
+            <AdPreview
+              key={index}
+              ad={ad}
+              channel="search"
+              domain={domain}
+              label={`В поиске Яндекса, объявление ${index + 1}`}
+              onChange={(next) => update("search", list.map((a, i) => (i === index ? next : a)))}
+              onRemove={total > 1 ? () => update("search", list.filter((_, i) => i !== index)) : null}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
+          <span className="t-small">Так объявления выглядят на сайтах и в приложениях, которые показывают рекламу Яндекса. Фото работ можно будет добавить позже.</span>
+          {list.length === 0 ? <div className="empty t-small">Здесь объявлений не будет.</div> : null}
+          <div className="net-grid">
+            {list.map((ad, index) => (
+              <AdPreview
+                key={index}
+                ad={ad}
+                channel="network"
+                domain={domain}
+                label={`На сайтах-партнёрах Яндекса, объявление ${index + 1}`}
+                onChange={(next) => update("network", list.map((a, i) => (i === index ? next : a)))}
+                onRemove={total > 1 ? () => update("network", list.filter((_, i) => i !== index)) : null}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="note">
+        <span>
+          Показываем людям в городе «{cityOf(draft.card.address) || draft.card.address}» · бюджет {formatRub((draft.budget.monthlyBudgetRub ?? 0) * 100)} в месяц
+        </span>
+      </div>
+    </div>
   );
 }

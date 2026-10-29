@@ -1,16 +1,20 @@
 "use client";
 
 import { toLocalDate } from "@impuls/core";
-import { Alert, Button, Card, Flex, Progress, Typography } from "antd";
+import { ArrowLeftOutlined, ArrowRightOutlined, CheckOutlined, InfoCircleOutlined, WarningOutlined } from "@ant-design/icons";
+import { Alert, Button } from "antd";
 import { useState } from "react";
 import type { Creatives, ExtractCardResult } from "@impuls/worker";
 import { callApi, LLM_POLL_ATTEMPTS, runWebJob } from "@/lib/client-api";
 import { mergeExtractedCard, STEP_COUNT, stepProblems, WIZARD_STEPS } from "@/lib/onboarding";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
 import type { OnboardingDraft } from "@/lib/onboarding";
+import { Note } from "../ui/primitives";
 import { BudgetStep } from "./BudgetStep";
 import { CardStep } from "./CardStep";
 import { DirectStep } from "./DirectStep";
+import { GenerationProgress } from "./GenerationProgress";
+import type { GenerationKind } from "./GenerationProgress";
 import { GoalsStep } from "./GoalsStep";
 import { LaunchStep } from "./LaunchStep";
 import { PreviewStep } from "./PreviewStep";
@@ -30,13 +34,54 @@ export interface StepProps {
   onChange: (draft: OnboardingDraft) => void;
 }
 
+/** Seven steps grouped into three stages the owner can keep in mind. */
+const STAGES = [
+  { label: "О бизнесе", steps: [1, 2, 3] },
+  { label: "Бюджет и объявления", steps: [4, 5] },
+  { label: "Запуск", steps: [6, 7] },
+] as const;
+
+const LEADS: Record<number, string> = {
+  1: "Ссылка на сайт обязательна — на него будет вести реклама. Карты, ВКонтакте и пара слов о вас помогут нам точнее понять бизнес.",
+  2: "Проверьте карточку — по ней мы напишем объявления. Чего не нашли, мы не придумываем: допишите сами.",
+  3: "Что считать обращением — действием, после которого человек может стать вашим клиентом. По этому мы будем судить, какая реклама работает.",
+  4: "Сколько вы готовы тратить в месяц и сколько платить за одно обращение. Больше бюджета мы не потратим никогда.",
+  5: "Мы написали объявления по вашей карточке. Поправьте текст или уберите лишнее — до запуска их никто не увидит.",
+  6: "Реклама будет работать в вашем аккаунте Яндекс Директа: деньги списываются с его баланса.",
+  7: "Проверьте всё ещё раз. После запуска Яндекс проверит объявления — обычно это занимает несколько часов.",
+};
+
+function Stages({ step }: { step: number }) {
+  return (
+    <div className="stages" aria-hidden="true">
+      {STAGES.map((stage) => {
+        const first = stage.steps[0];
+        const last = stage.steps[stage.steps.length - 1] ?? first;
+        const state = step > last ? "done" : step >= first ? "current" : "todo";
+        const fill = state === "done" ? 100 : state === "current" ? ((step - first + 1) / stage.steps.length) * 100 : 0;
+        return (
+          <div className="stage" data-state={state} key={stage.label}>
+            <div className="stage-bar">
+              <i style={{ width: `${fill}%` }} />
+            </div>
+            <div className="stage-label">
+              {state === "done" ? <CheckOutlined /> : null}
+              {stage.label}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome, minWeeklyLimitRub }: WizardProps) {
   const [draft, setDraft] = useState(initialDraft);
   const [step, setStep] = useState(initialStep);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** What the worker is doing right now (reading pages, writing ads); blocks the buttons. */
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<GenerationKind | null>(null);
   /** Shown on the card step when a page could not be read. */
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -54,7 +99,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
     }
     setDraft(next);
     setStep(target);
-    window.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   /** Saves the current step without moving, so the worker reads what the owner sees. */
@@ -70,7 +115,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   /** «Где вас найти?» → the worker reads the pages; what it found fills the card, the rest stays «Не нашли». */
   const extractCard = async () => {
     setError(null);
-    setBusy("Читаем ваш сайт и собираем карточку бизнеса…");
+    setBusy("extract");
     if (!(await saveHere(draft))) {
       setBusy(null);
       return;
@@ -91,7 +136,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   /** Ads and phrases from the confirmed card; on failure the owner stays on the step and can try again. */
   const generateCreatives = async (current: OnboardingDraft): Promise<OnboardingDraft | null> => {
     setError(null);
-    setBusy("Пишем объявления по вашей карточке… Обычно это занимает до минуты.");
+    setBusy("generate");
     if (!(await saveHere(current))) {
       setBusy(null);
       return null;
@@ -130,48 +175,67 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   };
 
   const stepProps: StepProps = { draft, onChange: setDraft };
+  const working = saving || busy !== null;
+  const showNext = step < STEP_COUNT && !(step === 6 && !draft.directConnected);
 
   return (
-    <Flex vertical gap={16}>
-      <div>
-        <Typography.Text type="secondary" data-testid="wizard-step">
+    <div className="wizard">
+      <Stages step={step} />
+      <div className="step-head fade-in" key={`head-${step}`}>
+        <span className="t-eyebrow" data-testid="wizard-step">
           Шаг {step} из {STEP_COUNT}
-        </Typography.Text>
-        <Progress percent={Math.round((step / STEP_COUNT) * 100)} showInfo={false} size="small" />
-        <Typography.Title level={2} style={{ margin: "8px 0 0" }}>
-          {WIZARD_STEPS[step - 1]}
-        </Typography.Title>
+        </span>
+        <h1 className="t-h1">{WIZARD_STEPS[step - 1]}</h1>
+        <p className="t-lead">{LEADS[step]}</p>
       </div>
-      <Card>
-        {step === 1 ? <SourcesStep {...stepProps} /> : null}
-        {step === 2 && notice ? <Alert type="warning" showIcon title={notice} style={{ marginBottom: 16 }} /> : null}
-        {step === 2 ? <CardStep {...stepProps} /> : null}
-        {step === 3 ? <GoalsStep {...stepProps} /> : null}
-        {step === 4 ? <BudgetStep {...stepProps} today={todayIn(draft.card.timeZone)} /> : null}
-        {step === 5 ? <PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} /> : null}
-        {step === 6 ? <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void onNext({ ...draft, directConnected: true })} /> : null}
-        {step === 7 ? <LaunchStep draft={draft} today={todayIn(draft.card.timeZone)} minWeeklyLimitRub={minWeeklyLimitRub} /> : null}
-      </Card>
-      {busy ? <Alert type="info" showIcon title={busy} data-testid="wizard-busy" /> : null}
-      {error ? <Alert type="error" showIcon title={error} /> : null}
-      {step < STEP_COUNT && problems.length > 0 ? (
-        <Alert type="info" showIcon title="Чтобы перейти дальше" description={<ul style={{ margin: 0, paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul>} data-testid="step-hint" />
-      ) : null}
-      <Flex gap={8} justify="space-between">
-        {step > 1 ? (
-          <Button size="large" onClick={() => void goTo(step - 1, draft)} disabled={saving || busy !== null}>
-            Назад
-          </Button>
-        ) : (
-          <span />
-        )}
-        {step < STEP_COUNT && !(step === 6 && !draft.directConnected) ? (
-          <Button type="primary" size="large" onClick={() => void onNext()} disabled={problems.length > 0} loading={saving || busy !== null}>
-            Дальше
-          </Button>
+
+      <div className="stack fade-in" key={`body-${step}`}>
+        {step === 2 && notice ? (
+          <Note tone="warning" icon={<WarningOutlined aria-hidden="true" />}>
+            {notice}
+          </Note>
         ) : null}
-      </Flex>
-    </Flex>
+        {busy !== null && step !== 5 ? (
+          <GenerationProgress kind={busy} />
+        ) : (
+          <div className="surface surface-pad">
+            {step === 1 ? <SourcesStep {...stepProps} /> : null}
+            {step === 2 ? <CardStep {...stepProps} /> : null}
+            {step === 3 ? <GoalsStep {...stepProps} /> : null}
+            {step === 4 ? <BudgetStep {...stepProps} today={todayIn(draft.card.timeZone)} /> : null}
+            {step === 5 ? <PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} /> : null}
+            {step === 6 ? <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void onNext({ ...draft, directConnected: true })} /> : null}
+            {step === 7 ? <LaunchStep draft={draft} today={todayIn(draft.card.timeZone)} minWeeklyLimitRub={minWeeklyLimitRub} /> : null}
+          </div>
+        )}
+        {busy !== null && step === 5 ? <GenerationProgress kind={busy} /> : null}
+        {error ? <Alert type="error" showIcon title={error} /> : null}
+      </div>
+
+      <div className="wizard-footer">
+        <div className="wizard-footer-inner">
+          {step > 1 ? (
+            <Button size="large" icon={<ArrowLeftOutlined aria-hidden="true" />} onClick={() => void goTo(step - 1, draft)} disabled={working}>
+              Назад
+            </Button>
+          ) : null}
+          <div className="wizard-hint" data-testid="step-hint" aria-live="polite">
+            {showNext && problems.length > 0 && busy === null ? (
+              <span>
+                <InfoCircleOutlined style={{ marginRight: 6 }} />
+                {problems[0]}
+                {problems.length > 1 ? ` и ещё ${problems.length - 1}` : ""}
+              </span>
+            ) : null}
+          </div>
+          {showNext ? (
+            <Button type="primary" size="large" onClick={() => void onNext()} disabled={problems.length > 0} loading={working} icon={<ArrowRightOutlined aria-hidden="true" />} iconPlacement="end">
+              Дальше
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 

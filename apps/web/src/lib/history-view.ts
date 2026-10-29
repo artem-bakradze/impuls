@@ -13,7 +13,7 @@ export const AUTHOR_LABELS: Record<HistoryAuthor, string> = {
 export const TYPE_LABELS: Record<HistoryType, string> = {
   budget: "Бюджет",
   ads: "Объявления",
-  experiments: "Проверки",
+  experiments: "Эксперименты",
   settings: "Настройки",
 };
 

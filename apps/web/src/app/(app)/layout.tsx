@@ -10,7 +10,7 @@ export default async function SignedInLayout({ children }: { children: ReactNode
   return (
     <>
       <AppHeader launched={Boolean(business?.launchedOn)} signOutAction={signOutAction} />
-      <main className="page">{children}</main>
+      <main>{children}</main>
     </>
   );
 }

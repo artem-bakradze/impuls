@@ -25,8 +25,12 @@ services:
     environment:
       DATABASE_URL: postgres://impuls:impuls@postgres:5432/impuls
       DIRECT_API_MODE: simulator
-      AGENT_RUNTIME: idle
-      CREATIVES: template
+      # Free by default; `AGENT_RUNTIME=openai CREATIVES=openai` with OPENAI_* from the shell use the real models.
+      AGENT_RUNTIME: ${AGENT_RUNTIME:-idle}
+      CREATIVES: ${CREATIVES:-template}
+      OPENAI_API_KEY:
+      OPENAI_TEXT_MODEL:
+      OPENAI_AGENT_MODEL:
       SMTP_URL: smtp://mailpit:1025
       MAIL_FROM: "Импульс <noreply@impuls.test>"
       APP_URL: http://localhost:3000
@@ -54,6 +58,8 @@ services:
       - AUTH_SECRET
       - AUTH_GOOGLE_ID
       - AUTH_GOOGLE_SECRET
+      # Local stand only: `AUTH_TEST_LOGIN=enabled` adds the email-only login (refused with DIRECT_API_MODE=production).
+      - AUTH_TEST_LOGIN
     ports:
       - "3000:3000"
     depends_on:

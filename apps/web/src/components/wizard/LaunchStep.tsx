@@ -1,36 +1,44 @@
 "use client";
 
-import { Alert, Button, Descriptions, Flex, Typography } from "antd";
+import {
+  AimOutlined,
+  ClockCircleOutlined,
+  EnvironmentOutlined,
+  NotificationOutlined,
+  PhoneOutlined,
+  RocketOutlined,
+  SafetyCertificateOutlined,
+  ShopOutlined,
+  WalletOutlined,
+} from "@ant-design/icons";
+import { Alert, Button } from "antd";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
 import { formatRub } from "@/lib/format";
-import { budgetCeilingText, buildLaunchPlan, GOAL_OPTIONS, interimAutoGoalRub, scheduleText } from "@/lib/onboarding";
+import { budgetCeilingText, buildLaunchPlan, cityOf, GOAL_OPTIONS, interimAutoGoalRub, scheduleText } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
+import { Note } from "../ui/primitives";
 
 /** Shown when Direct refuses to start ads because the advertiser data for marking is missing. */
 export function AdvertiserDataNotice({ onDone }: { onDone: () => void }) {
   return (
-    <Alert
-      type="warning"
-      showIcon
-      data-testid="advertiser-data-notice"
-      title="Яндексу нужны данные о вашем бизнесе для маркировки рекламы"
-      description={
-        <Flex vertical gap={8}>
-          <Typography.Text>
-            По закону каждое объявление маркируется, поэтому Яндекс просит один раз указать, кто рекламодатель. Откройте{" "}
-            <a href="https://direct.yandex.ru/" target="_blank" rel="noreferrer">
-              Яндекс Директ
-            </a>
-            , заполните данные рекламодателя (название, ИНН) и вернитесь сюда.
-          </Typography.Text>
-          <Button type="primary" onClick={onDone}>
-            Готово
-          </Button>
-        </Flex>
-      }
-    />
+    <div className="note note-warning" data-testid="advertiser-data-notice">
+      <div className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>
+        <strong>Яндексу нужны данные о вашем бизнесе для маркировки рекламы</strong>
+        <span>
+          По закону каждое объявление маркируется, поэтому Яндекс просит один раз указать, кто рекламодатель. Откройте{" "}
+          <a href="https://direct.yandex.ru/" target="_blank" rel="noreferrer">
+            Яндекс Директ
+          </a>
+          , заполните данные рекламодателя (название, ИНН) и вернитесь сюда.
+        </span>
+        <Button type="primary" onClick={onDone} style={{ alignSelf: "flex-start" }}>
+          Готово
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -62,36 +70,49 @@ export function LaunchStep({ draft, today, minWeeklyLimitRub }: Props) {
     }
   };
 
+  const items: { icon: ReactNode; title: string; text: string }[] = [
+    { icon: <ShopOutlined />, title: "Что рекламируем", text: `${draft.card.category}: ${draft.card.services.map((s) => s.name).filter(Boolean).join(", ")}` },
+    { icon: <EnvironmentOutlined />, title: "Где показываем", text: `Город «${cityOf(draft.card.address) || draft.card.address}», адрес «${draft.card.address}»` },
+    { icon: <ClockCircleOutlined />, title: "Когда показываем", text: scheduleText(draft.card) },
+    { icon: <WalletOutlined />, title: "Бюджет", text: budgetCeilingText(budget, today) },
+    { icon: <AimOutlined />, title: "Цена обращения", text: goal },
+    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", ") },
+    {
+      icon: <NotificationOutlined />,
+      title: "Объявления",
+      text: plan.directions.map((d) => `${d.channel === "search" ? "в поиске" : "на сайтах-партнёрах"}: ${d.ads.length}, до ${formatRub(d.weeklyLimitRub * 100)} в неделю`).join("; "),
+    },
+  ];
+
   return (
-    <Flex vertical gap={16}>
-      <Descriptions
-        column={1}
-        size="small"
-        items={[
-          { key: "what", label: "Что рекламируем", children: `${draft.card.category}: ${draft.card.services.map((s) => s.name).filter(Boolean).join(", ")}` },
-          { key: "where", label: "Где показываем", children: `до ${draft.card.radiusKm} км от адреса «${draft.card.address}»` },
-          { key: "when", label: "Когда показываем", children: scheduleText(draft.card) },
-          { key: "budget", label: "Бюджет", children: budgetCeilingText(budget, today) },
-          { key: "goal", label: "Цена обращения", children: goal },
-          { key: "leads", label: "Обращения", children: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", ") },
-          {
-            key: "ads",
-            label: "Объявления",
-            children: plan.directions.map((d) => `${d.channel === "search" ? "в поиске" : "на сайтах-партнёрах"}: ${d.ads.length}, до ${formatRub(d.weeklyLimitRub * 100)} в неделю`).join("; "),
-          },
-        ]}
-      />
-      <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-        После запуска Яндекс проверит объявления — обычно это занимает несколько часов. Всё, что мы будем менять, вы увидите в истории и сможете вернуть.
-      </Typography.Paragraph>
+    <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+      <ul className="checklist">
+        {items.map((item) => (
+          <li key={item.title}>
+            <span className="check-icon">{item.icon}</span>
+            <div className="stack" style={{ "--gap": "2px" } as React.CSSProperties}>
+              <span className="t-small">{item.title}</span>
+              <span className="t-body">{item.text}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис будет менять, вы увидите в истории простыми словами и сможете вернуть одной кнопкой.</Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
-      {state.kind === "pending" ? (
-        <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть сводку</Button>} />
-      ) : null}
-      <Button type="primary" size="large" onClick={() => void launch()} loading={state.kind === "running"} disabled={state.kind === "pending"}>
+      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть сводку</Button>} /> : null}
+      <Button
+        type="primary"
+        size="large"
+        block
+        icon={<RocketOutlined aria-hidden="true" />}
+        onClick={() => void launch()}
+        loading={state.kind === "running"}
+        disabled={state.kind === "pending"}
+        style={{ height: 54, fontSize: 16 }}
+      >
         Запустить
       </Button>
-    </Flex>
+    </div>
   );
 }

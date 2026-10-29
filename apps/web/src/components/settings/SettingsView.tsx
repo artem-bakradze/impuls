@@ -1,7 +1,21 @@
 "use client";
 
-import { Alert, Button, Card, Collapse, Descriptions, Flex, Input, InputNumber, List, Radio, Select, Slider, Space, Tag, Typography } from "antd";
+import {
+  ClockCircleOutlined,
+  CodeOutlined,
+  EditOutlined,
+  EnvironmentOutlined,
+  GlobalOutlined,
+  NotificationOutlined,
+  PauseCircleOutlined,
+  PlayCircleOutlined,
+  RobotOutlined,
+  ShopOutlined,
+  WalletOutlined,
+} from "@ant-design/icons";
+import { Alert, Button, Collapse, Input, InputNumber, Radio, Select, Slider } from "antd";
 import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { callApi, PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult, JobOutcome } from "@/lib/client-api";
@@ -10,6 +24,8 @@ import { AD_TEXT_MAX, AD_TITLE_MAX, DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } 
 import { APPROVAL_WORDS, MODERATION_WORDS } from "@/lib/settings-model";
 import type { SettingsModel } from "@/lib/settings-model";
 import { channelLabel } from "@/lib/summary-model";
+import { Chip, Note, PageHead } from "../ui/primitives";
+import type { Tone } from "../ui/primitives";
 
 type Feedback = { section: string; type: "success" | "error" | "info" | "warning"; text: string; confirmBudget?: number } | null;
 type BudgetResult = { kind: "ok" | "will_stop"; monthBudgetRub: number; message: string; applied: boolean };
@@ -22,6 +38,9 @@ const commandsFeedback = (section: string, outcome: JobOutcome<CommandResult[]>,
   const clamped = outcome.output.find((r) => r.status === "clamped");
   return clamped ? { section, type: "warning", text: sentence(clamped.message) } : { section, type: "success", text: success };
 };
+
+const rubFormatter = (value: number | string | undefined): string => (value === undefined || value === "" ? "" : `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, " "));
+const rubParser = (value: string | undefined): number => Number((value ?? "").replace(/\D/g, ""));
 
 function SectionFeedback({ feedback, section, onConfirmBudget }: { feedback: Feedback; section: string; onConfirmBudget?: (amount: number) => void }) {
   if (feedback?.section !== section) return null;
@@ -42,6 +61,37 @@ function SectionFeedback({ feedback, section, onConfirmBudget }: { feedback: Fee
   );
 }
 
+const SECTIONS = [
+  { id: "business", label: "Что рекламируем", icon: <ShopOutlined /> },
+  { id: "where", label: "Где и когда", icon: <EnvironmentOutlined /> },
+  { id: "budget", label: "Бюджет и цель", icon: <WalletOutlined /> },
+  { id: "ads", label: "Объявления", icon: <NotificationOutlined /> },
+  { id: "site", label: "Сайт", icon: <GlobalOutlined /> },
+  { id: "autopilot", label: "Автопилот", icon: <RobotOutlined /> },
+];
+
+function Section({ id, title, lead, children, testId }: { id: string; title: string; lead?: ReactNode; children: ReactNode; testId?: string }) {
+  return (
+    <section id={id} className="surface settings-section" data-testid={testId}>
+      <div className="surface-head">
+        <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
+          <h2 className="t-h3">{title}</h2>
+          {lead ? <span className="t-small">{lead}</span> : null}
+        </div>
+      </div>
+      <div className="surface-body">{children}</div>
+    </section>
+  );
+}
+
+/** One status per ad instead of two badges: off, being checked, rejected or showing. */
+const adState = (ad: SettingsModel["ads"][number]): { tone: Tone; text: string } => {
+  if (ad.status !== "active") return { tone: "neutral", text: "Отключено" };
+  if (ad.moderation === "rejected") return { tone: "danger", text: MODERATION_WORDS.rejected };
+  if (ad.moderation === "pending") return { tone: "accent", text: MODERATION_WORDS.pending };
+  return { tone: "success", text: "Показывается" };
+};
+
 export function SettingsView({ model }: { model: SettingsModel }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -52,6 +102,7 @@ export function SettingsView({ model }: { model: SettingsModel }) {
   const [to, setTo] = useState(model.schedule.to ?? "20:00");
   const [budget, setBudget] = useState<number | null>(model.monthlyBudgetRub);
   const [adEdits, setAdEdits] = useState<Record<string, { title: string; text: string }>>({});
+  const [editing, setEditing] = useState<string | null>(null);
   const [autonomy, setAutonomy] = useState(model.autonomy);
 
   const done = (next: NonNullable<Feedback>) => {
@@ -97,205 +148,264 @@ export function SettingsView({ model }: { model: SettingsModel }) {
   const schedule = `${days} ${from}–${to}`;
 
   return (
-    <Flex vertical gap={16}>
-      <Flex justify="space-between" align="center" wrap gap={8}>
-        <Typography.Title level={2} style={{ margin: 0 }}>
-          Настройки
-        </Typography.Title>
-        {model.paused ? (
-          <Button type="primary" onClick={() => void commands("pause", { action: "resumeAll" }, "Реклама снова работает")} loading={busy === "pause"}>
-            Возобновить рекламу
-          </Button>
-        ) : (
-          <Button danger onClick={() => void commands("pause", { action: "pauseAll" }, "Реклама на паузе. Пока она стоит, сервис ничего не меняет")} loading={busy === "pause"}>
-            Поставить рекламу на паузу
-          </Button>
-        )}
-      </Flex>
-      <SectionFeedback feedback={feedback} section="pause" />
-      {model.paused ? <Alert type="warning" showIcon title="Реклама на паузе" /> : null}
-
-      <Card title="Что рекламируем" size="small">
-        <Descriptions
-          column={1}
-          size="small"
-          items={[
-            { key: "category", label: "Чем занимаетесь", children: model.card.category },
-            { key: "services", label: "Услуги", children: model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`)).join("; ") },
-            { key: "advantages", label: "Преимущества", children: model.card.advantages.join("; ") || "не указаны" },
-          ]}
-        />
-        <Typography.Text type="secondary">Изменить услуги и цены можно будет в следующей версии.</Typography.Text>
-      </Card>
-
-      <Card title="Где показываем" size="small">
-        <Typography.Text>До {radius} км от вашего адреса</Typography.Text>
-        <Slider min={1} max={30} value={radius} onChange={setRadius} marks={{ 1: "1 км", 3: "3", 10: "10", 30: "30 км" }} aria-label="Радиус показа в километрах" />
-        <Button type="primary" disabled={radius === model.radiusKm} loading={busy === "geo"} onClick={() => void commands("geo", { action: "geo", radiusKm: radius }, "Зона показа обновлена")}>
-          Сохранить зону
-        </Button>
-        <SectionFeedback feedback={feedback} section="geo" />
-      </Card>
-
-      <Card title="Когда показываем" size="small" data-testid="schedule-section">
-        <Typography.Paragraph>Сейчас: {model.schedule.raw || "не задано"}</Typography.Paragraph>
-        <Flex gap={8} wrap>
-          <Select value={days} onChange={setDays} options={DAY_OPTIONS.map((d) => ({ value: d, label: d }))} style={{ width: 120 }} aria-label="Дни показа" />
-          <Select value={from} onChange={setFrom} options={HOUR_OPTIONS.slice(0, 24).map((h) => ({ value: h, label: `с ${h}` }))} style={{ width: 110 }} aria-label="Показывать с" virtual={false} />
-          <Select value={to} onChange={setTo} options={HOUR_OPTIONS.slice(1).map((h) => ({ value: h, label: `до ${h}` }))} style={{ width: 110 }} aria-label="Показывать до" virtual={false} />
-        </Flex>
-        <Button
-          style={{ marginTop: 12 }}
-          type="primary"
-          disabled={schedule === model.schedule.raw || from >= to}
-          loading={busy === "schedule"}
-          onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание показов обновлено во всех кампаниях")}
-        >
-          Сохранить время
-        </Button>
-        <SectionFeedback feedback={feedback} section="schedule" />
-      </Card>
-
-      <Card title="Бюджет и цель" size="small">
-        <Flex vertical gap={8}>
-          <Typography.Text>Сколько тратить в месяц, с НДС:</Typography.Text>
-          <Space wrap>
-            <InputNumber min={MIN_BUDGET_RUB} step={1000} value={budget} onChange={(v) => setBudget(typeof v === "number" ? Math.round(v) : null)} suffix="₽" aria-label="Бюджет в месяц" style={{ width: 180 }} />
-            <Button type="primary" disabled={budget === null || budget < MIN_BUDGET_RUB || budget === model.monthlyBudgetRub} loading={busy === "budget"} onClick={() => budget !== null && void saveBudget(budget, false)}>
-              Сохранить бюджет
+    <div className="page">
+      <PageHead
+        title="Настройки"
+        lead="Меняйте простым языком — сервис сам перенесёт изменения в Яндекс Директ за несколько минут."
+        extra={
+          model.paused ? (
+            <Button type="primary" size="large" icon={<PlayCircleOutlined aria-hidden="true" />} onClick={() => void commands("pause", { action: "resumeAll" }, "Реклама снова работает")} loading={busy === "pause"}>
+              Возобновить рекламу
             </Button>
-          </Space>
-          <Typography.Text>
-            Цель: {model.goal.mode === "user" ? `до ${formatRub(model.goal.rub * 100)} за обращение` : `подбирать автоматически (сейчас до ${formatRub(model.goal.rub * 100)} за обращение)`}
-          </Typography.Text>
-          <Typography.Text type="secondary">Изменить цель можно будет в следующей версии.</Typography.Text>
-        </Flex>
-        <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
-      </Card>
+          ) : (
+            <Button size="large" icon={<PauseCircleOutlined aria-hidden="true" />} onClick={() => void commands("pause", { action: "pauseAll" }, "Реклама на паузе. Пока она стоит, сервис ничего не меняет")} loading={busy === "pause"}>
+              Поставить рекламу на паузу
+            </Button>
+          )
+        }
+      />
+      <SectionFeedback feedback={feedback} section="pause" />
+      {model.paused ? (
+        <div style={{ marginBottom: 16 }}>
+          <Note tone="warning" icon={<PauseCircleOutlined aria-hidden="true" />}>
+            <strong>Реклама на паузе</strong>
+          </Note>
+        </div>
+      ) : null}
 
-      <Card title="Объявления" size="small">
-        <List
-          dataSource={model.ads}
-          renderItem={(ad) => {
-            const edit = adEdits[ad.id] ?? { title: ad.title, text: ad.text };
-            const changed = edit.title !== ad.title || edit.text !== ad.text;
-            return (
-              <List.Item>
-                <Flex vertical gap={6} style={{ width: "100%" }}>
-                  <Space wrap>
-                    <Tag color={ad.status === "active" ? "green" : "default"}>{ad.status === "active" ? "Показывается" : "Отключено"}</Tag>
-                    <Tag color={ad.moderation === "rejected" ? "red" : ad.moderation === "pending" ? "processing" : "green"}>{MODERATION_WORDS[ad.moderation]}</Tag>
-                    <Typography.Text type="secondary">{ad.direction}</Typography.Text>
-                  </Space>
-                  <Input value={edit.title} maxLength={AD_TITLE_MAX} showCount onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, title: e.target.value } })} aria-label="Заголовок объявления" />
-                  <Input.TextArea value={edit.text} maxLength={AD_TEXT_MAX} showCount autoSize onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, text: e.target.value } })} aria-label="Текст объявления" />
-                  <Space wrap>
-                    <Button disabled={!changed} loading={busy === `text-${ad.id}`} onClick={() => void commands(`text-${ad.id}`, { action: "adText", adId: ad.id, ...edit }, "Текст изменён — Яндекс проверит объявление заново")}>
-                      Сохранить текст
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Разделы настроек">
+          {SECTIONS.map((s) => (
+            <a key={s.id} href={`#${s.id}`}>
+              <span aria-hidden="true">{s.icon}</span>
+              {s.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+          <Section id="business" title="Что рекламируем" lead="Из карточки, которую вы подтвердили при запуске">
+            <dl className="kv">
+              <dt>Чем занимаетесь</dt>
+              <dd>{model.card.category}</dd>
+              <dt>Услуги</dt>
+              <dd>{model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`)).join("; ")}</dd>
+              <dt>Преимущества</dt>
+              <dd>{model.card.advantages.join("; ") || "не указаны"}</dd>
+            </dl>
+          </Section>
+
+          <Section id="where" title="Где и когда" lead="Показ в Яндексе настраивается по городу; радиус помогает писать объявления про ваш район">
+            <div className="stack" style={{ "--gap": "22px" } as React.CSSProperties}>
+              <div className="field">
+                <div className="field-label">
+                  <EnvironmentOutlined />
+                  Откуда к вам приходят: до {radius} км
+                </div>
+                <Slider min={1} max={30} value={radius} onChange={setRadius} marks={{ 1: "1", 3: "3", 10: "10", 30: "30" }} tooltip={{ formatter: (v) => `${v ?? 0} км` }} aria-label="Радиус показа в километрах" />
+                {radius !== model.radiusKm ? (
+                  <Button type="primary" loading={busy === "geo"} onClick={() => void commands("geo", { action: "geo", radiusKm: radius }, "Зона показа обновлена")} style={{ alignSelf: "flex-start" }}>
+                    Сохранить зону
+                  </Button>
+                ) : null}
+                <SectionFeedback feedback={feedback} section="geo" />
+              </div>
+              <hr className="divider" />
+              <div className="field" data-testid="schedule-section">
+                <div className="field-label">
+                  <ClockCircleOutlined />
+                  Когда показываем
+                </div>
+                <span className="t-small">Сейчас: {model.schedule.raw || "не задано"}</span>
+                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                  <Select value={days} onChange={setDays} options={DAY_OPTIONS.map((d) => ({ value: d, label: d }))} style={{ width: 120 }} aria-label="Дни показа" />
+                  <Select value={from} onChange={setFrom} options={HOUR_OPTIONS.slice(0, 24).map((h) => ({ value: h, label: `с ${h}` }))} style={{ width: 112 }} aria-label="Показывать с" virtual={false} />
+                  <Select value={to} onChange={setTo} options={HOUR_OPTIONS.slice(1).map((h) => ({ value: h, label: `до ${h}` }))} style={{ width: 112 }} aria-label="Показывать до" virtual={false} />
+                  <Button
+                    type="primary"
+                    disabled={schedule === model.schedule.raw || from >= to}
+                    loading={busy === "schedule"}
+                    onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание показов обновлено во всех кампаниях")}
+                  >
+                    Сохранить время
+                  </Button>
+                </div>
+                <SectionFeedback feedback={feedback} section="schedule" />
+              </div>
+            </div>
+          </Section>
+
+          <Section id="budget" title="Бюджет и цель" lead="Месячный бюджет — потолок: больше этой суммы мы не потратим никогда">
+            <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+              <div className="field">
+                <div className="field-label">Сколько тратить в месяц, с НДС</div>
+                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                  <InputNumber<number>
+                    min={MIN_BUDGET_RUB}
+                    step={1000}
+                    value={budget}
+                    onChange={(v) => setBudget(typeof v === "number" ? Math.round(v) : null)}
+                    formatter={rubFormatter}
+                    parser={rubParser}
+                    suffix="₽"
+                    aria-label="Бюджет в месяц"
+                    style={{ width: 200 }}
+                  />
+                  <Button type="primary" disabled={budget === null || budget < MIN_BUDGET_RUB || budget === model.monthlyBudgetRub} loading={busy === "budget"} onClick={() => budget !== null && void saveBudget(budget, false)}>
+                    Сохранить бюджет
+                  </Button>
+                </div>
+              </div>
+              <div className="note">
+                <span>
+                  Цель: {model.goal.mode === "user" ? `до ${formatRub(model.goal.rub * 100)} за обращение` : `подбирать автоматически (сейчас до ${formatRub(model.goal.rub * 100)} за обращение)`}
+                </span>
+              </div>
+            </div>
+            <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
+          </Section>
+
+          <Section id="ads" title="Объявления" lead="Новый текст Яндекс проверит заново — обычно за несколько часов">
+            {model.ads.map((ad) => {
+              const edit = adEdits[ad.id] ?? { title: ad.title, text: ad.text };
+              const changed = edit.title !== ad.title || edit.text !== ad.text;
+              const state = adState(ad);
+              const open = editing === ad.id;
+              return (
+                <div key={ad.id} className="ad-row">
+                  <div className="row" style={{ "--gap": "8px", marginBottom: 8 } as React.CSSProperties}>
+                    <Chip tone={state.tone}>{state.text}</Chip>
+                    <span className="t-small">{ad.direction}</span>
+                    <span className="spacer" />
+                    <Button size="small" type="text" icon={<EditOutlined aria-hidden="true" />} onClick={() => setEditing(open ? null : ad.id)}>
+                      {open ? "Свернуть" : "Изменить"}
                     </Button>
-                    <Button loading={busy === `status-${ad.id}`} onClick={() => void commands(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: ad.status !== "active" }, ad.status === "active" ? "Объявление отключено" : "Объявление включено")}>
+                    <Button
+                      size="small"
+                      loading={busy === `status-${ad.id}`}
+                      onClick={() => void commands(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: ad.status !== "active" }, ad.status === "active" ? "Объявление отключено" : "Объявление включено")}
+                    >
                       {ad.status === "active" ? "Отключить" : "Включить"}
                     </Button>
-                  </Space>
+                  </div>
+                  {open ? (
+                    <div className="ad-edit fade-in">
+                      <Input value={edit.title} maxLength={AD_TITLE_MAX} showCount onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, title: e.target.value } })} aria-label="Заголовок объявления" />
+                      <Input.TextArea value={edit.text} maxLength={AD_TEXT_MAX} showCount autoSize onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, text: e.target.value } })} aria-label="Текст объявления" />
+                      {changed ? (
+                        <Button type="primary" loading={busy === `text-${ad.id}`} onClick={() => void commands(`text-${ad.id}`, { action: "adText", adId: ad.id, ...edit }, "Текст изменён — Яндекс проверит объявление заново")} style={{ alignSelf: "flex-start" }}>
+                          Сохранить текст
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="stack" style={{ "--gap": "2px" } as React.CSSProperties}>
+                      <span style={{ fontWeight: 600, color: "#2a20b8" }}>{edit.title}</span>
+                      <span className="t-body t-muted">{edit.text}</span>
+                    </div>
+                  )}
                   <SectionFeedback feedback={feedback} section={`text-${ad.id}`} />
                   <SectionFeedback feedback={feedback} section={`status-${ad.id}`} />
-                </Flex>
-              </List.Item>
-            );
-          }}
-        />
-      </Card>
+                </div>
+              );
+            })}
+          </Section>
 
-      <Card title="Сайт" size="small">
-        {model.siteUrl ? (
-          <Typography.Text>
-            Объявления ведут на ваш сайт:{" "}
-            <a href={model.siteUrl} target="_blank" rel="noreferrer">
-              {model.siteUrl}
-            </a>
-          </Typography.Text>
-        ) : (
-          // Launch requires the owner's site; the mini-site form is out of the MVP (replace-direct-sandbox decision 7).
-          <Typography.Text type="secondary">Адрес сайта не указан</Typography.Text>
-        )}
-      </Card>
-
-      <Card title="Насколько самостоятельно действовать" size="small">
-        <Radio.Group
-          style={{ display: "flex", flexDirection: "column", gap: 8 }}
-          value={autonomy}
-          onChange={(e) => void saveAutonomy(e.target.value as "auto" | "ask")}
-          options={[
-            { value: "auto", label: "Действовать самостоятельно — все улучшения применяются сразу" },
-            { value: "ask", label: "Спрашивать перед крупными изменениями — перенос больше 30% бюджета, остановка направления, запуск проверки" },
-          ]}
-        />
-        <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-          Защита бюджета работает всегда и без вопросов: мы никогда не потратим больше, чем вы указали. Запрос без ответа истекает через 48 часов.
-        </Typography.Paragraph>
-        <SectionFeedback feedback={feedback} section="autonomy" />
-      </Card>
-
-      <Card title="Запросы на подтверждение" size="small">
-        {model.approvals.length === 0 ? (
-          <Typography.Text type="secondary">Запросов пока не было.</Typography.Text>
-        ) : (
-          <List
-            dataSource={model.approvals}
-            renderItem={(a) => (
-              <List.Item
-                actions={
-                  a.status === "pending"
-                    ? [
-                        <Button key="yes" type="primary" size="small" loading={busy === a.id} onClick={() => void decide(a.id, true)}>
-                          Согласен
-                        </Button>,
-                        <Button key="no" size="small" disabled={busy === a.id} onClick={() => void decide(a.id, false)}>
-                          Не надо
-                        </Button>,
-                      ]
-                    : []
-                }
-              >
-                <List.Item.Meta title={a.explanation} description={`${APPROVAL_WORDS[a.status]} · ${formatDateTime(a.at, model.timeZone)}`} />
-              </List.Item>
+          <Section id="site" title="Сайт">
+            {model.siteUrl ? (
+              <span className="t-body">
+                Объявления ведут на ваш сайт:{" "}
+                <a href={model.siteUrl} target="_blank" rel="noreferrer">
+                  {model.siteUrl}
+                </a>
+              </span>
+            ) : (
+              // Launch requires the owner's site; the mini-site form is out of the MVP (replace-direct-sandbox decision 7).
+              <span className="t-small">Адрес сайта не указан</span>
             )}
-          />
-        )}
-        <SectionFeedback feedback={feedback} section="approvals" />
-      </Card>
+          </Section>
 
-      <Collapse
-        items={[
-          {
-            key: "pro",
-            label: "Для специалистов",
-            children: (
-              <Flex vertical gap={8}>
-                <Typography.Text type="secondary">Только для просмотра. Эти параметры сервис настраивает сам.</Typography.Text>
-                {model.directions.map((d) => (
-                  <Descriptions
-                    key={d.id}
-                    title={d.name}
-                    size="small"
-                    column={1}
-                    bordered
-                    items={[
-                      { key: "channel", label: "Площадка", children: channelLabel(d.channel) },
-                      { key: "status", label: "Статус", children: d.status === "active" ? "работает" : "на паузе" },
-                      { key: "strategy", label: "Стратегия", children: d.strategy },
-                      { key: "limit", label: "Недельный лимит", children: formatRub(d.weeklyLimit) },
-                      { key: "schedule", label: "Расписание", children: d.schedule || "—" },
-                      { key: "geo", label: "Радиус", children: `${d.radiusKm} км` },
-                      { key: "phrases", label: "Ключевые и минус-фразы", children: "пока не задаются в этой версии" },
-                    ]}
-                  />
-                ))}
-              </Flex>
-            ),
-          },
-        ]}
-      />
-    </Flex>
+          <Section id="autopilot" title="Автопилот" lead="Насколько самостоятельно действовать">
+            <Radio.Group
+              style={{ display: "flex", flexDirection: "column", gap: 10 }}
+              value={autonomy}
+              onChange={(e) => void saveAutonomy(e.target.value as "auto" | "ask")}
+              options={[
+                { value: "auto", label: "Действовать самостоятельно — все улучшения применяются сразу" },
+                { value: "ask", label: "Спрашивать перед крупными изменениями — перенос больше 30% бюджета, остановка направления, запуск проверки" },
+              ]}
+            />
+            <p className="t-small" style={{ marginTop: 12 }}>
+              Защита бюджета работает всегда и без вопросов: мы никогда не потратим больше, чем вы указали. Запрос без ответа истекает через 48 часов.
+            </p>
+            <SectionFeedback feedback={feedback} section="autonomy" />
+            <hr className="divider" style={{ margin: "18px 0" }} />
+            <div className="field-label" style={{ marginBottom: 6 }}>
+              Запросы на подтверждение
+            </div>
+            {model.approvals.length === 0 ? <span className="t-small">Запросов пока не было.</span> : null}
+            {model.approvals.map((a) => (
+              <div key={a.id} className="list-row">
+                <div className="stack" style={{ "--gap": "4px", flex: 1 } as React.CSSProperties}>
+                  <span className="t-body">{a.explanation}</span>
+                  <span className="t-small">
+                    {APPROVAL_WORDS[a.status]} · {formatDateTime(a.at, model.timeZone)}
+                  </span>
+                </div>
+                {a.status === "pending" ? (
+                  <div className="row" style={{ "--gap": "6px" } as React.CSSProperties}>
+                    <Button type="primary" size="small" loading={busy === a.id} onClick={() => void decide(a.id, true)}>
+                      Согласен
+                    </Button>
+                    <Button size="small" disabled={busy === a.id} onClick={() => void decide(a.id, false)}>
+                      Не надо
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            <SectionFeedback feedback={feedback} section="approvals" />
+          </Section>
+
+          <Collapse
+            items={[
+              {
+                key: "pro",
+                label: (
+                  <span>
+                    <CodeOutlined style={{ marginRight: 8 }} />
+                    Для специалистов
+                  </span>
+                ),
+                children: (
+                  <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+                    <span className="t-small">Только для просмотра. Эти параметры сервис настраивает сам.</span>
+                    {model.directions.map((d) => (
+                      <div key={d.id} className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
+                        <span style={{ fontWeight: 600 }}>{d.name}</span>
+                        <dl className="kv">
+                          <dt>Площадка</dt>
+                          <dd>{channelLabel(d.channel)}</dd>
+                          <dt>Статус</dt>
+                          <dd>{d.status === "active" ? "работает" : "на паузе"}</dd>
+                          <dt>Стратегия</dt>
+                          <dd>{d.strategy}</dd>
+                          <dt>Недельный лимит</dt>
+                          <dd>{formatRub(d.weeklyLimit)}</dd>
+                          <dt>Расписание</dt>
+                          <dd>{d.schedule || "—"}</dd>
+                          <dt>Радиус</dt>
+                          <dd>{d.radiusKm} км</dd>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+      </div>
+    </div>
   );
 }

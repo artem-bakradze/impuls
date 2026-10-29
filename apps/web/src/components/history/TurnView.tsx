@@ -1,8 +1,12 @@
 "use client";
 
-import { Card, Collapse, Flex, Tag, Typography } from "antd";
+import { ArrowLeftOutlined, CheckOutlined, ClockCircleOutlined, CloseOutlined, ScissorOutlined, SendOutlined } from "@ant-design/icons";
+import { Collapse } from "antd";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/format";
+import { Chip, PageHead } from "../ui/primitives";
+import type { Tone } from "../ui/primitives";
 
 export interface TurnViewModel {
   trigger: string;
@@ -14,11 +18,11 @@ export interface TurnViewModel {
   calls: { justification: { text: string }; result: { status: string; message: string } }[];
 }
 
-const STATUS_LABELS: Record<string, { text: string; color: string }> = {
-  applied: { text: "Выполнено", color: "green" },
-  clamped: { text: "Урезано ограничителем", color: "orange" },
-  queued: { text: "Отправлено вам на подтверждение", color: "blue" },
-  rejected: { text: "Отклонено ограничителем", color: "red" },
+const STATUS_LABELS: Record<string, { text: string; tone: Tone; icon: ReactNode }> = {
+  applied: { text: "Выполнено", tone: "success", icon: <CheckOutlined /> },
+  clamped: { text: "Урезано ограничителем", tone: "warning", icon: <ScissorOutlined /> },
+  queued: { text: "Отправлено вам на подтверждение", tone: "accent", icon: <SendOutlined /> },
+  rejected: { text: "Отклонено ограничителем", tone: "danger", icon: <CloseOutlined /> },
 };
 
 const TRIGGERS: Record<string, string> = {
@@ -32,45 +36,56 @@ const TRIGGERS: Record<string, string> = {
 /** Agent turn journal (ad-agent spec): context, tool calls and guard verdicts behind a history entry. */
 export function TurnView({ turn, timeZone }: { turn: TurnViewModel; timeZone: string }) {
   return (
-    <Flex vertical gap={16}>
-      <Link href="/history">← К истории</Link>
-      <Typography.Title level={2}>Как сервис принял решение</Typography.Title>
-      <Card size="small" data-testid="turn-summary">
-        <Flex vertical gap={4}>
-          <Typography.Text>
-            <b>Повод:</b> {TRIGGERS[turn.trigger] ?? turn.trigger}
-          </Typography.Text>
-          <Typography.Text>
-            <b>Начало:</b> {formatDateTime(turn.startedAt, timeZone)}
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            Исполнитель: {turn.runtime}, версия инструкций {turn.instructionsVersion}, статус хода: {turn.status}
-          </Typography.Text>
-        </Flex>
-      </Card>
-      <Typography.Title level={4}>Действия и ответы ограничителей</Typography.Title>
-      {turn.calls.length === 0 ? <Typography.Text type="secondary">В этом ходе сервис ничего не менял</Typography.Text> : null}
-      {turn.calls.map((call, index) => {
-        const label = STATUS_LABELS[call.result.status] ?? { text: call.result.status, color: "default" };
-        return (
-          <Card key={index} size="small" data-testid="turn-call">
-            <Flex vertical gap={4}>
-              <Tag color={label.color}>{label.text}</Tag>
-              <Typography.Text>{call.justification.text}</Typography.Text>
-              <Typography.Text type="secondary">Ответ: {call.result.message}</Typography.Text>
-            </Flex>
-          </Card>
-        );
-      })}
-      <Collapse
-        items={[
-          {
-            key: "context",
-            label: "Для специалистов: данные, которые видел сервис",
-            children: <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>{JSON.stringify(turn.context, null, 2)}</pre>,
-          },
-        ]}
-      />
-    </Flex>
+    <div className="page page-narrow">
+      <Link href="/history" style={{ fontSize: 14, fontWeight: 550, textDecoration: "none" }}>
+        <ArrowLeftOutlined style={{ marginRight: 6 }} />К истории
+      </Link>
+      <div style={{ height: 16 }} />
+      <PageHead title="Как сервис принял решение" lead="Каждое действие сервиса проходит через ограничители: они урезают или отклоняют всё, что противоречит вашему бюджету и правилам." />
+      <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
+        <div className="surface surface-pad" data-testid="turn-summary">
+          <div className="stack" style={{ "--gap": "6px" } as React.CSSProperties}>
+            <div className="row" style={{ "--gap": "10px" } as React.CSSProperties}>
+              <span className="icon-tile accent">
+                <ClockCircleOutlined />
+              </span>
+              <span className="t-h3">{TRIGGERS[turn.trigger] ?? turn.trigger}</span>
+              <span className="spacer" />
+              <span className="t-small">{formatDateTime(turn.startedAt, timeZone)}</span>
+            </div>
+            <span className="t-small">
+              Исполнитель: {turn.runtime}, версия инструкций {turn.instructionsVersion}, статус хода: {turn.status}
+            </span>
+          </div>
+        </div>
+        <h2 className="t-h2" style={{ marginTop: 8 }}>
+          Действия и ответы ограничителей
+        </h2>
+        {turn.calls.length === 0 ? <span className="t-small">В этом ходе сервис ничего не менял</span> : null}
+        {turn.calls.map((call, index) => {
+          const label = STATUS_LABELS[call.result.status] ?? { text: call.result.status, tone: "neutral" as Tone, icon: null };
+          return (
+            <div key={index} className="surface feed-card" data-testid="turn-call">
+              <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
+                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                  <Chip tone={label.tone}>{label.text}</Chip>
+                </div>
+                <p className="t-body">{call.justification.text}</p>
+                <span className="t-small">Ответ: {call.result.message}</span>
+              </div>
+            </div>
+          );
+        })}
+        <Collapse
+          items={[
+            {
+              key: "context",
+              label: "Для специалистов: данные, которые видел сервис",
+              children: <pre className="snippet">{JSON.stringify(turn.context, null, 2)}</pre>,
+            },
+          ]}
+        />
+      </div>
+    </div>
   );
 }

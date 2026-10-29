@@ -31,6 +31,8 @@ const main = async (): Promise<void> => {
   if (config.DIRECT_API_MODE === "simulator") {
     const simulator = new SimulatedPlatform({
       seed: 1,
+      // A fresh prefix per start: campaigns of the previous run stay in the database (see SimulatorOptions.idPrefix).
+      idPrefix: `run${Date.now().toString(36)}-`,
       timeZone: "Europe/Moscow",
       now: () => systemClock.now(),
       truthFor: () => ({ impressionsPerDay: 500, ctr: 0.05, cr: 0.06, costPerClick: rubles(25) }),
