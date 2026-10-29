@@ -22,6 +22,8 @@ export interface BusinessRecord {
   weeklySummaryEnabled: boolean;
   /** Mini-site for businesses without their own site; `card` is MiniSiteCard JSON. */
   miniSite: { slug: string; card: string; metrikaCounterId: number; advertiser: { name: string; inn: string } } | null;
+  /** Metrica goal that counts leads; null until analytics is connected. Lead-paying strategies need it. */
+  leadGoalId: string | null;
   /** Public business card fields passed to the agent (allowlist). */
   card: { category: string; services: { name: string; priceRub: number | null }[]; area: string; hours: string; advantages: string[] };
 }

@@ -47,6 +47,7 @@ export const e2eWorkerEnv = (): Record<string, string> => ({
   DATABASE_URL: e2eDatabaseUrl(),
   DIRECT_API_MODE: "simulator",
   AGENT_RUNTIME: "idle",
+  CREATIVES: "template",
   SMTP_URL: "smtp://localhost:1025",
   MAIL_FROM: "Импульс e2e <noreply@impuls.test>",
   APP_URL: `http://localhost:${E2E_PORT}`,

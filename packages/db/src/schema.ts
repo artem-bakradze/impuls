@@ -45,6 +45,8 @@ export const businesses = pgTable("businesses", {
   /** Public business card (allowlisted for the agent). */
   card: jsonb("card").notNull(),
   miniSite: jsonb("mini_site"),
+  /** Metrica goal that counts leads; lead-paying strategies need it (platform-integration spec). */
+  leadGoalId: text("lead_goal_id"),
   onboardingStep: integer("onboarding_step").notNull().default(1),
   createdAt: createdAt(),
 });
@@ -52,12 +54,20 @@ export const businesses = pgTable("businesses", {
 export const platformAccounts = pgTable("platform_accounts", {
   businessId: text("business_id").primaryKey().references(() => businesses.id),
   platform: text("platform").notNull(),
-  login: text("login").notNull(),
+  /** Direct login; null until the worker checks the connected account (bootstrap task 3.2). */
+  login: text("login"),
   /** AES-GCM encrypted OAuth tokens; never logged. */
   accessTokenEnc: text("access_token_enc").notNull(),
   refreshTokenEnc: text("refresh_token_enc"),
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
+/** One-time `state` values of the Direct OAuth flow; consumed on the first callback, valid for 10 minutes. */
+export const oauthStates = pgTable("oauth_states", {
+  state: text("state").primaryKey(),
+  userId: text("user_id").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
 /** A direction = one platform campaign (design decision 5). */

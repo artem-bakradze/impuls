@@ -104,6 +104,8 @@ export const loadBusinessView = async (
       directionStats14,
       userDecisions: decisions,
       strategyCatalog: capabilities.strategies.map((s) => s.id),
+      leadGoalStrategies: capabilities.strategies.filter((s) => s.requiresLeadGoal).map((s) => s.id),
+      hasLeadGoal: business.leadGoalId !== null,
       minWeeklyLimit: capabilities.minWeeklyLimit,
       activeExperiments: experiments.filter((e) => e.status === "running").length,
     },

@@ -6,6 +6,7 @@ const complete = {
   DATABASE_URL: "postgres://x",
   DIRECT_API_MODE: "simulator",
   AGENT_RUNTIME: "idle",
+  CREATIVES: "template",
   SMTP_URL: "smtp://localhost:1025",
   MAIL_FROM: "Импульс <noreply@impuls.test>",
   APP_URL: "https://app.example",
@@ -28,8 +29,23 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "prod" })).toThrow(ConfigError);
   });
 
+  it("refuses the retired sandbox mode and names the replacement", () => {
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "sandbox" })).toThrow(/sandbox is no longer supported.*use simulator/);
+  });
+
   it("accepts a complete configuration; the proxy is optional", () => {
-    expect(loadConfig({ ...complete, DIRECT_API_MODE: "sandbox" })).toMatchObject({ DIRECT_API_MODE: "sandbox" });
+    expect(loadConfig(complete)).toMatchObject({ DIRECT_API_MODE: "simulator" });
+  });
+
+  it("requires the OpenAI key and text model for LLM creatives", () => {
+    expect(() => loadConfig({ ...complete, CREATIVES: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_TEXT_MODEL/);
+    expect(loadConfig({ ...complete, CREATIVES: "openai", OPENAI_API_KEY: "k", OPENAI_TEXT_MODEL: "gpt-6.1-terra" })).toMatchObject({ CREATIVES: "openai" });
+    expect(() => loadConfig({ ...complete, CREATIVES: undefined })).toThrow(/CREATIVES/);
+  });
+
+  it("requires the token encryption key in production", () => {
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production" })).toThrow(/TOKEN_ENCRYPTION_KEY/);
+    expect(loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toMatchObject({ DIRECT_API_MODE: "production" });
   });
 });
 

@@ -1,8 +1,10 @@
-import type { Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
+import type { Channel, Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
 
 export interface StrategyCapability {
   id: string;
   title: string;
+  /** Pays for leads: needs a Metrica goal and a target cost per lead (`LeadGoal`). */
+  requiresLeadGoal: boolean;
 }
 
 /** Platform-specific capabilities the agent and guards rely on (design decision 5). */
@@ -36,23 +38,48 @@ export interface PlatformAd {
   rejectionReason: string | null;
 }
 
+/** Metrica goal that counts leads and the target cost per lead (ЦСО) for lead-paying strategies. */
+export interface LeadGoal {
+  goalId: string;
+  targetCostPerLead: Kopecks;
+}
+
+/** Where and for what the campaign is shown. The adapter maps the city to its own regions (design decision 6). */
+export interface Targeting {
+  /** City of the business, e.g. "Москва". */
+  city: string;
+  /** Search phrases; required for the search channel, optional for partner sites. */
+  keywords: readonly string[];
+  negativeKeywords: readonly string[];
+}
+
 export interface NewCampaign {
   name: string;
+  channel: Channel;
   weeklyLimit: Kopecks;
   strategyId: string;
+  /** Required when the strategy declares `requiresLeadGoal`. */
+  leadGoal?: LeadGoal;
   siteMonitoring: boolean;
+  targeting: Targeting;
+  /** Display schedule, e.g. "Пн–Вс 10:00–22:00". */
+  schedule: string;
 }
 
 export interface NewAd {
   campaignId: string;
   title: string;
   text: string;
+  /** Landing page (own site or mini-site) without tracking tags; the adapter adds its UTM tags. */
+  landingUrl: string;
 }
 
 export interface CampaignPatch {
   status?: ObjectStatus;
   weeklyLimit?: Kopecks;
   strategyId?: string;
+  /** Required when switching to a strategy that declares `requiresLeadGoal`. */
+  leadGoal?: LeadGoal;
   siteMonitoring?: boolean;
   schedule?: string;
   geoRadiusKm?: number;

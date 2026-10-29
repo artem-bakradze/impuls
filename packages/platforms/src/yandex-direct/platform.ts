@@ -7,6 +7,7 @@ import type {
   CampaignPatch,
   ChangesResult,
   DailyStatRow,
+  LeadGoal,
   NewAd,
   NewCampaign,
   PlatformAd,
@@ -14,22 +15,25 @@ import type {
   PlatformCapabilities,
 } from "../contract";
 import { DirectClient } from "./client";
-import type { DirectLogger, DirectMode, JsonRecord } from "./client";
+import type { DirectLogger, DirectRequestGuard, JsonRecord } from "./client";
 import {
+  AUTOTARGETING_KEYWORD,
   STRATEGY_AVERAGE_CPA,
   STRATEGY_WB_MAXIMUM_CLICKS,
   buildBiddingStrategy,
-  buildSearchStrategy,
   buildSettings,
   buildStatsReportParams,
+  buildTimeTargeting,
   parseAd,
   parseAverageCpaParams,
   parseCampaign,
   parseChangedCampaigns,
   parseStatsTsv,
   records,
+  servingChannel,
   singleActionResult,
   toDirectTimestamp,
+  withUtm,
 } from "./mapping";
 import type { AverageCpaParams, StrategyInput } from "./mapping";
 
@@ -43,20 +47,13 @@ export const DIRECT_MIN_WEEKLY_LIMIT_KOPECKS: Kopecks = 30_000;
 export const YANDEX_DIRECT_CAPABILITIES: PlatformCapabilities = {
   platform: "yandex-direct",
   strategies: [
-    { id: STRATEGY_WB_MAXIMUM_CLICKS, title: "Максимум кликов с недельным лимитом" },
-    { id: STRATEGY_AVERAGE_CPA, title: "Оптимизация обращений по средней цене" },
+    { id: STRATEGY_WB_MAXIMUM_CLICKS, title: "Максимум кликов с недельным лимитом", requiresLeadGoal: false },
+    { id: STRATEGY_AVERAGE_CPA, title: "Оптимизация обращений по средней цене", requiresLeadGoal: true },
   ],
   minWeeklyLimit: DIRECT_MIN_WEEKLY_LIMIT_KOPECKS,
 };
 
-/** Where a new ad goes. Ad groups (regions, keywords) and the landing URL are not part of `NewAd` yet. */
-export interface AdTarget {
-  adGroupId: string;
-  href: string;
-}
-
 export interface YandexDirectPlatformOptions {
-  mode: DirectMode;
   token: string;
   clientLogin?: string;
   fetch?: typeof fetch;
@@ -67,15 +64,11 @@ export interface YandexDirectPlatformOptions {
   /** Account time zone used for the campaign `StartDate`. Documented default: Europe/Moscow. */
   timeZone?: string;
   /**
-   * Resolves the ad group and landing URL for `createAd`. Required for creating ads: Direct needs
-   * `AdGroupId` and `Href`, which the platform contract does not carry. Without it `createAd` fails.
+   * Whether `createAd` and text edits send ads to moderation. The service always does; contract tests never do,
+   * so their campaigns stay unserved drafts (testing-harness spec).
    */
-  resolveAdTarget?: (campaignId: string) => Promise<AdTarget>;
-  /**
-   * Resolves Metrica goal and target CPA (ЦСО) when a campaign is created with or switched to
-   * AVERAGE_CPA; the contract does not carry them. Without it such requests fail.
-   */
-  resolveAverageCpaParams?: (campaign: { id: string | null; name: string }) => Promise<AverageCpaParams>;
+  submitAdsForModeration: boolean;
+  guard?: DirectRequestGuard;
 }
 
 const CAMPAIGN_FIELDS = ["Id", "Name", "State", "Status"];
@@ -86,6 +79,8 @@ const TEXT_AD_FIELDS = ["Title", "Title2", "Text", "Href"];
 const ADS_GET_CAMPAIGN_CHUNK = 10;
 const ADS_GET_PAGE_LIMIT = 10_000;
 const CAMPAIGNS_GET_CHUNK = 1_000;
+/** Keywords.add accepts at most 1 000 phrases per request. */
+const KEYWORDS_ADD_CHUNK = 1_000;
 
 const chunk = <T>(items: readonly T[], size: number): T[][] => {
   const result: T[][] = [];
@@ -103,21 +98,27 @@ const toDirectId = (id: string): number => {
   return value;
 };
 
+const needsLeadGoal = (strategyId: string): boolean =>
+  YANDEX_DIRECT_CAPABILITIES.strategies.some((s) => s.id === strategyId && s.requiresLeadGoal);
+
+const fromLeadGoal = (goal: LeadGoal): AverageCpaParams => ({ averageCpa: goal.targetCostPerLead, goalId: toDirectId(goal.goalId) });
+
 /**
- * Yandex Direct API v5 adapter (design decisions 5, 9, 13, 15).
- * Reads (`get`, `checkCampaigns`, reports) are retried on transient errors; mutations are never retried here.
+ * Yandex Direct API v5 adapter (design decisions 5, 9, 13, 15; replace-direct-sandbox decision 5).
+ * One campaign per direction with exactly one ad group. Reads (`get`, `checkCampaigns`, reports) are retried on
+ * transient errors; mutations are never retried here.
  */
 export class YandexDirectPlatform implements AdPlatform {
   readonly client: DirectClient;
   private readonly now: () => Date;
   private readonly timeZone: string;
+  private cityRegions: Promise<Map<string, number>> | null = null;
 
   constructor(private readonly options: YandexDirectPlatformOptions) {
     const now = options.now ?? (() => new Date());
     this.now = now;
     this.timeZone = options.timeZone ?? "Europe/Moscow";
     this.client = new DirectClient({
-      mode: options.mode,
       token: options.token,
       logger: options.logger,
       clock: () => now().getTime(),
@@ -125,6 +126,7 @@ export class YandexDirectPlatform implements AdPlatform {
       ...(options.fetch !== undefined && { fetch: options.fetch }),
       ...(options.sleep !== undefined && { sleep: options.sleep }),
       ...(options.maxReportPolls !== undefined && { maxReportPolls: options.maxReportPolls }),
+      ...(options.guard !== undefined && { guard: options.guard }),
     });
   }
 
@@ -132,24 +134,57 @@ export class YandexDirectPlatform implements AdPlatform {
     return YANDEX_DIRECT_CAPABILITIES;
   }
 
-  private async strategyInput(strategyId: string, weeklyLimit: Kopecks, campaign: { id: string | null; name: string }, current: AverageCpaParams | null): Promise<StrategyInput> {
+  private strategyInput(strategyId: string, weeklyLimit: Kopecks, leadGoal: LeadGoal | undefined, current: AverageCpaParams | null): StrategyInput {
     if (strategyId === STRATEGY_WB_MAXIMUM_CLICKS) {
       return { strategyId, weeklyLimit };
     }
     if (strategyId === STRATEGY_AVERAGE_CPA) {
-      if (current) {
-        return { strategyId, weeklyLimit, ...current };
+      const params = leadGoal ? fromLeadGoal(leadGoal) : current;
+      if (!params) {
+        throw new PlatformError("LEAD_GOAL_REQUIRED", "AVERAGE_CPA needs a Metrica goal and a target cost per lead", false);
       }
-      if (!this.options.resolveAverageCpaParams) {
-        throw new PlatformError("STRATEGY_PARAMS_REQUIRED", "AVERAGE_CPA needs a goal and target CPA; resolveAverageCpaParams is not configured", false);
-      }
-      return { strategyId, weeklyLimit, ...(await this.options.resolveAverageCpaParams(campaign)) };
+      return { strategyId, weeklyLimit, ...params };
     }
     throw new PlatformError("UNSUPPORTED_STRATEGY", `Strategy ${strategyId} is not in the Direct catalog`, false);
   }
 
+  /**
+   * Direct region id of a city from the `GeoRegions` dictionary (loaded once per adapter instance).
+   * API v5 targets ad groups by region only; there is no radius (replace-direct-sandbox decision 6).
+   */
+  async regionIdOf(city: string): Promise<number> {
+    this.cityRegions ??= this.client
+      .call("dictionaries", "get", { DictionaryNames: ["GeoRegions"] }, true)
+      .then((result) => {
+        const byName = new Map<string, number>();
+        for (const region of records(result.GeoRegions)) {
+          if (region.GeoRegionType === "City" && typeof region.GeoRegionName === "string" && typeof region.GeoRegionId === "number") {
+            byName.set(region.GeoRegionName.toLowerCase(), region.GeoRegionId);
+          }
+        }
+        return byName;
+      })
+      .catch((error: unknown) => {
+        this.cityRegions = null;
+        throw error;
+      });
+    const id = (await this.cityRegions).get(city.trim().toLowerCase());
+    if (id === undefined) {
+      throw new PlatformError("UNKNOWN_CITY", `Direct has no city region named ${city}`, false);
+    }
+    return id;
+  }
+
   async createCampaign(input: NewCampaign): Promise<PlatformCampaign> {
-    const strategy = await this.strategyInput(input.strategyId, input.weeklyLimit, { id: null, name: input.name }, null);
+    if (input.channel === "search" && input.targeting.keywords.length === 0) {
+      throw new PlatformError("KEYWORDS_REQUIRED", "A search campaign needs at least one keyword", false);
+    }
+    if (needsLeadGoal(input.strategyId) && !input.leadGoal) {
+      throw new PlatformError("LEAD_GOAL_REQUIRED", `${input.strategyId} needs a lead goal`, false);
+    }
+    const strategy = this.strategyInput(input.strategyId, input.weeklyLimit, input.leadGoal, null);
+    const timeTargeting = buildTimeTargeting(input.schedule);
+    const regionId = await this.regionIdOf(input.targeting.city);
     const result = await this.client.call(
       "campaigns",
       "add",
@@ -158,14 +193,53 @@ export class YandexDirectPlatform implements AdPlatform {
           {
             Name: input.name,
             StartDate: toLocalDate(this.now(), this.timeZone),
-            TextCampaign: { BiddingStrategy: buildBiddingStrategy(strategy), Settings: buildSettings(input.siteMonitoring) },
+            TimeTargeting: timeTargeting,
+            TextCampaign: { BiddingStrategy: buildBiddingStrategy(input.channel, strategy), Settings: buildSettings(input.siteMonitoring) },
           },
         ],
       },
       false,
     );
     const id = singleActionResult(result, "AddResults");
+    const group = await this.client.call(
+      "adgroups",
+      "add",
+      {
+        AdGroups: [
+          {
+            Name: input.name,
+            CampaignId: toDirectId(id),
+            RegionIds: [regionId],
+            ...(input.targeting.negativeKeywords.length > 0 && { NegativeKeywords: { Items: [...input.targeting.negativeKeywords] } }),
+          },
+        ],
+      },
+      false,
+    );
+    const adGroupId = toDirectId(singleActionResult(group, "AddResults"));
+    const phrases = input.targeting.keywords.length > 0 ? input.targeting.keywords : [AUTOTARGETING_KEYWORD];
+    for (const part of chunk(phrases, KEYWORDS_ADD_CHUNK)) {
+      const added = await this.client.call("keywords", "add", { Keywords: part.map((Keyword) => ({ AdGroupId: adGroupId, Keyword })) }, false);
+      const results = records(added.AddResults);
+      if (results.length !== part.length) {
+        throw new PlatformError("DIRECT_INVALID_RESPONSE", `Keywords.add returned ${results.length} results for ${part.length} phrases`, false);
+      }
+      for (const item of results) {
+        singleActionResult({ AddResults: [item] }, "AddResults");
+      }
+    }
     return this.getCampaign(id);
+  }
+
+  /** The single ad group of a service campaign. */
+  private async adGroupOf(campaignId: string): Promise<number> {
+    const result = await this.client.call("adgroups", "get", { SelectionCriteria: { CampaignIds: [toDirectId(campaignId)] }, FieldNames: ["Id"] }, true);
+    const groups = records(result.AdGroups);
+    const id = groups[0]?.Id;
+    if (groups.length !== 1 || typeof id !== "number") {
+      throw new PlatformError("DIRECT_INVALID_RESPONSE", `Campaign ${campaignId} must have exactly one ad group, found ${groups.length}`, false);
+    }
+    return id;
   }
 
   private async getRawCampaigns(ids: readonly string[]): Promise<JsonRecord[]> {
@@ -223,15 +297,23 @@ export class YandexDirectPlatform implements AdPlatform {
         throw new PlatformError("WEEKLY_LIMIT_REQUIRED", `Campaign ${id} has no weekly limit; pass one explicitly`, false);
       }
       const keepCpa = strategyId === STRATEGY_AVERAGE_CPA && current.strategyId === STRATEGY_AVERAGE_CPA ? parseAverageCpaParams(raw) : null;
-      const strategy = await this.strategyInput(strategyId, weeklyLimit, { id, name: current.name }, keepCpa);
-      // VERIFY: Campaigns.update is assumed to accept BiddingStrategy with only the Search part.
-      textCampaign.BiddingStrategy = { Search: buildSearchStrategy(strategy) };
+      const strategy = this.strategyInput(strategyId, weeklyLimit, patch.leadGoal, keepCpa);
+      textCampaign.BiddingStrategy = buildBiddingStrategy(servingChannel(raw), strategy);
     }
     if (patch.siteMonitoring !== undefined) {
       textCampaign.Settings = buildSettings(patch.siteMonitoring);
     }
-    if (Object.keys(textCampaign).length > 0) {
-      const result = await this.client.call("campaigns", "update", { Campaigns: [{ Id: directId, TextCampaign: textCampaign }] }, false);
+    // geoRadiusKm is kept by the service only: Direct targets ad groups by region (replace-direct-sandbox decision 6).
+    const timeTargeting = patch.schedule !== undefined ? buildTimeTargeting(patch.schedule) : null;
+    if (Object.keys(textCampaign).length > 0 || timeTargeting) {
+      const item: JsonRecord = { Id: directId };
+      if (Object.keys(textCampaign).length > 0) {
+        item.TextCampaign = textCampaign;
+      }
+      if (timeTargeting) {
+        item.TimeTargeting = timeTargeting;
+      }
+      const result = await this.client.call("campaigns", "update", { Campaigns: [item] }, false);
       singleActionResult(result, "UpdateResults");
     }
     if (patch.status !== undefined) {
@@ -243,26 +325,19 @@ export class YandexDirectPlatform implements AdPlatform {
   }
 
   async createAd(input: NewAd): Promise<PlatformAd> {
-    if (!this.options.resolveAdTarget) {
-      throw new PlatformError("AD_TARGET_REQUIRED", "Creating a Direct ad needs an ad group and landing URL; resolveAdTarget is not configured", false);
-    }
-    const target = await this.options.resolveAdTarget(input.campaignId);
+    const href = withUtm(input.landingUrl);
+    const adGroupId = await this.adGroupOf(input.campaignId);
     const result = await this.client.call(
       "ads",
       "add",
-      {
-        Ads: [
-          {
-            AdGroupId: toDirectId(target.adGroupId),
-            TextAd: { Title: input.title, Text: input.text, Href: target.href, Mobile: "NO" },
-          },
-        ],
-      },
+      { Ads: [{ AdGroupId: adGroupId, TextAd: { Title: input.title, Text: input.text, Href: href, Mobile: "NO" } }] },
       false,
     );
     const id = singleActionResult(result, "AddResults");
     // New ads are drafts; the contract's "create" means "submit for showing", so send it to moderation.
-    await this.moderateAd(id);
+    if (this.options.submitAdsForModeration) {
+      await this.moderateAd(id);
+    }
     return this.getAd(id);
   }
 
@@ -323,7 +398,7 @@ export class YandexDirectPlatform implements AdPlatform {
       singleActionResult(result, "UpdateResults");
       // VERIFY: an edited accepted ad is assumed to go to moderation by itself; a draft needs `moderate`.
       const raw = (await this.fetchAds({ Ids: [directId] }))[0];
-      if (raw?.Status === "DRAFT") {
+      if (raw?.Status === "DRAFT" && this.options.submitAdsForModeration) {
         await this.moderateAd(id);
       }
     }

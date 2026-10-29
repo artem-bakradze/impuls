@@ -25,4 +25,14 @@ describe("web configuration", () => {
   it("never allows the test login in production", () => {
     expect(() => parseWebConfig({ ...valid, DIRECT_API_MODE: "production", AUTH_TEST_LOGIN: "enabled" })).toThrow(/AUTH_TEST_LOGIN/);
   });
+
+  it("refuses the retired sandbox mode and names the replacement", () => {
+    expect(() => parseWebConfig({ ...valid, DIRECT_API_MODE: "sandbox" })).toThrow(/sandbox is no longer supported.*use simulator/);
+  });
+
+  it("requires the Yandex OAuth app, token key and app URL in production", () => {
+    expect(() => parseWebConfig({ ...valid, DIRECT_API_MODE: "production" })).toThrow(/YANDEX_CLIENT_ID.*YANDEX_CLIENT_SECRET.*TOKEN_ENCRYPTION_KEY.*APP_URL/);
+    const production = { ...valid, DIRECT_API_MODE: "production", YANDEX_CLIENT_ID: "cid", YANDEX_CLIENT_SECRET: "cs", TOKEN_ENCRYPTION_KEY: "k", APP_URL: "https://app.example" };
+    expect(parseWebConfig(production).DIRECT_API_MODE).toBe("production");
+  });
 });

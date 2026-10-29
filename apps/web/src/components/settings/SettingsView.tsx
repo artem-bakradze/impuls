@@ -10,7 +10,6 @@ import { AD_TEXT_MAX, AD_TITLE_MAX, DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } 
 import { APPROVAL_WORDS, MODERATION_WORDS } from "@/lib/settings-model";
 import type { SettingsModel } from "@/lib/settings-model";
 import { channelLabel } from "@/lib/summary-model";
-import { MiniSiteForm } from "./MiniSiteForm";
 
 type Feedback = { section: string; type: "success" | "error" | "info" | "warning"; text: string; confirmBudget?: number } | null;
 type BudgetResult = { kind: "ok" | "will_stop"; monthBudgetRub: number; message: string; applied: boolean };
@@ -216,7 +215,8 @@ export function SettingsView({ model }: { model: SettingsModel }) {
             </a>
           </Typography.Text>
         ) : (
-          <MiniSiteForm initial={model.miniSite} />
+          // Launch requires the owner's site; the mini-site form is out of the MVP (replace-direct-sandbox decision 7).
+          <Typography.Text type="secondary">Адрес сайта не указан</Typography.Text>
         )}
       </Card>
 

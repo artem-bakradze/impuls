@@ -17,13 +17,23 @@ describe("launch from the wizard", () => {
       csoSource: { kind: "user", goal: 30_000 },
       autonomy: "auto",
       miniSite: null,
+      leadGoalId: null,
       weeklySummaryEnabled: true,
       card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "Пн–Вс 10:00–22:00", advantages: [] },
     });
     const plan = {
+      landingUrl: "https://nogotok.example/",
+      city: "Москва",
       directions: [
-        { name: "Маникюр — Поиск", channel: "search" as const, weeklyLimitRub: 1_500, ads: [{ title: "Маникюр у метро", text: "Маникюр с покрытием за 1 800 ₽" }] },
-        { name: "Маникюр — Сайты-партнёры", channel: "network" as const, weeklyLimitRub: 1_000, ads: [{ title: "Маникюр рядом", text: "Работаем до 22:00" }] },
+        {
+          name: "Маникюр — Поиск",
+          channel: "search" as const,
+          weeklyLimitRub: 1_500,
+          keywords: ["маникюр", "маникюр москва"],
+          negativeKeywords: ["обучение", "вакансии"],
+          ads: [{ title: "Маникюр у метро", text: "Маникюр с покрытием за 1 800 ₽" }],
+        },
+        { name: "Маникюр — Сайты-партнёры", channel: "network" as const, weeklyLimitRub: 1_000, keywords: [], negativeKeywords: [], ads: [{ title: "Маникюр рядом", text: "Работаем до 22:00" }] },
       ],
     };
     sim.platform.failNextCampaignCreation(new PlatformError("ADVERTISER_DATA_REQUIRED", "Необходимо заполнить данные рекламодателя", false));
@@ -38,5 +48,21 @@ describe("launch from the wizard", () => {
     expect((await sim.store.changes("b1")).at(-1)?.explanation).toMatch(/^Реклама запущена\./);
     expect((await sim.store.pendingInbox("b1")).map((e) => e.trigger.kind)).toEqual(["launch"]);
     await expect(handleWebJob(sim.ctx, { kind: "launch", businessId: "b1", plan })).rejects.toBeInstanceOf(LaunchError);
+  });
+
+  it("refuses a search direction without phrases before creating anything", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-28T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    const business = await sim.launchBusiness({ id: "b2", monthlyBudgetRub: 15_000, launchedOn: "2026-10-01", csoSource: { kind: "user", goal: 30_000 }, directions: [] });
+    await sim.store.saveBusiness({ ...business, launchedOn: null });
+    const plan = {
+      landingUrl: "https://nogotok.example/",
+      city: "Москва",
+      directions: [{ name: "Маникюр — Поиск", channel: "search" as const, weeklyLimitRub: 1_500, keywords: [], negativeKeywords: [], ads: [{ title: "t", text: "x" }] }],
+    };
+    await expect(handleWebJob(sim.ctx, { kind: "launch", businessId: "b2", plan })).rejects.toMatchObject({
+      code: "NO_KEYWORDS",
+      message: "Не получилось подобрать поисковые запросы для этой услуги — уточните описание услуги",
+    });
+    expect(await sim.store.directions("b2")).toHaveLength(0);
   });
 });

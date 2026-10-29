@@ -37,10 +37,13 @@ export const POLL_ATTEMPTS = 40;
  * Enqueues a worker job through an API route and waits for its result. If the worker is slow the outcome
  * is `pending`, and the UI says the change is being applied.
  */
-export const runWebJob = async <T>(url: string, body: unknown): Promise<JobOutcome<T>> => {
+export const runWebJob = async <T>(url: string, body: unknown, attempts = POLL_ATTEMPTS): Promise<JobOutcome<T>> => {
   const started = await callApi<{ jobId: string }>(url, "POST", body);
-  return started.kind === "error" ? started : waitForJob<T>(started.body.jobId);
+  return started.kind === "error" ? started : waitForJob<T>(started.body.jobId, attempts);
 };
+
+/** Reading pages and generating texts with the LLM takes longer than a settings change: up to ~90 s. */
+export const LLM_POLL_ATTEMPTS = 130;
 
 /** Same for routes that enqueue one job per direction (schedule, zone); outputs keep the job order. */
 export const runWebJobs = async <T>(url: string, body: unknown): Promise<JobOutcome<T[]>> => {
@@ -59,8 +62,8 @@ export const runWebJobs = async <T>(url: string, body: unknown): Promise<JobOutc
   return { kind: "done", output: outputs };
 };
 
-const waitForJob = async <T>(jobId: string): Promise<JobOutcome<T>> => {
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+const waitForJob = async <T>(jobId: string, attempts = POLL_ATTEMPTS): Promise<JobOutcome<T>> => {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     await sleep(POLL_INTERVAL_MS);
     const polled = await callApi<JobView>(`/api/jobs/${encodeURIComponent(jobId)}`, "GET");
     if (polled.kind === "error") {

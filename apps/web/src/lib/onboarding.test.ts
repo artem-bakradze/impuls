@@ -3,20 +3,35 @@ import {
   budgetCeilingText,
   budgetTooLowMessage,
   buildLaunchPlan,
-  draftAds,
+  cardFactsOf,
+  cityOf,
   emptyDraft,
   firstIncompleteStep,
   leadsEstimateText,
+  mergeExtractedCard,
   startingWeeklyLimits,
   stepProblems,
 } from "./onboarding";
 import type { OnboardingDraft } from "./onboarding";
 
-const plain = (text: string) => text.replace(/ /g, " ");
+const plain = (text: string) => text.replace(/[  ]/g, " ");
+
+const found = {
+  name: "Ноготок",
+  category: "Студия маникюра",
+  services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }],
+  address: "Москва, ул. Профсоюзная, 1",
+  days: "Пн–Вс" as const,
+  openFrom: "10:00",
+  openTo: "22:00",
+  phone: "+7 495 123-45-67",
+  advantages: ["Стерилизация в сухожаре"],
+};
 
 const completeDraft = (): OnboardingDraft => {
   const draft = emptyDraft();
   draft.sources.mapsUrl = "https://yandex.ru/maps/org/123";
+  draft.sources.siteUrl = "https://nogotok.example/";
   draft.card = {
     ...draft.card,
     name: "Ноготок",
@@ -30,17 +45,50 @@ const completeDraft = (): OnboardingDraft => {
   };
   draft.goals = ["call"];
   draft.budget = { monthlyBudgetRub: 15_000, goalMode: "user", goalRub: 300 };
-  draft.ads = draftAds(draft);
+  draft.ads = {
+    search: [{ title: "Маникюр с покрытием за 1 800 ₽", text: "У м. Профсоюзная, работаем без выходных" }],
+    network: [{ title: "Ноготок — маникюр у метро", text: "Маникюр с покрытием и педикюр" }],
+  };
+  draft.keywords = { search: ["маникюр с покрытием", "маникюр москва"], negative: ["обучение", "курсы маникюра"] };
   draft.directConnected = true;
   return draft;
 };
 
+describe("card extraction", () => {
+  it("fills an untouched card with everything found and leaves the rest empty («Не нашли»)", () => {
+    const draft = emptyDraft();
+    const merged = mergeExtractedCard(draft, { ...found, services: [{ name: "Маникюр с покрытием", priceRub: null }], phone: null });
+    expect(merged.card).toMatchObject({
+      name: "Ноготок",
+      address: "Москва, ул. Профсоюзная, 1",
+      openTo: "22:00",
+      phone: "",
+      services: [{ name: "Маникюр с покрытием", priceRub: null }],
+      advantages: ["Стерилизация в сухожаре"],
+    });
+  });
+
+  it("never overwrites what the owner already typed", () => {
+    const draft = emptyDraft();
+    draft.card.name = "Мой салон";
+    draft.card.services = [{ name: "Педикюр", priceRub: 2_000 }];
+    const merged = mergeExtractedCard(draft, found);
+    expect(merged.card.name).toBe("Мой салон");
+    expect(merged.card.services).toEqual([{ name: "Педикюр", priceRub: 2_000 }]);
+    expect(merged.card.category).toBe("Студия маникюра");
+    expect(merged.card.openTo).toBe(draft.card.openTo);
+  });
+});
+
 describe("wizard steps", () => {
-  it("keeps «Дальше» disabled without any link or description", () => {
-    expect(stepProblems(1, emptyDraft())).toHaveLength(1);
-    const withText = emptyDraft();
-    withText.sources.about = "Делаем маникюр у метро";
-    expect(stepProblems(1, withText)).toEqual([]);
+  it("keeps «Дальше» disabled without the owner's site, even with a Maps link and a description", () => {
+    expect(stepProblems(1, emptyDraft())).toEqual(["Укажите адрес вашего сайта — на него будет вести реклама"]);
+    const mapsOnly = emptyDraft();
+    mapsOnly.sources.mapsUrl = "https://yandex.ru/maps/org/123";
+    mapsOnly.sources.about = "Делаем маникюр у метро";
+    expect(stepProblems(1, mapsOnly)).toEqual(["Укажите адрес вашего сайта — на него будет вести реклама"]);
+    mapsOnly.sources.siteUrl = "https://nogotok.example/";
+    expect(stepProblems(1, mapsOnly)).toEqual([]);
   });
 
   it("rejects a link without https", () => {
@@ -84,14 +132,21 @@ describe("budget texts", () => {
 });
 
 describe("ad drafts and the launch plan", () => {
-  it("uses only card facts and never invents a missing price", () => {
-    const ads = draftAds(completeDraft());
-    expect(plain(ads.search[0]?.title ?? "")).toBe("Маникюр с покрытием от 1 800 ₽");
-    expect(ads.search[1]?.title).toBe("Педикюр");
-    for (const ad of [...ads.search, ...ads.network]) {
-      expect(ad.title.length).toBeLessThanOrEqual(56);
-      expect(ad.text.length).toBeLessThanOrEqual(81);
-    }
+  it("passes only the confirmed card to ad generation", () => {
+    expect(cardFactsOf(completeDraft())).toEqual({
+      name: "Ноготок",
+      category: "Маникюр",
+      services: [
+        { name: "Маникюр с покрытием", priceRub: 1800 },
+        { name: "Педикюр", priceRub: null },
+      ],
+      address: "Москва, ул. Профсоюзная, 1",
+      city: "Москва",
+      days: "Пн–Вс",
+      openFrom: "10:00",
+      openTo: "20:00",
+      advantages: ["Работаем без выходных"],
+    });
   });
 
   it("builds one direction per channel within the budget-guard share", () => {
@@ -100,6 +155,31 @@ describe("ad drafts and the launch plan", () => {
     const weekly = plan.directions.reduce((sum, d) => sum + d.weeklyLimitRub, 0);
     // Launch on 2 November: the month ceiling is floor(15 000 × 29 / 30) = 14 500 ₽; 90% of it over 5 weeks.
     expect(weekly).toBe(2_610);
+  });
+
+  it("gives the search direction the generated phrases and leads every ad to the owner's site", () => {
+    const plan = buildLaunchPlan(completeDraft(), "2026-11-02", 300);
+    expect(plan).toMatchObject({ landingUrl: "https://nogotok.example/", city: "Москва" });
+    expect(plan.directions[0]).toMatchObject({ keywords: ["маникюр с покрытием", "маникюр москва"], negativeKeywords: ["обучение", "курсы маникюра"] });
+    expect(plan.directions[1]).toMatchObject({ channel: "network", keywords: [] });
+  });
+
+  it("does not build a plan before the phrases are generated", () => {
+    const draft = completeDraft();
+    draft.keywords = null;
+    expect(() => buildLaunchPlan(draft, "2026-11-02", 300)).toThrow(/phrases/);
+  });
+
+  it("takes the city from the first part of the address", () => {
+    expect(cityOf("Москва, ул. Профсоюзная, 1")).toBe("Москва");
+    expect(cityOf("Санкт-Петербург, Невский проспект, 10")).toBe("Санкт-Петербург");
+    expect(cityOf("Тверь")).toBe("Тверь");
+  });
+
+  it("does not build a plan without a landing page", () => {
+    const draft = completeDraft();
+    draft.sources.siteUrl = "";
+    expect(() => buildLaunchPlan(draft, "2026-11-02", 300)).toThrow(/landing page/);
   });
 
   it("drops partner sites when their share is below the platform minimum", () => {

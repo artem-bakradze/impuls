@@ -6,6 +6,7 @@ import { HistoryEntry } from "./history/HistoryView";
 import { RollbackDialog } from "./history/RollbackDialog";
 import type { RollbackOutput } from "./history/RollbackDialog";
 import { BudgetStep } from "./wizard/BudgetStep";
+import { DirectStep } from "./wizard/DirectStep";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 
@@ -86,5 +87,27 @@ describe("RollbackDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Вернуть как было" }));
     await waitFor(() => expect(screen.getByText("Показы: у нас записано «работает», в Директе сейчас «на паузе»")).toBeInTheDocument());
     expect(screen.getByText("Всё равно вернуть")).toBeInTheDocument();
+  });
+});
+
+describe("DirectStep", () => {
+  it("offers to connect the real account in production", () => {
+    render(<DirectStep directApiMode="production" connected={false} outcome={null} onConnect={() => undefined} />);
+    expect(screen.getByRole("link", { name: "Подключить Яндекс Директ" })).toHaveAttribute("href", "/api/direct/oauth/start");
+    expect(screen.queryByText(/Тестовый режим/)).not.toBeInTheDocument();
+  });
+
+  it("explains a declined consent and offers to try again", () => {
+    render(<DirectStep directApiMode="production" connected={false} outcome="denied" onConnect={() => undefined} />);
+    expect(screen.getByText("Без доступа к Яндекс Директу мы не сможем запустить рекламу")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Подключить ещё раз" })).toBeInTheDocument();
+  });
+
+  it("moves on once the account is connected", () => {
+    const onConnect = vi.fn();
+    render(<DirectStep directApiMode="production" connected outcome="connected" onConnect={onConnect} />);
+    expect(screen.getByText("Яндекс Директ подключён")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
+    expect(onConnect).toHaveBeenCalledOnce();
   });
 });

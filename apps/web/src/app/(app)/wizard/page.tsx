@@ -6,7 +6,8 @@ import { webConfig } from "@/lib/server/config";
 import { platformCapabilities } from "@/lib/server/read-context";
 import { requireUserId } from "@/lib/server/session";
 
-export default async function WizardPage() {
+export default async function WizardPage({ searchParams }: { searchParams: Promise<{ direct?: string }> }) {
+  const { direct } = await searchParams;
   const userId = await requireUserId();
   const business = await findBusiness(userId);
   if (business?.launchedOn) {
@@ -19,6 +20,7 @@ export default async function WizardPage() {
       initialDraft={draft}
       initialStep={Math.min(saved, firstIncompleteStep(draft))}
       directApiMode={webConfig().DIRECT_API_MODE}
+      directOutcome={direct === "connected" || direct === "denied" || direct === "failed" ? direct : null}
       minWeeklyLimitRub={platformCapabilities().minWeeklyLimit / 100}
     />
   );

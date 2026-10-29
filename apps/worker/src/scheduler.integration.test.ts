@@ -1,4 +1,4 @@
-import { IdlePolicy } from "@impuls/agent";
+import { IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
 import { createDb, createPool, databaseUrl } from "@impuls/db";
 import { PgBoss } from "pg-boss";
 import { afterAll, describe, expect, it } from "vitest";
@@ -31,6 +31,7 @@ describe("pg-boss scheduler", () => {
       executor: new CommandExecutor({ store, locks, clock: systemClock, platformFor: () => platform }),
       platformFor: () => platform,
       agent: new IdlePolicy(),
+      creatives: new TemplateCreativeEngine(),
     };
     await boss.start();
     await startScheduler(boss, ctx, createLogger(() => undefined));

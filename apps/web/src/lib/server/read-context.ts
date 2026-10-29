@@ -25,4 +25,5 @@ export const readOnlyContext = (): JobContext => ({
   executor: new Proxy({}, { get: forbidden("execute commands") }) as JobContext["executor"],
   platformFor: forbidden("call the ad platform"),
   agent: { name: "web-read-only", instructionsVersion: "none", runTurn: forbidden("run agent turns") },
+  creatives: { readsPages: false, extractCard: forbidden("call the LLM"), generate: forbidden("call the LLM"), variant: forbidden("call the LLM") },
 });

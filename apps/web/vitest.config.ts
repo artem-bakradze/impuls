@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // PostgreSQL tests run in the root `integration` project (`pnpm test:integration`).
+    exclude: ["src/**/*.integration.test.ts"],
     setupFiles: ["./src/test-setup.ts"],
   },
 });

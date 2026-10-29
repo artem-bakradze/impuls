@@ -4,7 +4,7 @@
 
 * **Product**: «Импульс» — automated ad management for small businesses (Yandex Direct API v5, Yandex Metrica, OpenAI Agents API). Requirements live in OpenSpec: `openspec/specs/` (accepted) and `openspec/changes/` (in progress). The spec is the source of truth; if code and spec disagree, raise it instead of silently picking one.
 * **Language**: User communication MUST be in Russian. Code, comments, schema and identifiers are in English. User-facing errors and UI MUST be in Russian, plain, and non-technical, with no ad-industry jargon (see the stop-list in `change-history` spec). Internal logs MUST be in English.
-* **Environment**: Default runtime is local development via Docker Compose with `DIRECT_API_MODE=sandbox` and the market simulator. Run safe development commands without confirmation, but DO NOT make git commits or push code unless explicitly requested.
+* **Environment**: Default runtime is local development via Docker Compose with `DIRECT_API_MODE=simulator` (the market simulator; Yandex shut the Direct sandbox down on 2026-07-15). Run safe development commands without confirmation, but DO NOT make git commits or push code unless explicitly requested.
 * **System Neutrality**: Never assume a specific host OS. Use forward slashes for paths; validate commands against the live shell.
 * **Scope Discipline**: Make minimal necessary changes. Do not perform unsolicited refactoring or stylistic reformatting of unrelated code.
 
@@ -16,7 +16,7 @@
 | **Web** | Next.js (App Router), React, Ant Design | UI and API routes; reads the DB and enqueues commands and jobs; no external side effects except OAuth code exchange |
 | **Worker** | Node.js, pg-boss (queue + cron on PostgreSQL) | The only command executor; job handlers separated from schedules (pg-boss in prod, `SimulationDriver` in tests); stats sync, platform reconciliation, budget-guard, safety-net, agent turns |
 | **Core** | `packages/core` | Pure functions only (classification, guard, safety-net, budget-guard, experiments): no I/O, no randomness except seeded, time via injected `Clock` |
-| **Platforms** | `packages/platforms` | `AdPlatform` contract; adapters `yandex-direct` (sandbox/production) and `simulator` |
+| **Platforms** | `packages/platforms` | `AdPlatform` contract; adapters `yandex-direct` (production API) and `simulator` |
 | **Data** | PostgreSQL 16, Drizzle ORM + drizzle-kit migrations | All schema changes via generated migrations |
 | **Agent** | `packages/agent`: `AgentRuntime` port (OpenAI Agents API, test policies, replay) and `LlmClient` | Runs inside worker; one Agents API session per turn, deleted after the journal is saved; outbound traffic via optional `OPENAI_PROXY_URL` |
 | **Mini-sites** | Static HTML published to S3-compatible storage | Served from a separate registrable domain without app cookies, never by `apps/web` |
@@ -44,7 +44,7 @@ pnpm -r lint
 ```
 
 * Type checking does not replace relevant tests or a build when the change requires them. If a required check cannot run, report the reason and which validation remains incomplete.
-* **Paid / external suites run only on explicit request**: the agent eval (`pnpm eval:agent`, calls OpenAI) and Direct sandbox contract tests (`pnpm test:contract`, need sandbox credentials). If credentials are missing they MUST fail fast, not be skipped silently.
+* **Paid / external suites run only on explicit request**: the agent eval (`pnpm eval:agent`, calls OpenAI) and Direct contract tests (`pnpm test:contract`, production API in a dedicated test account, drafts only; need `DIRECT_CONTRACT_TOKEN` and `DIRECT_CONTRACT_LOGIN`). If credentials are missing they MUST fail fast, not be skipped silently.
 
 > **OpenSpec Notice**: OpenSpec workflows (`/opsx:propose`, `/opsx:apply`, `/opsx:update`, `/opsx:sync`, `/opsx:archive`, `/opsx:explore`) are conversational chat workflows. Trigger them via prompt commands, not as direct shell scripts. The `openspec` CLI itself (`openspec validate --strict`, `openspec status`) may be run in the shell.
 
@@ -129,7 +129,7 @@ Consult these files for specialized context when working on relevant subsystems:
 | Domain & Invariants | `docs/domain.md` | Directions, ЦСО, classification, guardrails, budget rules |
 | Testing Layout | `docs/testing.md` | Test strategy, BDD layout, simulator and `SimulationDriver`, test agent policies, replay, eval |
 | Module Structure | `docs/modules.md` | Guidelines for adding packages, platform adapters, agent tools |
-| Development Setup | `docs/development.md` | Local Docker setup, commands, sandbox credentials |
+| Development Setup | `docs/development.md` | Local Docker setup, commands, Direct contract-test credentials |
 | Deployment | `docs/deployment.md` | Environments, migrations, runtime flags, egress proxy, mini-site hosting, monitoring |
 | Decisions | `docs/adr/` | Architectural decisions and their rationale |
 

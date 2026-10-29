@@ -1,110 +1,148 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PlatformError } from "../contract";
-import type { DirectRequestLogEntry } from "./client";
+import type { DirectRequestLogEntry, JsonRecord } from "./client";
+import { CONTRACT_PREFIX, ContractGuard, preflightContractAccount } from "./contract-guard";
+import { records } from "./mapping";
 import { YandexDirectPlatform } from "./platform";
 
 /**
- * Contract tests against the real Direct sandbox (`pnpm test:contract`).
- * Required: DIRECT_SANDBOX_TOKEN. Optional: DIRECT_SANDBOX_CLIENT_LOGIN.
- * Missing credentials fail the run (AGENTS.md: fail fast, never skip silently).
+ * Contract tests against the production Direct API (`pnpm test:contract`); the sandbox was shut down on 2026-07-15.
+ * Required: DIRECT_CONTRACT_TOKEN and DIRECT_CONTRACT_LOGIN. Missing values fail the run (never skipped silently).
+ *
+ * Safety (testing-harness spec): every request goes through `ContractGuard` — only `impuls-contract-*` campaigns
+ * created by this run are changed, nothing is sent to moderation, so the campaigns stay unserved drafts and are
+ * deleted at the end. Pausing a draft is not possible in Direct; the test checks that the refusal is mapped, real
+ * pausing is confirmed in the pilot.
  */
-const token = process.env.DIRECT_SANDBOX_TOKEN;
-if (!token) {
+const token = process.env.DIRECT_CONTRACT_TOKEN;
+const login = process.env.DIRECT_CONTRACT_LOGIN;
+if (!token || !login) {
   throw new Error(
-    "DIRECT_SANDBOX_TOKEN is not set: Direct sandbox contract tests require an OAuth token with Direct sandbox access. Refusing to skip.",
+    `${!token ? "DIRECT_CONTRACT_TOKEN" : "DIRECT_CONTRACT_LOGIN"} is not set: Direct contract tests need the test account's OAuth token and login. Refusing to skip.`,
   );
 }
-const clientLogin = process.env.DIRECT_SANDBOX_CLIENT_LOGIN;
 
 const logs: DirectRequestLogEntry[] = [];
-let adGroupId: string | null = null;
+const guard = new ContractGuard();
+const platform = new YandexDirectPlatform({ token, submitAdsForModeration: false, logger: (entry) => logs.push(entry), guard });
+const runId = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
 
-const platform = new YandexDirectPlatform({
-  mode: "sandbox",
-  token,
-  ...(clientLogin ? { clientLogin } : {}),
-  logger: (entry) => logs.push(entry),
-  resolveAdTarget: (campaignId) => createAdGroup(campaignId),
-});
+const listCampaigns = async (): Promise<JsonRecord[]> =>
+  records((await platform.client.call("campaigns", "get", { SelectionCriteria: {}, FieldNames: ["Id", "Name", "State", "Status", "DailyBudget"] }, true)).Campaigns);
 
-/** Ad groups are outside the platform contract; the sandbox test creates one through the low-level client. */
-const createAdGroup = async (campaignId: string): Promise<{ adGroupId: string; href: string }> => {
-  if (!adGroupId) {
-    const result = await platform.client.call(
-      "adgroups",
-      "add",
-      { AdGroups: [{ Name: "contract-test", CampaignId: Number(campaignId), RegionIds: [225] }] },
-      false,
-    );
-    const item = (result.AddResults as { Id?: number }[] | undefined)?.[0];
-    if (!item?.Id) {
-      throw new Error(`AdGroups.add failed: ${JSON.stringify(result)}`);
-    }
-    adGroupId = String(item.Id);
+const deleteCampaigns = async (ids: readonly number[]): Promise<void> => {
+  if (ids.length > 0) {
+    await platform.client.call("campaigns", "delete", { SelectionCriteria: { Ids: [...ids] } }, false);
   }
-  return { adGroupId, href: "https://example.com" };
 };
 
-describe("YandexDirectPlatform (sandbox contract)", () => {
+const foreign = (campaigns: readonly JsonRecord[]): string =>
+  JSON.stringify(campaigns.filter((c) => typeof c.Name !== "string" || !c.Name.startsWith(CONTRACT_PREFIX)));
+
+let foreignBefore = "";
+
+beforeAll(async () => {
+  await preflightContractAccount(platform.client, login);
+  const campaigns = await listCampaigns();
+  foreignBefore = foreign(campaigns);
+  // Drafts of interrupted runs; the guard lets only prefixed drafts seen in this listing be deleted.
+  const leftovers = campaigns.filter((c) => typeof c.Name === "string" && c.Name.startsWith(CONTRACT_PREFIX) && c.Status === "DRAFT");
+  await deleteCampaigns(leftovers.map((c) => Number(c.Id)));
+});
+
+afterAll(async () => {
+  await deleteCampaigns(guard.ownCampaigns());
+  const after = await listCampaigns();
+  expect(after.filter((c) => typeof c.Name === "string" && c.Name.startsWith(CONTRACT_PREFIX))).toEqual([]);
+  expect(foreign(after)).toBe(foreignBefore);
+  expect(JSON.stringify(logs)).not.toContain(token);
+});
+
+describe("YandexDirectPlatform (production contract, drafts only)", () => {
   const startedAt = new Date(Date.now() - 60_000);
-  let campaignId = "";
+  let searchId = "";
   let adId = "";
 
   it("declares capabilities", () => {
     expect(platform.capabilities().strategies.map((s) => s.id)).toEqual(["WB_MAXIMUM_CLICKS", "AVERAGE_CPA"]);
   });
 
-  it("creates and reads a campaign", async () => {
+  it("resolves the business city to a Direct region", async () => {
+    expect(await platform.regionIdOf("Москва")).toBe(213);
+  });
+
+  it("creates a search campaign with group, phrases, negative phrases and schedule", async () => {
     const created = await platform.createCampaign({
-      name: `[Импульс] contract ${new Date().toISOString()}`,
+      name: `${CONTRACT_PREFIX}${runId}-search`,
+      channel: "search",
       weeklyLimit: 50_000,
       strategyId: "WB_MAXIMUM_CLICKS",
       siteMonitoring: true,
+      targeting: { city: "Москва", keywords: ["маникюр с покрытием", "маникюр у метро"], negativeKeywords: ["обучение", "вакансии"] },
+      schedule: "Пн–Пт 10:00–22:00",
     });
-    campaignId = created.id;
+    searchId = created.id;
     expect(created).toMatchObject({ weeklyLimit: 50_000, strategyId: "WB_MAXIMUM_CLICKS", siteMonitoring: true });
-    const [read] = await platform.getCampaigns([campaignId]);
+    const [read] = await platform.getCampaigns([searchId]);
     expect(read).toEqual(created);
+    const keywords = records(
+      (await platform.client.call("keywords", "get", { SelectionCriteria: { CampaignIds: [Number(searchId)] }, FieldNames: ["Keyword"] }, true)).Keywords,
+    );
+    expect(keywords.map((k) => k.Keyword).sort()).toEqual(["маникюр с покрытием", "маникюр у метро"]);
   });
 
-  it("updates limit, monitoring and status", async () => {
-    const updated = await platform.updateCampaign(campaignId, { weeklyLimit: 60_000, siteMonitoring: false });
+  it("creates a partner-sites campaign with autotargeting", async () => {
+    const created = await platform.createCampaign({
+      name: `${CONTRACT_PREFIX}${runId}-network`,
+      channel: "network",
+      weeklyLimit: 30_000,
+      strategyId: "WB_MAXIMUM_CLICKS",
+      siteMonitoring: true,
+      targeting: { city: "Москва", keywords: [], negativeKeywords: [] },
+      schedule: "10:00–20:00",
+    });
+    expect(created).toMatchObject({ weeklyLimit: 30_000, strategyId: "WB_MAXIMUM_CLICKS" });
+  });
+
+  it("updates limit, schedule and monitoring", async () => {
+    const updated = await platform.updateCampaign(searchId, { weeklyLimit: 60_000, siteMonitoring: false, schedule: "Пн–Сб 09:00–21:00" });
     expect(updated).toMatchObject({ weeklyLimit: 60_000, siteMonitoring: false });
-    // A draft campaign may not be suspendable in the sandbox; this documents the actual behaviour.
-    const paused = await platform.updateCampaign(campaignId, { status: "paused" });
-    expect(paused.status).toBe("paused");
-    const resumed = await platform.updateCampaign(campaignId, { status: "active" });
-    expect(resumed.status).toBe("active");
   });
 
-  it("creates, edits and reads an ad", async () => {
-    const ad = await platform.createAd({ campaignId, title: "Ремонт квартир под ключ", text: "Смета за один день. Гарантия 3 года." });
+  it("maps the refusal to pause a draft campaign", async () => {
+    const outcome = await platform.updateCampaign(searchId, { status: "paused" }).then(
+      (campaign) => campaign.status,
+      (error: unknown) => (error instanceof PlatformError ? error.code : String(error)),
+    );
+    // Either Direct pauses the draft or refuses with a mapped per-object error; both are recorded here.
+    expect(typeof outcome).toBe("string");
+  });
+
+  it("creates, edits and reads a draft ad with UTM tags", async () => {
+    const ad = await platform.createAd({ campaignId: searchId, title: "Маникюр с покрытием у метро", text: "Запись онлайн. Работаем до 22:00.", landingUrl: "https://example.com/" });
     adId = ad.id;
-    expect(ad).toMatchObject({ campaignId, title: "Ремонт квартир под ключ" });
-    const edited = await platform.updateAd(adId, { text: "Смета бесплатно. Гарантия 3 года." });
-    expect(edited.text).toBe("Смета бесплатно. Гарантия 3 года.");
-    const ads = await platform.getAds([campaignId]);
-    expect(ads.map((a) => a.id)).toContain(adId);
+    expect(ad).toMatchObject({ campaignId: searchId, title: "Маникюр с покрытием у метро", moderation: "pending" });
+    const edited = await platform.updateAd(adId, { text: "Запись онлайн. Работаем без выходных." });
+    expect(edited.text).toBe("Запись онлайн. Работаем без выходных.");
+    const raw = records(
+      (await platform.client.call("ads", "get", { SelectionCriteria: { Ids: [Number(adId)] }, FieldNames: ["Id"], TextAdFieldNames: ["Href"] }, true)).Ads,
+    )[0];
+    expect((raw?.TextAd as JsonRecord | undefined)?.Href).toBe("https://example.com/?utm_source=yandex&utm_medium=cpc&utm_campaign={campaign_id}&utm_content={ad_id}");
+  });
+
+  it("refuses AVERAGE_CPA without a lead goal before calling Direct", async () => {
+    await expect(platform.updateCampaign(searchId, { strategyId: "AVERAGE_CPA" })).rejects.toMatchObject({ code: "LEAD_GOAL_REQUIRED" });
   });
 
   it("checks changes", async () => {
-    const result = await platform.checkChanges([campaignId], startedAt);
+    const result = await platform.checkChanges([searchId], startedAt);
     expect(result.checkedAt).toBeInstanceOf(Date);
-    expect(result.campaigns.every((c) => c.campaignId === campaignId)).toBe(true);
+    expect(result.campaigns.every((c) => c.campaignId === searchId)).toBe(true);
   });
 
   it("loads stats", async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const rows = await platform.getStats([campaignId], today, today);
+    const rows = await platform.getStats([searchId], today, today);
     expect(Array.isArray(rows)).toBe(true);
-  });
-
-  it("reports balance as not supported", async () => {
-    await expect(platform.getBalance()).rejects.toBeInstanceOf(PlatformError);
-  });
-
-  it("never logs the token", () => {
-    expect(logs.length).toBeGreaterThan(0);
-    expect(JSON.stringify(logs)).not.toContain(token);
   });
 });

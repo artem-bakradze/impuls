@@ -1,4 +1,4 @@
-import type { AgentRuntime } from "@impuls/agent";
+import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
 import type { AdPlatform } from "@impuls/platforms";
 import type { Clock } from "./clock";
 import type { CommandExecutor } from "./executor";
@@ -13,4 +13,6 @@ export interface JobContext {
   executor: CommandExecutor;
   platformFor: (businessId: string) => AdPlatform;
   agent: AgentRuntime;
+  /** Card extraction and ad texts (ad-creatives spec); template or LLM, chosen by configuration. */
+  creatives: CreativeEngine;
 }

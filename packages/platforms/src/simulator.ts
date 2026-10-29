@@ -16,11 +16,13 @@ import type {
   ChangeArea,
   ChangesResult,
   DailyStatRow,
+  LeadGoal,
   NewAd,
   NewCampaign,
   PlatformAd,
   PlatformCampaign,
   PlatformCapabilities,
+  Targeting,
 } from "./contract";
 
 /** Hidden "true" parameters of an ad; the service never sees them. */
@@ -51,11 +53,14 @@ interface StatCell extends DailyStatRow {
 export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
   platform: "simulator",
   strategies: [
-    { id: "WB_MAXIMUM_CLICKS", title: "Максимум кликов с недельным лимитом" },
-    { id: "AVERAGE_CPA", title: "Оптимизация обращений по средней цене" },
+    { id: "WB_MAXIMUM_CLICKS", title: "Максимум кликов с недельным лимитом", requiresLeadGoal: false },
+    { id: "AVERAGE_CPA", title: "Оптимизация обращений по средней цене", requiresLeadGoal: true },
   ],
   minWeeklyLimit: 30_000,
 };
+
+const needsLeadGoal = (strategyId: string): boolean =>
+  SIMULATOR_CAPABILITIES.strategies.some((s) => s.id === strategyId && s.requiresLeadGoal);
 
 /**
  * Market simulator implementing the platform contract (testing-harness spec).
@@ -64,7 +69,10 @@ export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
  */
 export class SimulatedPlatform implements AdPlatform {
   private readonly campaigns = new Map<string, PlatformCampaign>();
+  /** Launch settings the simulator keeps but does not use for the "true" ad parameters. */
+  private readonly settings = new Map<string, { channel: NewCampaign["channel"]; targeting: Targeting; leadGoal: LeadGoal | null }>();
   private readonly ads = new Map<string, PlatformAd>();
+  private readonly landingUrls = new Map<string, string>();
   private readonly truths = new Map<string, AdTruth>();
   private readonly cells: StatCell[] = [];
   private readonly changes: { campaignId: string; area: ChangeArea; at: number }[] = [];
@@ -114,9 +122,36 @@ export class SimulatedPlatform implements AdPlatform {
       this.nextCreateError = null;
       return Promise.reject(error);
     }
-    const campaign: PlatformCampaign = { id: this.id("c"), status: "active", ...input };
+    // Same refusals as the Direct adapter, so launch and guard paths are exercised on the simulator too.
+    if (input.channel === "search" && input.targeting.keywords.length === 0) {
+      return Promise.reject(new PlatformError("KEYWORDS_REQUIRED", "A search campaign needs at least one keyword", false));
+    }
+    if (needsLeadGoal(input.strategyId) && !input.leadGoal) {
+      return Promise.reject(new PlatformError("LEAD_GOAL_REQUIRED", `${input.strategyId} needs a lead goal`, false));
+    }
+    const { channel, targeting, leadGoal, ...params } = input;
+    const campaign: PlatformCampaign = { id: this.id("c"), status: "active", ...params };
     this.campaigns.set(campaign.id, campaign);
+    this.settings.set(campaign.id, { channel, targeting, leadGoal: leadGoal ?? null });
     return Promise.resolve({ ...campaign });
+  }
+
+  /** Test helper: landing page an ad leads to. */
+  landingUrlOf(adId: string): string {
+    const url = this.landingUrls.get(adId);
+    if (url === undefined) {
+      throw new Error(`Unknown ad ${adId}`);
+    }
+    return url;
+  }
+
+  /** Test helper: channel, targeting and lead goal the campaign was launched with. */
+  launchSettings(campaignId: string): { channel: NewCampaign["channel"]; targeting: Targeting; leadGoal: LeadGoal | null } {
+    const settings = this.settings.get(campaignId);
+    if (!settings) {
+      throw new Error(`Unknown campaign ${campaignId}`);
+    }
+    return settings;
   }
 
   getCampaigns(ids: readonly string[]): Promise<PlatformCampaign[]> {
@@ -125,14 +160,24 @@ export class SimulatedPlatform implements AdPlatform {
 
   updateCampaign(id: string, patch: CampaignPatch): Promise<PlatformCampaign> {
     const campaign = this.campaign(id);
-    Object.assign(campaign, patch);
+    const { leadGoal, ...rest } = patch;
+    if (rest.strategyId !== undefined && needsLeadGoal(rest.strategyId) && !leadGoal) {
+      return Promise.reject(new PlatformError("LEAD_GOAL_REQUIRED", `${rest.strategyId} needs a lead goal`, false));
+    }
+    Object.assign(campaign, rest);
+    const settings = this.settings.get(id);
+    if (settings && leadGoal) {
+      settings.leadGoal = leadGoal;
+    }
     return Promise.resolve({ ...campaign });
   }
 
   createAd(input: NewAd): Promise<PlatformAd> {
     this.campaign(input.campaignId);
-    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, ...input };
+    const { landingUrl, ...fields } = input;
+    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, ...fields };
     this.ads.set(ad.id, ad);
+    this.landingUrls.set(ad.id, landingUrl);
     this.truths.set(ad.id, this.options.truthFor(ad));
     return Promise.resolve({ ...ad });
   }

@@ -1,6 +1,6 @@
 import { allowedWeeklyTotal, monthBudget } from "@impuls/core";
 import type { LocalDate } from "@impuls/core";
-import type { LaunchPlan } from "@impuls/worker";
+import type { ExtractCardResult, LaunchPlan, WebJob } from "@impuls/worker";
 import { z } from "zod";
 import { formatRub } from "./format";
 
@@ -72,6 +72,8 @@ export const OnboardingDraftSchema = z.object({
     goalRub: z.number().int().positive().nullable(),
   }),
   ads: z.object({ search: z.array(AdDraft).max(5), network: z.array(AdDraft).max(5) }).nullable(),
+  /** Search phrases and negative phrases generated together with the ads; shown only in «Для специалистов». */
+  keywords: z.object({ search: z.array(z.string()), negative: z.array(z.string()) }).nullable().default(null),
   directConnected: z.boolean(),
 });
 
@@ -96,6 +98,7 @@ export const emptyDraft = (): OnboardingDraft => ({
   goals: [],
   budget: { monthlyBudgetRub: null, goalMode: "user", goalRub: null },
   ads: null,
+  keywords: null,
   directConnected: false,
 });
 
@@ -111,8 +114,9 @@ export const stepProblems = (step: number, draft: OnboardingDraft): string[] => 
   switch (step) {
     case 1: {
       const s = draft.sources;
-      if (![s.siteUrl, s.mapsUrl, s.vkUrl, s.about].some(filled)) {
-        problems.push("Заполните хотя бы одно поле: ссылку на сайт, на Яндекс Карты, на ВКонтакте или расскажите о бизнесе своими словами");
+      // Every ad leads to the owner's site; the mini-site is out of the MVP (replace-direct-sandbox decision 7).
+      if (!filled(s.siteUrl)) {
+        problems.push("Укажите адрес вашего сайта — на него будет вести реклама");
       }
       if ([s.siteUrl, s.mapsUrl, s.vkUrl].some((url) => filled(url) && !isWebUrl(url))) {
         problems.push("Проверьте ссылки: каждая должна начинаться с https://");
@@ -212,36 +216,49 @@ export const agentCard = (draft: OnboardingDraft) => ({
   advantages: draft.card.advantages.map((a) => a.trim()).filter(filled),
 });
 
-const clip = (text: string, max: number): string => {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length <= max) {
-    return clean;
-  }
-  const cut = clean.slice(0, max - 1);
-  const space = cut.lastIndexOf(" ");
-  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[.,;:—–-]+$/, "")}…`;
-};
+/** Card facts for ad generation (`generate_creatives` job): only what the owner confirmed on step 2. */
+export type CardFacts = Extract<WebJob, { kind: "generate_creatives" }>["facts"];
+
+export const cardFactsOf = (draft: OnboardingDraft): CardFacts => ({
+  name: draft.card.name.trim(),
+  category: draft.card.category.trim(),
+  services: draft.card.services.filter((s) => filled(s.name)).map((s) => ({ name: s.name.trim(), priceRub: s.priceRub })),
+  address: draft.card.address.trim(),
+  city: cityOf(draft.card.address),
+  days: draft.card.days,
+  openFrom: draft.card.openFrom,
+  openTo: draft.card.openTo,
+  advantages: draft.card.advantages.map((a) => a.trim()).filter(filled),
+});
 
 /**
- * Editable ad drafts assembled from the card fields only (no invented facts). Text generation by the LLM
- * (ad-creatives) is not connected yet; the owner reviews and edits these before launch.
+ * Puts what extraction found into the card. A card the owner has not touched yet takes every found value; once the
+ * owner typed something, only empty fields are filled. Nothing is invented: not found stays empty («Не нашли»).
  */
-export const draftAds = (draft: OnboardingDraft): { search: AdDraft[]; network: AdDraft[] } => {
-  const card = agentCard(draft);
-  const lead = card.advantages[0] ?? draft.card.category.trim();
-  const where = draft.card.address.trim();
-  const search = card.services.slice(0, 3).map((service) => ({
-    title: clip(service.priceRub === null ? service.name : `${service.name} от ${formatRub(service.priceRub * 100)}`, AD_TITLE_MAX),
-    text: clip([lead, where, card.hours].filter(filled).join(". "), AD_TEXT_MAX),
-  }));
-  const network = [
-    {
-      title: clip(`${draft.card.name.trim()} — ${card.category}`, AD_TITLE_MAX),
-      text: clip([card.services.map((s) => s.name).slice(0, 3).join(", "), lead].filter(filled).join(". "), AD_TEXT_MAX),
+export const mergeExtractedCard = (draft: OnboardingDraft, found: ExtractCardResult["card"]): OnboardingDraft => {
+  const card = draft.card;
+  const untouched = !filled(card.name) && !filled(card.category) && !filled(card.address) && !card.services.some((s) => filled(s.name));
+  const text = (current: string, value: string | null, max: number) => (value !== null && (untouched || !filled(current)) ? value.slice(0, max) : current);
+  const services = found.services.slice(0, 20).map((s) => ({ name: s.name.slice(0, 100), priceRub: s.priceRub }));
+  const advantages = found.advantages.map((a) => a.slice(0, 100)).slice(0, 3);
+  const hours = untouched && found.days !== null && found.openFrom !== null && found.openTo !== null && found.openFrom < found.openTo;
+  return {
+    ...draft,
+    card: {
+      ...card,
+      name: text(card.name, found.name, 100),
+      category: text(card.category, found.category, 100),
+      address: text(card.address, found.address, 200),
+      phone: text(card.phone, found.phone, 30),
+      services: services.length > 0 && (untouched || !card.services.some((s) => filled(s.name))) ? services : card.services,
+      advantages: advantages.length > 0 && (untouched || !card.advantages.some(filled)) ? advantages : card.advantages,
+      ...(hours ? { days: found.days ?? card.days, openFrom: found.openFrom ?? card.openFrom, openTo: found.openTo ?? card.openTo } : {}),
     },
-  ];
-  return { search, network };
+  };
 };
+
+/** City of the business: the first part of the address («Москва, ул. Профсоюзная, 1» → «Москва»). */
+export const cityOf = (address: string): string => address.split(",")[0]?.trim() ?? "";
 
 export const SEARCH_SHARE = 0.6;
 
@@ -275,14 +292,27 @@ export const buildLaunchPlan = (draft: OnboardingDraft, today: LocalDate, minWee
   if (ads === null || budget === null) {
     throw new Error("Launch plan needs ads and a budget");
   }
+  if (!hasOwnSite(draft)) {
+    throw new Error("Launch plan needs a landing page");
+  }
+  if (draft.keywords === null) {
+    throw new Error("Launch plan needs the generated phrases");
+  }
   const limits = startingWeeklyLimits(budget, today, minWeeklyLimitRub, { search: ads.search.length > 0, network: ads.network.length > 0 });
   const category = draft.card.category.trim();
   const directions: LaunchPlan["directions"] = [];
   if (limits.search > 0 && ads.search.length > 0) {
-    directions.push({ name: `${category} — Поиск`, channel: "search", weeklyLimitRub: limits.search, ads: ads.search });
+    directions.push({
+      name: `${category} — Поиск`,
+      channel: "search",
+      weeklyLimitRub: limits.search,
+      keywords: draft.keywords.search,
+      negativeKeywords: draft.keywords.negative,
+      ads: ads.search,
+    });
   }
   if (limits.network > 0 && ads.network.length > 0) {
-    directions.push({ name: `${category} — Сайты-партнёры`, channel: "network", weeklyLimitRub: limits.network, ads: ads.network });
+    directions.push({ name: `${category} — Сайты-партнёры`, channel: "network", weeklyLimitRub: limits.network, keywords: [], negativeKeywords: [], ads: ads.network });
   }
-  return { directions };
+  return { landingUrl: draft.sources.siteUrl, city: cityOf(draft.card.address), directions };
 };

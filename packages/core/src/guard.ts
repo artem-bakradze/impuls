@@ -32,6 +32,10 @@ export interface GuardState {
   directionStats14: ReadonlyMap<string, PerformanceStats>;
   userDecisions: readonly UserDecision[];
   strategyCatalog: readonly string[];
+  /** Strategies that pay for leads and need a Metrica goal (platform capability `requiresLeadGoal`). */
+  leadGoalStrategies: readonly string[];
+  /** Whether the business has a Metrica goal that counts leads. */
+  hasLeadGoal: boolean;
   minWeeklyLimit: Kopecks;
   activeExperiments: number;
 }
@@ -154,6 +158,9 @@ const optimizationCheck = (state: GuardState, command: Command, actor: Actor): V
       }
       if (!state.strategyCatalog.includes(command.strategyId)) {
         return reject("STRATEGY_NOT_IN_CATALOG", "такой стратегии нет в каталоге площадки");
+      }
+      if (state.leadGoalStrategies.includes(command.strategyId) && !state.hasLeadGoal) {
+        return reject("NO_LEAD_GOAL", "нет цели для подсчёта обращений");
       }
       if (
         direction.lastStrategyChangeOn !== null &&

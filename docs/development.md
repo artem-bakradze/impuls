@@ -21,13 +21,14 @@ MAILPIT_SMTP_URL=smtp://localhost:1025 MAILPIT_API_URL=http://localhost:8025 S3_
 
 ```bash
 DATABASE_URL=postgres://impuls:impuls@localhost:54329/impuls \
-DIRECT_API_MODE=simulator AGENT_RUNTIME=idle \
+DIRECT_API_MODE=simulator AGENT_RUNTIME=idle CREATIVES=template \
 SMTP_URL=smtp://localhost:1025 MAIL_FROM="Импульс <noreply@impuls.test>" APP_URL=http://localhost:3000 TEAM_ALERT_EMAIL=team@impuls.test \
 pnpm --filter @impuls/worker start
 ```
 
-Missing variables stop the worker with a list of problems. `DIRECT_API_MODE=sandbox|production` needs the
-Yandex Direct adapter wiring with OAuth tokens and refuses to start until it exists.
+Missing variables stop the worker with a list of problems. There are two modes: `simulator` (local, CI, staging) and
+`production` (real Direct with each business's own OAuth token, needs `TOKEN_ENCRYPTION_KEY`). Yandex shut the Direct
+sandbox down on 2026-07-15; `DIRECT_API_MODE=sandbox` is refused at startup.
 
 ## Running the web app locally
 
@@ -46,13 +47,32 @@ pnpm --filter @impuls/web dev
 | `DATABASE_URL` | yes | PostgreSQL |
 | `AUTH_SECRET` | yes, ≥ 32 chars | Signs session cookies (Auth.js) |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | yes | Google OAuth client; redirect URI `<AUTH_URL>/api/auth/callback/google` |
-| `DIRECT_API_MODE` | yes | `simulator`, `sandbox` or `production`; anything but `production` shows the «Тестовый режим» banner |
+| `DIRECT_API_MODE` | yes | `simulator` or `production`; `simulator` shows the «Тестовый режим» banner |
+| `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | in `production` | Yandex OAuth app «для авторизации пользователей» (not the debug app); redirect URI `<APP_URL>/api/direct/oauth/callback` |
+| `TOKEN_ENCRYPTION_KEY` | in `production` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts Direct OAuth tokens, same value in worker and web |
+| `APP_URL` | in `production` | Public URL of the app; the OAuth redirect URI is built from it |
 | `AUTH_URL` / `AUTH_TRUST_HOST` | read by Auth.js | Public URL of the app; or `AUTH_TRUST_HOST=true` behind a trusted proxy |
 | `AUTH_TEST_LOGIN` | no (off by default) | `enabled` adds an email-only login for e2e. Never set it on a real stand; it is refused with `DIRECT_API_MODE=production` |
 
 A missing or invalid required variable stops the server at startup with the list of problems. Sessions are signed
 JWT cookies valid for 30 days since the last visit (HttpOnly, SameSite=Lax, Secure in production builds).
-In `DIRECT_API_MODE=simulator` the wizard's «Подключите Яндекс Директ» step skips OAuth.
+In `DIRECT_API_MODE=simulator` the wizard's «Подключите Яндекс Директ» step skips OAuth. In `production` it sends the
+owner to Yandex (`/api/direct/oauth/start`) and stores the encrypted tokens in the callback.
+
+### Direct contract tests (`pnpm test:contract`)
+
+They run against the production Direct API in a dedicated test account (the sandbox is gone), only before a release or
+on request:
+
+```bash
+set -a; source .env.local; set +a   # DIRECT_CONTRACT_TOKEN, DIRECT_CONTRACT_LOGIN
+pnpm test:contract
+```
+
+The token comes from the debug OAuth app «Импульс» (type «Для доступа к API или отладки»):
+`https://oauth.yandex.ru/authorize?response_type=token&client_id=<debug ClientID>` under the test account. Until
+Yandex approves the application's API access request the run stops with «заявка на доступ к API Директа не одобрена».
+See `docs/testing.md` for the safety rules.
 
 `GET /health` returns 200, or 503 `{ code, message, stale }` when budget guard, reconciliation or the dispatcher
 have not completed for 2 hours.

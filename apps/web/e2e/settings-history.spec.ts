@@ -5,6 +5,10 @@ test("changing show hours goes to every campaign and can be rolled back from the
   await launchNewBusiness(page, "hours");
 
   await page.getByRole("link", { name: "Настройки" }).click();
+  // «Сайт»: the owner's own site, no mini-site form (the mini-site is out of the MVP).
+  await expect(page.getByText("Объявления ведут на ваш сайт:")).toBeVisible();
+  await expect(page.getByRole("link", { name: "https://nogotok.example/" })).toBeVisible();
+  await expect(page.getByTestId("minisite-form")).toHaveCount(0);
   const schedule = page.getByTestId("schedule-section");
   await expect(schedule).toContainText("Сейчас: Пн–Вс 10:00–20:00");
   await choose(page, "Показывать до", "до 21:00");

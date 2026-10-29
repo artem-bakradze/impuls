@@ -1,4 +1,4 @@
-import type { Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
+import type { Channel, Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
 import { PlatformError } from "../contract";
 import type { ChangeArea, DailyStatRow, ModerationStatus, PlatformAd, PlatformCampaign } from "../contract";
 import { mapDirectError } from "./errors";
@@ -37,8 +37,8 @@ export type StrategyInput =
   | { strategyId: typeof STRATEGY_WB_MAXIMUM_CLICKS; weeklyLimit: Kopecks }
   | ({ strategyId: typeof STRATEGY_AVERAGE_CPA; weeklyLimit: Kopecks } & AverageCpaParams);
 
-/** Builds `TextCampaign.BiddingStrategy.Search`. */
-export const buildSearchStrategy = (input: StrategyInput): JsonRecord => {
+/** Builds one side (`Search` or `Network`) of `TextCampaign.BiddingStrategy`; both sides use the same shape. */
+export const buildSideStrategy = (input: StrategyInput): JsonRecord => {
   if (input.strategyId === STRATEGY_WB_MAXIMUM_CLICKS) {
     return {
       BiddingStrategyType: STRATEGY_WB_MAXIMUM_CLICKS,
@@ -55,14 +55,81 @@ export const buildSearchStrategy = (input: StrategyInput): JsonRecord => {
   };
 };
 
+const SERVING_OFF = { BiddingStrategyType: "SERVING_OFF" };
+
+/** A direction shows on one channel only: the other side of the campaign is switched off. */
+export const buildBiddingStrategy = (channel: Channel, input: StrategyInput): JsonRecord =>
+  channel === "search"
+    ? { Search: buildSideStrategy(input), Network: SERVING_OFF }
+    : { Search: SERVING_OFF, Network: buildSideStrategy(input) };
+
+/** Which side of `BiddingStrategy` is serving; the other one is `SERVING_OFF`. */
+export const servingChannel = (raw: JsonRecord): Channel => {
+  const strategy = record(record(raw.TextCampaign).BiddingStrategy);
+  return text(record(strategy.Search).BiddingStrategyType) === "SERVING_OFF" ? "network" : "search";
+};
+
+const servingStrategy = (raw: JsonRecord): JsonRecord => {
+  const strategy = record(record(raw.TextCampaign).BiddingStrategy);
+  return record(servingChannel(raw) === "search" ? strategy.Search : strategy.Network);
+};
+
+// --- Schedule ---
+
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
+
 /**
- * Campaigns are search-only for now: the contract has no channel, so the network part is switched off.
- * Directions with the "Сайты-партнёры" channel need a contract extension (raise with the spec owner).
+ * Builds `TimeTargeting` from a display schedule such as "Пн–Пт 10:00–22:00" or "10:00–22:00" (every day).
+ * Each `Schedule.Items` entry is "<day 1–7>,<24 bid percentages>"; 0 switches the hour off, 100 keeps the bid.
+ * VERIFY: item format against the contract test (Direct docs: Campaigns.add, TimeTargeting).
  */
-export const buildBiddingStrategy = (input: StrategyInput): JsonRecord => ({
-  Search: buildSearchStrategy(input),
-  Network: { BiddingStrategyType: "SERVING_OFF" },
-});
+export const buildTimeTargeting = (schedule: string): JsonRecord => {
+  const match = /^(?:(Пн|Вт|Ср|Чт|Пт|Сб|Вс)[–-](Пн|Вт|Ср|Чт|Пт|Сб|Вс)\s+)?(\d{2}):00[–-](\d{2}):00$/u.exec(schedule.trim());
+  if (!match) {
+    throw new PlatformError("INVALID_SCHEDULE", `Unsupported schedule format: ${schedule}`, false);
+  }
+  const [, fromDay, toDay, fromHour, toHour] = match;
+  const first = fromDay ? WEEKDAYS.indexOf(fromDay as (typeof WEEKDAYS)[number]) : 0;
+  const last = toDay ? WEEKDAYS.indexOf(toDay as (typeof WEEKDAYS)[number]) : 6;
+  const open = Number(fromHour);
+  const close = Number(toHour);
+  if (first > last || open >= close || close > 24) {
+    throw new PlatformError("INVALID_SCHEDULE", `Unsupported schedule range: ${schedule}`, false);
+  }
+  const items = WEEKDAYS.map((_, day) => {
+    const on = day >= first && day <= last;
+    const hours = Array.from({ length: 24 }, (_, hour) => (on && hour >= open && hour < close ? 100 : 0));
+    return [day + 1, ...hours].join(",");
+  });
+  return { Schedule: { Items: items }, ConsiderWorkingWeekends: "YES" };
+};
+
+// --- Landing pages ---
+
+/**
+ * Adds the service's UTM tags to the landing URL. Direct substitutes `{campaign_id}` and `{ad_id}` when the ad is
+ * clicked, so leads in Metrica are matched to the direction and the ad (platform-integration spec).
+ */
+export const withUtm = (landingUrl: string): string => {
+  let url: URL;
+  try {
+    url = new URL(landingUrl);
+  } catch {
+    throw new PlatformError("INVALID_LANDING_URL", `Landing URL is not a valid URL: ${landingUrl}`, false);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new PlatformError("INVALID_LANDING_URL", `Landing URL must be http(s): ${landingUrl}`, false);
+  }
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+    url.searchParams.delete(key);
+  }
+  // Placeholders must stay unescaped, so they are appended as text.
+  const tags = "utm_source=yandex&utm_medium=cpc&utm_campaign={campaign_id}&utm_content={ad_id}";
+  return `${url.origin}${url.pathname}${url.search ? `${url.search}&` : "?"}${tags}${url.hash}`;
+};
+
+/** Network groups without phrases are shown by autotargeting. VERIFY: keyword text against the contract test. */
+export const AUTOTARGETING_KEYWORD = "---autotargeting";
 
 export const buildSettings = (siteMonitoring: boolean): JsonRecord[] => [
   { Option: "ENABLE_SITE_MONITORING", Value: siteMonitoring ? "YES" : "NO" },
@@ -95,9 +162,9 @@ export const campaignStateToStatus = (state: string): ObjectStatus =>
  */
 export const parseCampaign = (raw: JsonRecord): PlatformCampaign => {
   const textCampaign = record(raw.TextCampaign);
-  const search = record(record(textCampaign.BiddingStrategy).Search);
-  const strategyId = text(search.BiddingStrategyType);
-  const params = strategyId === STRATEGY_AVERAGE_CPA ? record(search.AverageCpa) : record(search.WbMaximumClicks);
+  const serving = servingStrategy(raw);
+  const strategyId = text(serving.BiddingStrategyType);
+  const params = strategyId === STRATEGY_AVERAGE_CPA ? record(serving.AverageCpa) : record(serving.WbMaximumClicks);
   const limitMicros = num(params.WeeklySpendLimit);
   const monitoring = records(textCampaign.Settings).find((s) => s.Option === "ENABLE_SITE_MONITORING");
   return {
@@ -112,8 +179,7 @@ export const parseCampaign = (raw: JsonRecord): PlatformCampaign => {
 
 /** Current AVERAGE_CPA parameters, needed to rebuild the strategy when only the limit changes. */
 export const parseAverageCpaParams = (raw: JsonRecord): AverageCpaParams | null => {
-  const search = record(record(record(raw.TextCampaign).BiddingStrategy).Search);
-  const params = record(search.AverageCpa);
+  const params = record(servingStrategy(raw).AverageCpa);
   const averageCpa = num(params.AverageCpa);
   const goalId = num(params.GoalId);
   return averageCpa === null || goalId === null ? null : { averageCpa: microsToKopecks(averageCpa), goalId };

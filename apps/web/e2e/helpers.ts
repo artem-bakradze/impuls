@@ -26,10 +26,11 @@ export const next = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Дальше" }).click();
 };
 
-/** Steps 1–3 of the wizard with a Yandex Maps link only. */
+/** Steps 1–3 of the wizard with the owner's site (the ads' landing page) and a Yandex Maps link. */
 export const fillFirstSteps = async (page: Page): Promise<void> => {
   await expectStep(page, 1, "Где вас найти?");
   await expect(page.getByRole("button", { name: "Дальше" })).toBeDisabled();
+  await page.getByLabel("Ваш сайт").fill("https://nogotok.example/");
   await page.getByLabel("Организация в Яндекс Картах").fill("https://yandex.ru/maps/org/nogotok/123");
   await next(page);
 

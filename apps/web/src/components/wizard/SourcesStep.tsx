@@ -9,7 +9,7 @@ export function SourcesStep({ draft, onChange }: StepProps) {
   return (
     <Flex vertical gap={16}>
       <Typography.Paragraph style={{ margin: 0 }}>
-        Укажите, где о вас можно прочитать, — хватит одного варианта. Можно просто рассказать своими словами.
+        Укажите адрес вашего сайта — на него будет вести реклама. Ссылки на Яндекс Карты и ВКонтакте и рассказ своими словами помогут нам лучше понять бизнес.
       </Typography.Paragraph>
       <label>
         <Typography.Text strong>Ваш сайт</Typography.Text>

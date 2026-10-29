@@ -25,3 +25,6 @@ export * from "./email";
 export * from "./account";
 export * from "./minisite-store";
 export * from "./photos";
+export * from "./direct-platform";
+export * from "./pages";
+export type { CardDraft, CardFacts, Creatives } from "@impuls/agent";

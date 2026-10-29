@@ -1,3 +1,4 @@
+import { TemplateCreativeEngine } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { SimulatedPlatform } from "@impuls/platforms";
 import type { AdTruth } from "@impuls/platforms";
@@ -74,6 +75,7 @@ export class SimulationDriver {
       executor: this.executor,
       platformFor: () => this.platform,
       agent: options.agent,
+      creatives: new TemplateCreativeEngine(),
     };
   }
 
@@ -94,6 +96,7 @@ export class SimulationDriver {
       csoSource: input.csoSource,
       autonomy: "auto",
       miniSite: null,
+      leadGoalId: "sim-goal-lead",
       weeklySummaryEnabled: true,
       card: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "10:00–22:00", advantages: ["Работаем до 22:00"] },
     };
@@ -102,9 +105,12 @@ export class SimulationDriver {
     for (const direction of input.directions) {
       const campaign = await this.platform.createCampaign({
         name: `[Импульс] ${direction.name}`,
+        channel: "search",
         weeklyLimit: rubles(direction.weeklyLimitRub),
         strategyId: "WB_MAXIMUM_CLICKS",
         siteMonitoring: true,
+        targeting: { city: "Москва", keywords: [direction.name.toLowerCase()], negativeKeywords: [] },
+        schedule: "Пн–Вс 10:00–22:00",
       });
       const directionId = `${input.id}-d${n++}`;
       await this.store.saveDirection({
@@ -127,7 +133,7 @@ export class SimulationDriver {
       let m = 1;
       for (const ad of direction.ads) {
         this.pendingTruths.push(ad.truth);
-        const platformAd = await this.platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.title });
+        const platformAd = await this.platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.title, landingUrl: "https://example.com/" });
         await this.store.saveAd({
           id: `${directionId}-a${m++}`,
           directionId,

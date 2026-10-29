@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Divider, Flex, Typography } from "antd";
-import { draftAds, hasOwnSite } from "@/lib/onboarding";
+import { hasOwnSite } from "@/lib/onboarding";
 import type { AdDraft } from "@/lib/onboarding";
 import { formatRub } from "@/lib/format";
 import { AdPreview } from "./AdPreview";
@@ -15,8 +15,8 @@ const hostOf = (url: string): string => {
   }
 };
 
-export function PreviewStep({ draft, onChange }: StepProps) {
-  const ads = draft.ads ?? draftAds(draft);
+export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps & { onRegenerate: () => void; busy: boolean }) {
+  const ads = draft.ads ?? { search: [], network: [] };
   const domain = hasOwnSite(draft) ? hostOf(draft.sources.siteUrl) : "ваш сайт";
   const total = ads.search.length + ads.network.length;
   const update = (channel: "search" | "network", list: AdDraft[]) => onChange({ ...draft, ads: { ...ads, [channel]: list } });
@@ -45,7 +45,7 @@ export function PreviewStep({ draft, onChange }: StepProps) {
   return (
     <Flex vertical gap={16}>
       <Typography.Paragraph style={{ margin: 0 }}>
-        Мы собрали объявления из вашей карточки. Поправьте текст или удалите лишнее — до запуска их никто не увидит.
+        Мы написали объявления по вашей карточке. Поправьте текст или удалите лишнее — до запуска их никто не увидит.
       </Typography.Paragraph>
       {section("search", "В поиске Яндекса", "Когда человек ищет вашу услугу в Яндексе")}
       <Divider style={{ margin: 0 }} />
@@ -54,8 +54,8 @@ export function PreviewStep({ draft, onChange }: StepProps) {
       <Typography.Text>
         Зона показа: до {draft.card.radiusKm} км от адреса «{draft.card.address}». Бюджет: {formatRub((draft.budget.monthlyBudgetRub ?? 0) * 100)} в месяц.
       </Typography.Text>
-      <Button onClick={() => onChange({ ...draft, ads: draftAds(draft) })} style={{ alignSelf: "flex-start" }}>
-        Собрать объявления заново по карточке
+      <Button onClick={onRegenerate} loading={busy} style={{ alignSelf: "flex-start" }}>
+        Написать объявления заново
       </Button>
     </Flex>
   );

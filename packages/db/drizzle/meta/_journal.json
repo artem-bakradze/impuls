@@ -50,6 +50,13 @@
       "when": 1793200197854,
       "tag": "0006_oval_firebrand",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793265109734,
+      "tag": "0007_direct_production",
+      "breakpoints": true
     }
   ]
 }

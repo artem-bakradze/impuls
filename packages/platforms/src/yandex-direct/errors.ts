@@ -12,8 +12,11 @@ import { PlatformError } from "../contract";
  */
 export const RETRYABLE_DIRECT_ERROR_CODES: ReadonlySet<number> = new Set([52, 506, 1000, 1001, 1002]);
 
-/** 53 "Ошибка авторизации" (invalid/revoked token), 58 "Незавершенная регистрация" (application access not approved). */
-export const AUTH_DIRECT_ERROR_CODES: ReadonlySet<number> = new Set([53, 58]);
+/** 53 "Ошибка авторизации": invalid or revoked token. */
+export const AUTH_DIRECT_ERROR_CODES: ReadonlySet<number> = new Set([53]);
+
+/** 58 "Незавершенная регистрация": the application's API access request is not approved yet — our problem, not the user's. */
+export const APP_NOT_APPROVED_DIRECT_ERROR_CODE = 58;
 
 /** 152 "Недостаточно баллов". Not retried: points recover over time, the scheduler defers work (platform-integration spec). */
 export const POINTS_EXHAUSTED_DIRECT_ERROR_CODE = 152;
@@ -53,6 +56,9 @@ export const mapDirectError = (payload: DirectErrorPayload): PlatformError => {
   const message = describe(payload);
   if (isAdvertiserDataError(payload)) {
     return new PlatformError("ADVERTISER_DATA_REQUIRED", message, false);
+  }
+  if (payload.code === APP_NOT_APPROVED_DIRECT_ERROR_CODE) {
+    return new PlatformError("DIRECT_APP_NOT_APPROVED", message, false);
   }
   if (AUTH_DIRECT_ERROR_CODES.has(payload.code)) {
     return new PlatformError("DIRECT_TOKEN_REVOKED", message, false);

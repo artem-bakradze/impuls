@@ -1,12 +1,8 @@
 import { PlatformError } from "../contract";
 import { mapDirectError, parseDirectErrorBody } from "./errors";
 
-export type DirectMode = "sandbox" | "production";
-
-export const DIRECT_BASE_URLS: Readonly<Record<DirectMode, string>> = {
-  production: "https://api.direct.yandex.com/json/v5/",
-  sandbox: "https://api-sandbox.direct.yandex.com/json/v5/",
-};
+/** Production JSON API v5. The sandbox was shut down by Yandex on 2026-07-15, so there is no other base URL. */
+export const DIRECT_BASE_URL = "https://api.direct.yandex.com/json/v5/";
 
 /** Total attempts for an idempotent request, including the first one (platform-integration spec: at most 5). */
 export const DIRECT_MAX_ATTEMPTS = 5;
@@ -38,8 +34,16 @@ export interface DirectRequestLogEntry {
 
 export type DirectLogger = (entry: DirectRequestLogEntry) => void;
 
+/**
+ * Sees every request before it is sent (throwing blocks it) and every successful result. Used by the
+ * contract-test guard to keep tests away from objects they did not create.
+ */
+export interface DirectRequestGuard {
+  before(service: string, method: string, params: JsonRecord): void;
+  after(service: string, method: string, params: JsonRecord, result: JsonRecord): void;
+}
+
 export interface DirectClientOptions {
-  mode: DirectMode;
   token: string;
   clientLogin?: string;
   fetch?: typeof fetch;
@@ -49,6 +53,7 @@ export interface DirectClientOptions {
   /** Monotonic-ish clock in ms used only for `durationMs`; defaults to `Date.now`. */
   clock?: () => number;
   maxReportPolls?: number;
+  guard?: DirectRequestGuard;
 }
 
 export type JsonRecord = Record<string, unknown>;
@@ -90,10 +95,7 @@ export class DirectClient {
     if (!options.token) {
       throw new Error("Yandex Direct token is required");
     }
-    if (options.mode !== "sandbox" && options.mode !== "production") {
-      throw new Error(`Unknown Yandex Direct API mode: ${String(options.mode)}`);
-    }
-    this.baseUrl = DIRECT_BASE_URLS[options.mode];
+    this.baseUrl = DIRECT_BASE_URL;
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.sleep = options.sleep ?? realSleep;
     this.clock = options.clock ?? Date.now;
@@ -119,9 +121,10 @@ export class DirectClient {
    * can re-check the current state before deciding to repeat them.
    */
   async call(service: string, method: string, params: JsonRecord, idempotent: boolean): Promise<JsonRecord> {
+    this.options.guard?.before(service, method, params);
     const url = `${this.baseUrl}${service}`;
     const body = JSON.stringify({ method, params });
-    return this.withRetry(service, method, idempotent, async () => {
+    const result = await this.withRetry<JsonRecord>(service, method, idempotent, async () => {
       const response = await this.fetchImpl(url, { method: "POST", headers: this.headers(), body });
       const meta = this.meta(response);
       const parsed = parseJson(await response.text());
@@ -140,6 +143,8 @@ export class DirectClient {
       }
       return { ...meta, value: parsed.result };
     });
+    this.options.guard?.after(service, method, params, result);
+    return result;
   }
 
   /**
@@ -147,6 +152,7 @@ export class DirectClient {
    * waiting `retryIn` seconds, at most `maxReportPolls` times; then the call fails explicitly.
    */
   async report(params: JsonRecord): Promise<string> {
+    this.options.guard?.before("reports", "get", params);
     const url = `${this.baseUrl}reports`;
     const body = JSON.stringify({ params });
     const headers = this.headers({ processingMode: "auto", returnMoneyInMicros: "false" });

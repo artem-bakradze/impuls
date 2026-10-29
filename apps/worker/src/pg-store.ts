@@ -51,6 +51,7 @@ export class PgStore implements Store {
       autonomy: row.autonomy,
       card: row.card as BusinessRecord["card"],
       miniSite: (row.miniSite as BusinessRecord["miniSite"]) ?? null,
+      leadGoalId: row.leadGoalId,
       weeklySummaryEnabled: row.weeklySummaryEnabled,
     };
   }
@@ -71,6 +72,7 @@ export class PgStore implements Store {
       autonomy: b.autonomy,
       card: b.card,
       miniSite: b.miniSite,
+      leadGoalId: b.leadGoalId,
       weeklySummaryEnabled: b.weeklySummaryEnabled,
     };
     await this.db.insert(schema.businesses).values(values).onConflictDoUpdate({ target: schema.businesses.id, set: values });

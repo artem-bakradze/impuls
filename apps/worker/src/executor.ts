@@ -1,7 +1,7 @@
 import { guard, toLocalDate } from "@impuls/core";
 import type { Actor, Command } from "@impuls/core";
 import { PlatformError } from "@impuls/platforms";
-import type { AdPlatform, PlatformAd, PlatformCampaign } from "@impuls/platforms";
+import type { AdPlatform, LeadGoal, PlatformAd, PlatformCampaign } from "@impuls/platforms";
 import { publishMiniSite, renderMiniSite } from "@impuls/minisite";
 import type { MiniSiteCard, MiniSiteStore } from "@impuls/minisite";
 import type { Clock } from "./clock";
@@ -197,7 +197,8 @@ export class CommandExecutor {
       outcome: null,
     });
     try {
-      const after = await this.apply(request.businessId, target, command, platform, view.today, request.actor);
+      const leadGoal = view.business.leadGoalId === null ? null : { goalId: view.business.leadGoalId, targetCostPerLead: view.cso };
+      const after = await this.apply(request.businessId, target, command, platform, view.today, request.actor, leadGoal);
       await store.updateChange(entry.id, { status: "applied", after });
       return verdict.kind === "clamp"
         ? { status: "clamped", entryId: entry.id, command, message: verdict.reason.message }
@@ -216,6 +217,7 @@ export class CommandExecutor {
     platform: AdPlatform,
     today: string,
     actor: Actor,
+    leadGoal: LeadGoal | null,
   ): Promise<Snapshot> {
     const { store } = this.deps;
     const saveCampaign = async (record: DirectionRecord, campaign: PlatformCampaign, patch: Partial<DirectionRecord> = {}) => {
@@ -237,7 +239,8 @@ export class CommandExecutor {
       }
       case "SetStrategy": {
         if (target.kind !== "direction") break;
-        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { strategyId: command.strategyId });
+        // The guard has already refused lead-paying strategies without a goal; the ЦСО is the current one.
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { strategyId: command.strategyId, ...(leadGoal && { leadGoal }) });
         return saveCampaign(target.record, campaign, { lastStrategyChangeOn: today });
       }
       case "PauseDirection":

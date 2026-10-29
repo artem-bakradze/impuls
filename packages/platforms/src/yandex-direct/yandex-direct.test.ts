@@ -45,8 +45,8 @@ const setup = (responses: FakeResponse[], extra: Partial<YandexDirectPlatformOpt
     );
   };
   const platform = new YandexDirectPlatform({
-    mode: "sandbox",
     token: TOKEN,
+    submitAdsForModeration: true,
     fetch: fakeFetch,
     logger: (entry) => logs.push(entry),
     now: () => new Date("2026-10-28T09:00:00Z"),
@@ -84,6 +84,32 @@ const rawAd = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const geoRegions = json({
+  GeoRegions: [
+    { GeoRegionId: 213, GeoRegionName: "Москва", GeoRegionType: "City", ParentId: 1 },
+    { GeoRegionId: 1, GeoRegionName: "Москва и Московская область", GeoRegionType: "Administrative area", ParentId: 3 },
+    { GeoRegionId: 2, GeoRegionName: "Санкт-Петербург", GeoRegionType: "City", ParentId: 10174 },
+  ],
+});
+
+const searchCampaign = {
+  name: "[Импульс] Ремонт",
+  channel: "search" as const,
+  weeklyLimit: 50_000,
+  strategyId: "WB_MAXIMUM_CLICKS",
+  siteMonitoring: true,
+  targeting: { city: "Москва", keywords: ["ремонт квартир", "ремонт квартир москва"], negativeKeywords: ["своими руками", "вакансии"] },
+  schedule: "Пн–Пт 10:00–22:00",
+};
+
+/** Responses for Campaigns.add → AdGroups.add → Keywords.add → Campaigns.get after the dictionary. */
+const createResponses = (keywords: number, campaign: unknown = rawCampaign): FakeResponse[] => [
+  json({ AddResults: [{ Id: 101 }] }),
+  json({ AddResults: [{ Id: 301 }] }),
+  json({ AddResults: Array.from({ length: keywords }, (_, i) => ({ Id: 400 + i })) }),
+  json({ Campaigns: [campaign] }),
+];
+
 const expectPlatformError = async (promise: Promise<unknown>, code: string, retryable?: boolean) => {
   const error = await promise.then(
     () => null,
@@ -109,57 +135,92 @@ describe("money conversion", () => {
 });
 
 describe("request shape", () => {
-  it("sends Campaigns.add to the sandbox with auth headers, micros and site monitoring", async () => {
-    const { platform, requests } = setup([json({ AddResults: [{ Id: 101 }] }), json({ Campaigns: [rawCampaign] })], {
-      clientLogin: "client-login",
-    });
-    const campaign = await platform.createCampaign({ name: "[Импульс] Ремонт", weeklyLimit: 50_000, strategyId: "WB_MAXIMUM_CLICKS", siteMonitoring: true });
+  it("creates a search campaign with one ad group, regions, phrases and schedule", async () => {
+    const { platform, requests } = setup([geoRegions, ...createResponses(2)], { clientLogin: "client-login" });
+    const campaign = await platform.createCampaign(searchCampaign);
 
-    const add = requests[0];
-    expect(add?.url).toBe("https://api-sandbox.direct.yandex.com/json/v5/campaigns");
-    expect(add?.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Accept-Language": "ru", "Client-Login": "client-login" });
-    expect(add?.body).toEqual({
-      method: "add",
-      params: {
-        Campaigns: [
-          {
-            Name: "[Импульс] Ремонт",
-            StartDate: "2026-10-28",
-            TextCampaign: {
-              BiddingStrategy: {
-                Search: { BiddingStrategyType: "WB_MAXIMUM_CLICKS", WbMaximumClicks: { WeeklySpendLimit: 500_000_000 } },
-                Network: { BiddingStrategyType: "SERVING_OFF" },
-              },
-              Settings: [{ Option: "ENABLE_SITE_MONITORING", Value: "YES" }],
-            },
-          },
-        ],
+    expect(requests.map((r) => [r.url.replace("https://api.direct.yandex.com/json/v5/", ""), (r.body as { method: string }).method])).toEqual([
+      ["dictionaries", "get"],
+      ["campaigns", "add"],
+      ["adgroups", "add"],
+      ["keywords", "add"],
+      ["campaigns", "get"],
+    ]);
+    expect(requests[1]?.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Accept-Language": "ru", "Client-Login": "client-login" });
+    const add = (requests[1]?.body as { params: { Campaigns: Record<string, unknown>[] } }).params.Campaigns[0];
+    expect(add).toMatchObject({
+      Name: "[Импульс] Ремонт",
+      StartDate: "2026-10-28",
+      TextCampaign: {
+        BiddingStrategy: {
+          Search: { BiddingStrategyType: "WB_MAXIMUM_CLICKS", WbMaximumClicks: { WeeklySpendLimit: 500_000_000 } },
+          Network: { BiddingStrategyType: "SERVING_OFF" },
+        },
+        Settings: [{ Option: "ENABLE_SITE_MONITORING", Value: "YES" }],
       },
     });
-    expect(requests[1]?.body).toMatchObject({ method: "get", params: { SelectionCriteria: { Ids: [101] } } });
-    expect(campaign).toEqual({
-      id: "101",
-      name: "[Импульс] Ремонт",
-      status: "active",
-      weeklyLimit: 50_000,
-      strategyId: "WB_MAXIMUM_CLICKS",
-      siteMonitoring: true,
+    const items = (add?.TimeTargeting as { Schedule: { Items: string[] } }).Schedule.Items;
+    expect(items).toHaveLength(7);
+    expect(items[0]).toBe(["1", ...Array.from({ length: 24 }, (_, h) => (h >= 10 && h < 22 ? "100" : "0"))].join(","));
+    expect(items[6]).toBe(["7", ...Array.from({ length: 24 }, () => "0")].join(","));
+    expect(requests[2]?.body).toEqual({
+      method: "add",
+      params: { AdGroups: [{ Name: "[Импульс] Ремонт", CampaignId: 101, RegionIds: [213], NegativeKeywords: { Items: ["своими руками", "вакансии"] } }] },
     });
+    expect(requests[3]?.body).toEqual({
+      method: "add",
+      params: { Keywords: [{ AdGroupId: 301, Keyword: "ремонт квартир" }, { AdGroupId: 301, Keyword: "ремонт квартир москва" }] },
+    });
+    expect(campaign).toEqual({ id: "101", name: "[Импульс] Ремонт", status: "active", weeklyLimit: 50_000, strategyId: "WB_MAXIMUM_CLICKS", siteMonitoring: true });
   });
 
-  it("uses the production URL and omits Client-Login when not given", async () => {
-    const { platform, requests } = setup([json({ Campaigns: [rawCampaign] })], { mode: "production" });
+  it("creates a partner-sites campaign with search switched off and autotargeting", async () => {
+    const networkRaw = {
+      ...rawCampaign,
+      TextCampaign: {
+        ...rawCampaign.TextCampaign,
+        BiddingStrategy: { Search: { BiddingStrategyType: "SERVING_OFF" }, Network: { BiddingStrategyType: "WB_MAXIMUM_CLICKS", WbMaximumClicks: { WeeklySpendLimit: 300_000_000 } } },
+      },
+    };
+    const { platform, requests } = setup([geoRegions, ...createResponses(1, networkRaw)]);
+    const campaign = await platform.createCampaign({ ...searchCampaign, channel: "network", weeklyLimit: 30_000, targeting: { city: "Санкт-Петербург", keywords: [], negativeKeywords: [] } });
+    expect(requests[1]?.body).toMatchObject({
+      params: { Campaigns: [{ TextCampaign: { BiddingStrategy: { Search: { BiddingStrategyType: "SERVING_OFF" }, Network: { BiddingStrategyType: "WB_MAXIMUM_CLICKS" } } } }] },
+    });
+    expect(requests[2]?.body).toEqual({ method: "add", params: { AdGroups: [{ Name: "[Импульс] Ремонт", CampaignId: 101, RegionIds: [2] }] } });
+    expect(requests[3]?.body).toEqual({ method: "add", params: { Keywords: [{ AdGroupId: 301, Keyword: "---autotargeting" }] } });
+    expect(campaign).toMatchObject({ weeklyLimit: 30_000, strategyId: "WB_MAXIMUM_CLICKS" });
+  });
+
+  it("refuses a search campaign without phrases before any request", async () => {
+    const { platform, requests } = setup([]);
+    await expectPlatformError(platform.createCampaign({ ...searchCampaign, targeting: { ...searchCampaign.targeting, keywords: [] } }), "KEYWORDS_REQUIRED");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("refuses an unknown city without creating anything", async () => {
+    const { platform, requests } = setup([geoRegions]);
+    await expectPlatformError(platform.createCampaign({ ...searchCampaign, targeting: { ...searchCampaign.targeting, city: "Атлантида" } }), "UNKNOWN_CITY");
+    expect(requests).toHaveLength(1);
+  });
+
+  it("refuses an unsupported schedule before any request", async () => {
+    const { platform, requests } = setup([]);
+    await expectPlatformError(platform.createCampaign({ ...searchCampaign, schedule: "по договорённости" }), "INVALID_SCHEDULE");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("uses the production API; the sandbox is gone", async () => {
+    const { platform, requests } = setup([json({ Campaigns: [rawCampaign] })]);
     await platform.getCampaigns(["101"]);
     expect(requests[0]?.url).toBe("https://api.direct.yandex.com/json/v5/campaigns");
     expect(requests[0]?.headers).not.toHaveProperty("Client-Login");
   });
 
-  it("builds AVERAGE_CPA from the resolver", async () => {
-    const { platform, requests } = setup([json({ AddResults: [{ Id: 101 }] }), json({ Campaigns: [rawCampaign] })], {
-      resolveAverageCpaParams: () => Promise.resolve({ averageCpa: 80_000, goalId: 777 }),
-    });
-    await platform.createCampaign({ name: "c", weeklyLimit: 50_000, strategyId: "AVERAGE_CPA", siteMonitoring: false });
-    expect(requests[0]?.body).toMatchObject({
+  it("builds AVERAGE_CPA from the lead goal", async () => {
+    const { platform, requests } = setup([geoRegions, ...createResponses(2)]);
+    await platform.createCampaign({ ...searchCampaign, strategyId: "AVERAGE_CPA", siteMonitoring: false, leadGoal: { goalId: "777", targetCostPerLead: 80_000 } });
+    expect(requests[1]?.body).toMatchObject({
       params: {
         Campaigns: [
           {
@@ -175,10 +236,23 @@ describe("request shape", () => {
     });
   });
 
-  it("fails fast for AVERAGE_CPA without a resolver", async () => {
+  it("fails fast for AVERAGE_CPA without a lead goal", async () => {
     const { platform, requests } = setup([]);
-    await expectPlatformError(platform.createCampaign({ name: "c", weeklyLimit: 50_000, strategyId: "AVERAGE_CPA", siteMonitoring: true }), "STRATEGY_PARAMS_REQUIRED");
+    await expectPlatformError(platform.createCampaign({ ...searchCampaign, strategyId: "AVERAGE_CPA" }), "LEAD_GOAL_REQUIRED");
     expect(requests).toHaveLength(0);
+  });
+
+  it("switches an existing campaign to AVERAGE_CPA only with a lead goal", async () => {
+    const { platform, requests } = setup([json({ Campaigns: [rawCampaign] })]);
+    await expectPlatformError(platform.updateCampaign("101", { strategyId: "AVERAGE_CPA" }), "LEAD_GOAL_REQUIRED");
+    expect(requests).toHaveLength(1);
+  });
+
+  it("updates the schedule", async () => {
+    const { platform, requests } = setup([json({ UpdateResults: [{ Id: 101 }] }), json({ Campaigns: [rawCampaign] })]);
+    await platform.updateCampaign("101", { schedule: "09:00–18:00" });
+    const items = (requests[0]?.body as { params: { Campaigns: { TimeTargeting: { Schedule: { Items: string[] } } }[] } }).params.Campaigns[0]?.TimeTargeting.Schedule.Items;
+    expect(items?.[6]).toBe(["7", ...Array.from({ length: 24 }, (_, h) => (h >= 9 && h < 18 ? "100" : "0"))].join(","));
   });
 
   it("updates the weekly limit keeping the strategy, then suspends", async () => {
@@ -193,7 +267,15 @@ describe("request shape", () => {
       method: "update",
       params: {
         Campaigns: [
-          { Id: 101, TextCampaign: { BiddingStrategy: { Search: { BiddingStrategyType: "WB_MAXIMUM_CLICKS", WbMaximumClicks: { WeeklySpendLimit: 700_000_000 } } } } },
+          {
+            Id: 101,
+            TextCampaign: {
+              BiddingStrategy: {
+                Search: { BiddingStrategyType: "WB_MAXIMUM_CLICKS", WbMaximumClicks: { WeeklySpendLimit: 700_000_000 } },
+                Network: { BiddingStrategyType: "SERVING_OFF" },
+              },
+            },
+          },
         ],
       },
     });
@@ -201,24 +283,63 @@ describe("request shape", () => {
     expect(campaign.status).toBe("paused");
   });
 
-  it("creates an ad in the resolved group and sends it to moderation", async () => {
-    const { platform, requests } = setup(
-      [json({ AddResults: [{ Id: 201 }] }), json({ ModerateResults: [{ Id: 201 }] }), json({ Ads: [rawAd({ Status: "MODERATION" })] })],
-      { resolveAdTarget: () => Promise.resolve({ adGroupId: "301", href: "https://example.ru" }) },
-    );
-    const ad = await platform.createAd({ campaignId: "101", title: "Ремонт квартир", text: "Быстро и недорого" });
-    expect(requests[0]?.url).toBe("https://api-sandbox.direct.yandex.com/json/v5/ads");
-    expect(requests[0]?.body).toEqual({
+  it("creates an ad in the campaign's group with UTM tags and sends it to moderation", async () => {
+    const { platform, requests } = setup([
+      json({ AdGroups: [{ Id: 301 }] }),
+      json({ AddResults: [{ Id: 201 }] }),
+      json({ ModerateResults: [{ Id: 201 }] }),
+      json({ Ads: [rawAd({ Status: "MODERATION" })] }),
+    ]);
+    const ad = await platform.createAd({ campaignId: "101", title: "Ремонт квартир", text: "Быстро и недорого", landingUrl: "https://example.ru/remont?city=msk&utm_source=old" });
+    expect(requests[0]?.body).toEqual({ method: "get", params: { SelectionCriteria: { CampaignIds: [101] }, FieldNames: ["Id"] } });
+    expect(requests[1]?.url).toBe("https://api.direct.yandex.com/json/v5/ads");
+    expect(requests[1]?.body).toEqual({
       method: "add",
-      params: { Ads: [{ AdGroupId: 301, TextAd: { Title: "Ремонт квартир", Text: "Быстро и недорого", Href: "https://example.ru", Mobile: "NO" } }] },
+      params: {
+        Ads: [
+          {
+            AdGroupId: 301,
+            TextAd: {
+              Title: "Ремонт квартир",
+              Text: "Быстро и недорого",
+              Href: "https://example.ru/remont?city=msk&utm_source=yandex&utm_medium=cpc&utm_campaign={campaign_id}&utm_content={ad_id}",
+              Mobile: "NO",
+            },
+          },
+        ],
+      },
     });
-    expect(requests[1]?.body).toEqual({ method: "moderate", params: { SelectionCriteria: { Ids: [201] } } });
+    expect(requests[2]?.body).toEqual({ method: "moderate", params: { SelectionCriteria: { Ids: [201] } } });
     expect(ad).toMatchObject({ id: "201", campaignId: "101", status: "active", moderation: "pending", rejectionReason: null });
   });
 
-  it("fails fast when creating an ad without a target resolver", async () => {
-    const { platform } = setup([]);
-    await expectPlatformError(platform.createAd({ campaignId: "101", title: "t", text: "x" }), "AD_TARGET_REQUIRED");
+  it("leaves new ads as drafts when moderation is off (contract tests)", async () => {
+    const { platform, requests } = setup([json({ AdGroups: [{ Id: 301 }] }), json({ AddResults: [{ Id: 201 }] }), json({ Ads: [rawAd({ Status: "DRAFT" })] })], {
+      submitAdsForModeration: false,
+    });
+    await platform.createAd({ campaignId: "101", title: "t", text: "x", landingUrl: "https://example.ru" });
+    expect(requests.map((r) => (r.body as { method: string }).method)).toEqual(["get", "add", "get"]);
+  });
+
+  it("refuses a landing URL that is not http(s) before any request", async () => {
+    const { platform, requests } = setup([]);
+    await expectPlatformError(platform.createAd({ campaignId: "101", title: "t", text: "x", landingUrl: "javascript:alert(1)" }), "INVALID_LANDING_URL");
+    expect(requests).toHaveLength(0);
+  });
+
+  it("lets a request guard block a call before it is sent", async () => {
+    const { platform, requests } = setup([], {
+      guard: {
+        before: (service, method) => {
+          if (method === "moderate") {
+            throw new Error(`blocked ${service}.${method}`);
+          }
+        },
+        after: () => undefined,
+      },
+    });
+    await expect(platform.client.call("ads", "moderate", { SelectionCriteria: { Ids: [1] } }, false)).rejects.toThrow("blocked ads.moderate");
+    expect(requests).toHaveLength(0);
   });
 
   it("maps ad state and moderation", async () => {
@@ -251,7 +372,7 @@ describe("request shape", () => {
       }),
     ]);
     const result = await platform.checkChanges(["101"], new Date("2026-10-28T08:00:00.123Z"));
-    expect(requests[0]?.url).toBe("https://api-sandbox.direct.yandex.com/json/v5/changes");
+    expect(requests[0]?.url).toBe("https://api.direct.yandex.com/json/v5/changes");
     expect(requests[0]?.body).toEqual({ method: "checkCampaigns", params: { Timestamp: "2026-10-28T08:00:00Z" } });
     expect(result).toEqual({ checkedAt: new Date("2026-10-28T09:00:05Z"), campaigns: [{ campaignId: "101", areas: ["SELF", "STAT"] }] });
   });
@@ -289,7 +410,7 @@ describe("reports", () => {
     const rows = await platform.getStats(["101"], "2026-10-26", "2026-10-27");
     expect(rows).toHaveLength(2);
     expect(requests).toHaveLength(3);
-    expect(requests[0]?.url).toBe("https://api-sandbox.direct.yandex.com/json/v5/reports");
+    expect(requests[0]?.url).toBe("https://api.direct.yandex.com/json/v5/reports");
     expect(requests[0]?.headers).toMatchObject({ processingMode: "auto", returnMoneyInMicros: "false", Authorization: `Bearer ${TOKEN}` });
     expect(requests[0]?.body).toMatchObject({
       params: {
@@ -353,8 +474,8 @@ describe("retry policy", () => {
     const logs: DirectRequestLogEntry[] = [];
     let calls = 0;
     const platform = new YandexDirectPlatform({
-      mode: "sandbox",
       token: TOKEN,
+      submitAdsForModeration: true,
       logger: (e) => logs.push(e),
       sleep: () => Promise.resolve(),
       fetch: () => {
@@ -390,7 +511,7 @@ describe("retry policy", () => {
 describe("error mapping", () => {
   it.each([
     [53, "Ошибка авторизации", "", "DIRECT_TOKEN_REVOKED", false],
-    [58, "Незавершенная регистрация", "", "DIRECT_TOKEN_REVOKED", false],
+    [58, "Незавершенная регистрация", "", "DIRECT_APP_NOT_APPROVED", false],
     [152, "Недостаточно баллов", "", "POINTS_EXHAUSTED", false],
     [8800, "Объект не найден", "", "NOT_FOUND", false],
     [8000, "Некорректный запрос", "Необходимо заполнить данные рекламодателя для маркировки", "ADVERTISER_DATA_REQUIRED", false],
@@ -402,19 +523,15 @@ describe("error mapping", () => {
 
   it("maps per-object errors in action results", async () => {
     const { platform } = setup([
+      geoRegions,
       json({ AddResults: [{ Errors: [{ Code: 6000, Message: "Неконсистентное состояние объекта", Details: "Не заполнены данные для маркировки рекламы (ОРД)" }] }] }),
     ]);
-    await expectPlatformError(
-      platform.createCampaign({ name: "c", weeklyLimit: 50_000, strategyId: "WB_MAXIMUM_CLICKS", siteMonitoring: true }),
-      "ADVERTISER_DATA_REQUIRED",
-    );
+    await expectPlatformError(platform.createCampaign(searchCampaign), "ADVERTISER_DATA_REQUIRED");
   });
 
   it("maps generic per-object errors by code", async () => {
-    const { platform } = setup([json({ AddResults: [{ Errors: [{ Code: 5001, Message: "Превышена допустимая длина" }] }] })], {
-      resolveAdTarget: () => Promise.resolve({ adGroupId: "301", href: "https://example.ru" }),
-    });
-    await expectPlatformError(platform.createAd({ campaignId: "101", title: "t", text: "x" }), "DIRECT_ERROR_5001", false);
+    const { platform } = setup([json({ AdGroups: [{ Id: 301 }] }), json({ AddResults: [{ Errors: [{ Code: 5001, Message: "Превышена допустимая длина" }] }] })]);
+    await expectPlatformError(platform.createAd({ campaignId: "101", title: "t", text: "x", landingUrl: "https://example.ru" }), "DIRECT_ERROR_5001", false);
   });
 });
 
@@ -439,6 +556,6 @@ describe("request journal", () => {
   });
 
   it("refuses to start without a token", () => {
-    expect(() => new YandexDirectPlatform({ mode: "sandbox", token: "", logger: () => undefined })).toThrow(/token is required/);
+    expect(() => new YandexDirectPlatform({ token: "", submitAdsForModeration: true, logger: () => undefined })).toThrow(/token is required/);
   });
 });

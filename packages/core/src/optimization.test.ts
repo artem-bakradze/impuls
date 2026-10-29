@@ -54,6 +54,8 @@ const baseState = (overrides: Partial<GuardState> = {}): GuardState => ({
   directionStats14: new Map([["d1", stats(5_200, 10)]]),
   userDecisions: [],
   strategyCatalog: ["WB_MAXIMUM_CLICKS", "AVERAGE_CPA"],
+  leadGoalStrategies: ["AVERAGE_CPA"],
+  hasLeadGoal: true,
   minWeeklyLimit: rubles(300),
   activeExperiments: 0,
   ...overrides,
@@ -125,6 +127,15 @@ describe("guard", () => {
       kind: "reject",
       reason: { code: "STRATEGY_COOLDOWN" },
     });
+  });
+
+  it("rejects paying for leads when the business has no goal to count them", () => {
+    const noGoal = baseState({ hasLeadGoal: false });
+    expect(guard(noGoal, { type: "SetStrategy", directionId: "d1", strategyId: "AVERAGE_CPA" }, "agent")).toMatchObject({
+      kind: "reject",
+      reason: { code: "NO_LEAD_GOAL", message: "нет цели для подсчёта обращений" },
+    });
+    expect(guard(noGoal, { type: "SetStrategy", directionId: "d1", strategyId: "WB_MAXIMUM_CLICKS" }, "agent")).toMatchObject({ kind: "allow" });
   });
 
   it("does not pause the last active ad without a replacement", () => {

@@ -19,3 +19,4 @@ export const createPool = (url: string = databaseUrl()): pg.Pool => new pg.Pool(
 
 export const createDb = (pool: pg.Pool) => drizzle(pool, { schema });
 export type Db = ReturnType<typeof createDb>;
+export { decryptToken, encryptToken, parseTokenKey } from "./token-crypto";

@@ -6,11 +6,23 @@ import { enqueueAgentEvent } from "./agent-turn";
 import type { JobContext } from "./context";
 
 export interface LaunchPlan {
-  directions: { name: string; channel: Channel; weeklyLimitRub: number; ads: { title: string; text: string }[] }[];
+  /** Landing page every ad leads to (the owner's site); the platform adapter adds UTM tags. */
+  landingUrl: string;
+  /** City of the business, the zone the campaigns are shown in (replace-direct-sandbox decision 6). */
+  city: string;
+  directions: {
+    name: string;
+    channel: Channel;
+    weeklyLimitRub: number;
+    /** Search phrases; required for the search channel. */
+    keywords: string[];
+    negativeKeywords: string[];
+    ads: { title: string; text: string }[];
+  }[];
 }
 
 export class LaunchError extends Error {
-  constructor(readonly code: "ALREADY_LAUNCHED" | "EMPTY_PLAN", message: string) {
+  constructor(readonly code: "ALREADY_LAUNCHED" | "EMPTY_PLAN" | "NO_KEYWORDS", message: string) {
     super(message);
   }
 }
@@ -32,6 +44,10 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
   if (plan.directions.length === 0 || plan.directions.some((d) => d.ads.length === 0)) {
     throw new LaunchError("EMPTY_PLAN", "В каждом направлении нужно хотя бы одно объявление");
   }
+  // Checked for the whole plan before anything is created (platform-integration spec).
+  if (plan.directions.some((d) => d.channel === "search" && d.keywords.length === 0)) {
+    throw new LaunchError("NO_KEYWORDS", "Не получилось подобрать поисковые запросы для этой услуги — уточните описание услуги");
+  }
   const platform = ctx.platformFor(businessId);
   const today = toLocalDate(ctx.clock.now(), business.timeZone);
   const strategyId = platform.capabilities().strategies[0]?.id;
@@ -44,9 +60,12 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
     try {
       campaign = await platform.createCampaign({
         name: `[Импульс] ${direction.name}`,
+        channel: direction.channel,
         weeklyLimit: direction.weeklyLimitRub * 100,
         strategyId,
         siteMonitoring: true,
+        targeting: { city: plan.city, keywords: direction.keywords, negativeKeywords: direction.negativeKeywords },
+        schedule: business.card.hours,
       });
     } catch (error) {
       if (error instanceof PlatformError && error.code === "ADVERTISER_DATA_REQUIRED" && directionIds.length === 0) {
@@ -73,7 +92,7 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
       geoRadiusKm: 3,
     });
     for (const ad of direction.ads) {
-      const created = await platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.text });
+      const created = await platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.text, landingUrl: plan.landingUrl });
       await ctx.store.saveAd({
         id: `ad-${randomUUID()}`,
         directionId: id,
