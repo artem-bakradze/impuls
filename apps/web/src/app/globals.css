@@ -5,12 +5,12 @@
 :root {
   --font-sans: var(--font-golos), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-  --bg: #f6f6f8;
+  --bg: #f7f7fa;
   --surface: #ffffff;
-  --surface-2: #fafafb;
-  --surface-3: #f2f2f5;
-  --border: #e7e7ec;
-  --border-strong: #d6d6de;
+  --surface-2: #fafafc;
+  --surface-3: #f2f2f6;
+  --border: #ebebf0;
+  --border-strong: #d9d9e1;
 
   --text: #121217;
   --text-2: #4f4f5c;
@@ -21,6 +21,8 @@
   --accent-soft: #efedfe;
   --accent-ring: rgba(86, 70, 242, 0.18);
   --accent-ink: #3a2cc4;
+  /* The brand gradient: progress, the live parts and the primary action; never under body text. */
+  --grad-accent: linear-gradient(90deg, #5646f2 0%, #7b5cff 55%, #9b7bff 100%);
 
   --success: #0c7c55;
   --success-soft: #e6f5ee;
@@ -31,10 +33,10 @@
 
   --radius-sm: 8px;
   --radius: 12px;
-  --radius-lg: 18px;
+  --radius-lg: 20px;
   --shadow-xs: 0 1px 2px rgba(18, 18, 23, 0.04);
-  --shadow-sm: 0 1px 2px rgba(18, 18, 23, 0.04), 0 2px 8px rgba(18, 18, 23, 0.04);
-  --shadow-md: 0 1px 2px rgba(18, 18, 23, 0.05), 0 8px 24px -6px rgba(18, 18, 23, 0.08);
+  --shadow-sm: 0 1px 1px rgba(18, 18, 23, 0.03), 0 4px 14px -4px rgba(18, 18, 23, 0.06);
+  --shadow-md: 0 1px 2px rgba(18, 18, 23, 0.04), 0 12px 32px -10px rgba(18, 18, 23, 0.12);
   --shadow-lg: 0 2px 4px rgba(18, 18, 23, 0.04), 0 24px 48px -16px rgba(18, 18, 23, 0.18);
 
   --header-h: 60px;
@@ -57,6 +59,27 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+/*
+ * A soft aurora at the top of every screen: light enough to stay behind the content, enough to make the product feel
+ * alive. Fixed, so it does not scroll away with long feeds.
+ */
+/* The page colour is on html only, so the aurora below (z-index −1) is painted above it. */
+body {
+  background: transparent;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 520px;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(600px 280px at 12% -60px, rgba(124, 109, 255, 0.16), transparent 70%),
+    radial-gradient(520px 260px at 88% -40px, rgba(92, 200, 255, 0.13), transparent 70%),
+    radial-gradient(420px 220px at 55% -80px, rgba(255, 140, 200, 0.08), transparent 70%);
 }
 
 a {
@@ -388,6 +411,55 @@ a {
 .day-summary {
   color: var(--text-2);
 }
+/* Day reviews as a timeline: a quiet rail on the left, a dot at each day, newest on top. */
+.day-review {
+  position: relative;
+  padding-left: 28px;
+}
+.day-review::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 22px;
+  bottom: -22px;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(var(--border-strong), var(--border) 70%, transparent);
+}
+.day-review:last-child::before {
+  bottom: 0;
+}
+.day-review > h3 {
+  position: relative;
+}
+.day-review > h3::before {
+  content: "";
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+.day-review ~ .day-review > h3::before {
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+.insight-card {
+  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.insight-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+.insight-card .icon-tile.accent {
+  background: var(--grad-accent);
+  color: #fff;
+}
 
 .divider {
   height: 1px;
@@ -437,25 +509,30 @@ a {
 
 /* ---------- App header & tab bar ---------- */
 
-/* Simulation pult under the header (simulation-mode spec): always in sight, wraps on phones. */
+/*
+ * Simulation pult under the header (simulation-mode spec): one row on a computer — mode, virtual day, the days strip
+ * and the controls in one segmented group; two rows at most on a phone.
+ */
 .sim-bar {
   position: sticky;
-  top: 61px;
+  /* Right under the header and its 1px border. */
+  top: calc(var(--header-h) + 1px);
   z-index: 40;
-  background: #f4f1ff;
-  border-bottom: 1px solid #ddd6fe;
+  background: rgba(247, 245, 255, 0.82);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid rgba(86, 70, 242, 0.12);
 }
 .sim-bar-inner {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 8px 16px;
+  padding: 8px 24px;
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
-}
-.sim-bar-inner .spacer {
-  flex: 1;
+  gap: 16px;
+  min-height: 56px;
+  padding-bottom: 14px;
 }
 .sim-ribbon {
   display: block;
@@ -464,22 +541,69 @@ a {
   overflow: visible;
 }
 .sim-label {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid rgba(86, 70, 242, 0.16);
   font-size: 12.5px;
   font-weight: 600;
   color: var(--accent-ink);
+  white-space: nowrap;
+}
+/* A live dot: it breathes while the virtual time goes and rests on a pause. */
+.sim-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.sim-live[data-moving="true"] {
+  background: var(--accent);
+  animation: sim-live 1.6s var(--ease) infinite;
+}
+@keyframes sim-live {
+  0% {
+    box-shadow: 0 0 0 0 rgba(86, 70, 242, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 7px rgba(86, 70, 242, 0);
+  }
+}
+/* Day and time on top, the speed below: the speed is always visible — without it a slow day looks like a broken one. */
+.sim-time {
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
 }
 .sim-clock {
   font-size: 13.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-/* «Агент разбирает 8-й день…»: the time stands while it shows. */
+.sim-speed {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* «Агент разбирает 8-й день…»: the time stands while it shows, in the place of the days strip. */
 .sim-thinking {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
+  font-weight: 550;
   color: var(--accent-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   animation: sim-thinking 1.6s ease-in-out infinite;
 }
 @keyframes sim-thinking {
@@ -488,20 +612,17 @@ a {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sim-thinking {
+  .sim-thinking,
+  .sim-live[data-moving="true"] {
     animation: none;
   }
 }
-.sim-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-/* Days of the scenario as a strip along the bottom edge of the pult. */
+/* Days of the scenario as a thin strip along the bottom edge of the pult: passed, today, ahead. */
 .sim-strip {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 0 16px 6px;
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 5px;
   display: flex;
   gap: 2px;
 }
@@ -509,16 +630,43 @@ a {
   flex: 1;
   height: 3px;
   border-radius: 2px;
-  background: #ddd6fe;
+  background: rgba(86, 70, 242, 0.14);
+  transition: background 0.3s var(--ease);
 }
 .sim-strip i[data-state="done"] {
-  background: var(--accent);
+  background: var(--grad-accent);
 }
 .sim-strip i[data-state="now"] {
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-ring);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
-.on-narrow {
+.sim-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+/* The main controls as one segmented group, so the row reads as one player, not a heap of buttons. */
+.sim-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.sim-group .ant-btn {
+  border-radius: 9px;
+}
+.sim-icon.ant-btn {
+  width: 32px;
+  border-radius: 10px;
+}
+.on-narrow,
+.off-xl {
   display: none;
 }
 .legend-item {
@@ -548,13 +696,30 @@ a {
   border-radius: 3px;
   padding: 0 2px;
 }
-@media (max-width: 720px) {
-  .sim-bar {
-    top: 57px;
+@media (max-width: 1020px) {
+  .on-xl {
+    display: none;
+  }
+  .off-xl {
+    display: inline;
+  }
+  .sim-label-text {
+    display: none;
   }
   .sim-label {
-    font-size: 11.5px;
-    width: 100%;
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+@media (max-width: 720px) {
+  .sim-bar-inner {
+    padding: 8px 16px 14px;
+    gap: 10px;
+  }
+  .sim-strip {
+    left: 16px;
+    right: 16px;
   }
   .on-wide {
     display: none;
@@ -566,15 +731,24 @@ a {
     grid-template-columns: 1fr;
   }
 }
+/* Narrow phones: «До решения» keeps its icon and its accessible name, so the whole pult stays in one row. */
+@media (max-width: 480px) {
+  .sim-bar-inner {
+    gap: 8px;
+  }
+  .sim-group .off-xl {
+    display: none;
+  }
+}
 
 .app-header {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: saturate(180%) blur(14px);
-  -webkit-backdrop-filter: saturate(180%) blur(14px);
-  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid rgba(18, 18, 23, 0.06);
 }
 .app-header-inner {
   height: var(--header-h);
@@ -585,34 +759,41 @@ a {
   align-items: center;
   gap: 24px;
 }
+/* Sections as one capsule with the current one raised: the place in the product is always obvious. */
 .app-nav {
   display: flex;
-  gap: 4px;
-  margin-right: auto;
+  gap: 2px;
+  margin: 0 auto;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(18, 18, 23, 0.04);
 }
 .app-nav a {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   height: 34px;
-  padding: 0 12px;
-  border-radius: 9px;
+  padding: 0 14px;
+  border-radius: 10px;
   color: var(--text-2);
   text-decoration: none;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 550;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 .app-nav a:hover {
-  background: var(--surface-3);
   color: var(--text);
 }
 .app-nav a[aria-current="page"] {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(18, 18, 23, 0.06), 0 2px 8px -2px rgba(18, 18, 23, 0.08);
+}
+.app-nav a[aria-current="page"] .nav-icon {
+  color: var(--accent);
 }
 .app-nav .nav-icon {
-  font-size: 16px;
+  font-size: 15px;
 }
 .app-header-end {
   margin-left: auto;
@@ -642,6 +823,7 @@ a {
     backdrop-filter: saturate(180%) blur(14px);
     -webkit-backdrop-filter: saturate(180%) blur(14px);
     border-top: 1px solid var(--border);
+    border-radius: 0;
     justify-content: space-around;
   }
   .app-nav a {
@@ -656,6 +838,7 @@ a {
   }
   .app-nav a[aria-current="page"] {
     background: transparent;
+    box-shadow: none;
     color: var(--accent);
   }
   .app-nav .nav-icon {
@@ -891,20 +1074,46 @@ a {
   margin-bottom: 24px;
 }
 .steps-bar > i {
-  height: 4px;
+  position: relative;
+  height: 6px;
   border-radius: 99px;
-  background: var(--border);
-  transition: background 0.4s var(--ease);
+  background: rgba(18, 18, 23, 0.07);
+  overflow: hidden;
 }
-.steps-bar > i[data-state="done"],
-.steps-bar > i[data-state="current"] {
-  background: var(--accent);
+/* Each segment fills from the left with the brand gradient; the current one fills as the step opens. */
+.steps-bar > i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--grad-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.6s var(--ease);
+}
+.steps-bar > i[data-state="done"]::after,
+.steps-bar > i[data-state="current"]::after {
+  transform: scaleX(1);
+}
+.steps-bar > i[data-state="current"]::after {
+  animation: bar-grow 0.7s var(--ease) both;
 }
 .step-head {
   margin-bottom: 20px;
 }
 .step-head .t-h1 {
-  margin-top: 8px;
+  margin-top: 10px;
+}
+/* «Шаг 2 из 6» as a small chip over the title. */
+.step-head .t-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  letter-spacing: 0.06em;
 }
 .step-head .t-lead {
   margin-top: 8px;
@@ -922,7 +1131,7 @@ a {
   gap: 12px;
   padding: 10px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.78);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
   border: 1px solid var(--border);
@@ -1019,7 +1228,7 @@ a {
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease), transform 0.2s var(--ease);
 }
 /* Ant Design's own wrapper styles win over `.choice` alone and press the box to the border. */
 .choice.ant-checkbox-wrapper {
@@ -1027,11 +1236,15 @@ a {
 }
 .choice:hover {
   border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
-.choice[data-checked="true"] {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 3px var(--accent-ring);
+/* Ant Design's checkbox drops `data-checked`, so its own «checked» class is styled the same way. */
+.choice[data-checked="true"],
+.choice.ant-checkbox-wrapper-checked {
+  border-color: rgba(86, 70, 242, 0.55);
+  background: linear-gradient(135deg, #f4f2ff 0%, #ffffff 70%);
+  box-shadow: 0 0 0 3px var(--accent-ring), 0 8px 20px -12px rgba(86, 70, 242, 0.5);
 }
 .choice-icon {
   flex: none;
@@ -1044,8 +1257,12 @@ a {
   background: var(--surface-3);
   color: var(--text-2);
 }
-.choice[data-checked="true"] .choice-icon {
-  background: var(--accent);
+.choice-icon {
+  transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+.choice[data-checked="true"] .choice-icon,
+.choice.ant-checkbox-wrapper-checked .choice-icon {
+  background: var(--grad-accent);
   color: #fff;
 }
 
@@ -1072,23 +1289,35 @@ a {
   color: var(--text-2);
   cursor: pointer;
 }
+.preset {
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease), transform 0.15s var(--ease);
+}
 .preset:hover {
   border-color: var(--border-strong);
   color: var(--text);
+  transform: translateY(-1px);
 }
 .preset[aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  background: var(--accent-soft);
+  border-color: transparent;
+  color: #fff;
+  background: var(--grad-accent);
+  box-shadow: 0 6px 16px -8px rgba(86, 70, 242, 0.6);
 }
 .forecast {
   position: relative;
   overflow: hidden;
   padding: 22px 24px;
   border-radius: 18px;
-  color: #fff;
-  background: radial-gradient(120% 140% at 100% 0%, #7c6dff 0%, #5646f2 45%, #3a2cc4 100%);
-  box-shadow: 0 18px 40px -18px rgba(86, 70, 242, 0.7);
+  color: var(--text);
+  border: 1px solid rgba(86, 70, 242, 0.16);
+  background:
+    radial-gradient(420px 220px at 100% 0%, rgba(124, 109, 255, 0.18), transparent 70%),
+    radial-gradient(300px 180px at 0% 100%, rgba(92, 200, 255, 0.12), transparent 70%),
+    var(--surface);
+  animation: fadeIn 0.4s var(--ease) both;
+}
+.forecast .t-eyebrow {
+  color: var(--accent-ink);
 }
 .forecast .big {
   font-size: 44px;
@@ -1097,13 +1326,13 @@ a {
   line-height: 1;
 }
 .forecast .t-small {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-2);
 }
 .forecast-divider {
   width: 100%;
   margin: 10px 0 4px;
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  border-top: 1px solid rgba(86, 70, 242, 0.14);
 }
 
 /* Generation progress */
@@ -1149,8 +1378,14 @@ li[data-state="active"] .gen-dot {
   animation: spin 0.8s linear infinite;
 }
 li[data-state="done"] .gen-dot {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--grad-accent);
+  border-color: transparent;
+  animation: pop 0.3s var(--ease) both;
+}
+@keyframes pop {
+  from {
+    transform: scale(0.6);
+  }
 }
 @keyframes spin {
   to {
@@ -1315,7 +1550,7 @@ li[data-state="done"] .gen-dot {
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: var(--accent-soft);
+  background: linear-gradient(135deg, #efedfe, #e6f4ff);
   color: var(--accent);
   font-size: 17px;
 }
@@ -1333,16 +1568,23 @@ li[data-state="done"] .gen-dot {
   }
 }
 .kpi {
-  padding: 18px 18px 16px;
+  position: relative;
+  padding: 20px 20px 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-height: 132px;
+  gap: 8px;
+  min-height: 140px;
+  transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
 }
 .kpi .v {
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.04em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
@@ -1351,16 +1593,39 @@ li[data-state="done"] .gen-dot {
   color: var(--text-3);
   line-height: 1.4;
 }
+/* The month's budget: the widest tile, lit by the brand from one corner instead of a solid purple block. */
 .kpi-hero {
   grid-column: span 2;
-  color: #fff;
-  border: 0;
-  background: radial-gradient(120% 160% at 100% 0%, #7c6dff 0%, #5646f2 45%, #3a2cc4 100%);
-  box-shadow: 0 18px 40px -20px rgba(86, 70, 242, 0.75);
+  overflow: hidden;
+  border-color: rgba(86, 70, 242, 0.16);
+  background:
+    radial-gradient(420px 220px at 100% 0%, rgba(124, 109, 255, 0.16), transparent 70%),
+    radial-gradient(300px 180px at 0% 100%, rgba(92, 200, 255, 0.1), transparent 70%),
+    var(--surface);
 }
-.kpi-hero .t-eyebrow,
-.kpi-hero .sub {
-  color: rgba(255, 255, 255, 0.78);
+.kpi-hero .t-eyebrow {
+  color: var(--accent-ink);
+}
+.budget-bar {
+  display: block;
+  height: 8px;
+  margin: 8px 0 2px;
+  border-radius: 999px;
+  background: rgba(86, 70, 242, 0.1);
+  overflow: hidden;
+}
+.budget-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad-accent);
+  transform-origin: left;
+  animation: bar-grow 0.9s var(--ease) both;
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
 }
 .ring {
   --p: 0;
@@ -1516,7 +1781,8 @@ li[data-state="now"] .tl-dot {
   top: 44px;
   bottom: 4px;
   width: 2px;
-  background: var(--border);
+  border-radius: 1px;
+  background: linear-gradient(var(--border-strong), var(--border));
 }
 .feed-item:last-child::before {
   display: none;
@@ -1534,9 +1800,10 @@ li[data-state="now"] .tl-dot {
   box-shadow: var(--shadow-xs);
 }
 .feed-avatar[data-author="service"] {
-  background: var(--accent);
+  background: var(--grad-accent);
   color: #fff;
-  border-color: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 6px 16px -8px rgba(86, 70, 242, 0.6);
 }
 .feed-avatar[data-author="cabinet"] {
   background: var(--warning-soft);
@@ -1545,6 +1812,11 @@ li[data-state="now"] .tl-dot {
 }
 .feed-card {
   padding: 16px 18px;
+  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.feed-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
 }
 .diff {
   display: grid;
@@ -1594,9 +1866,32 @@ li[data-state="now"] .tl-dot {
   font-size: 14.5px;
   font-weight: 550;
 }
+.settings-nav a {
+  position: relative;
+  transition: background 0.2s var(--ease), color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
 .settings-nav a:hover {
-  background: var(--surface-3);
+  background: rgba(18, 18, 23, 0.04);
   color: var(--text);
+}
+/* The section in view is raised like the current tab in the header, with the brand mark on the left. */
+.settings-nav a[aria-current="location"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(18, 18, 23, 0.06), 0 2px 8px -2px rgba(18, 18, 23, 0.08);
+}
+.settings-nav a[aria-current="location"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--grad-accent);
+}
+.settings-nav a[aria-current="location"] > span {
+  color: var(--accent);
 }
 @media (max-width: 900px) {
   .settings-layout {
@@ -1618,6 +1913,13 @@ li[data-state="now"] .tl-dot {
 }
 .settings-section {
   scroll-margin-top: calc(var(--header-h) + 16px);
+}
+/* Under the simulation pult the sticky navigation and the anchors move down by its height. */
+.sim-bar ~ main .settings-nav {
+  top: calc(var(--header-h) + 57px + 24px);
+}
+.sim-bar ~ main .settings-section {
+  scroll-margin-top: calc(var(--header-h) + 57px + 16px);
 }
 .kv {
   display: grid;
@@ -1643,14 +1945,50 @@ li[data-state="now"] .tl-dot {
   }
 }
 .ad-row {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border);
+  position: relative;
+  padding: 16px 12px;
+  margin: 0 -12px;
+  border-radius: 14px;
+  transition: background 0.2s var(--ease);
 }
-.ad-row:last-child {
-  border-bottom: 0;
+/* A straight separator inside the rounded hover area. */
+.ad-row::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+}
+.ad-row:hover {
+  background: var(--surface-2);
+}
+.ad-row:last-child::after {
+  display: none;
 }
 .danger-zone {
   border-color: #f5cfcb;
+}
+
+/* ---------- Ant Design accents ---------- */
+
+/* The primary action carries the brand gradient and lifts a little on hover; disabled stays flat. */
+.ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled) {
+  background-image: var(--grad-accent);
+  border-color: transparent;
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), filter 0.2s var(--ease);
+}
+.ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):hover {
+  filter: brightness(1.06);
+  box-shadow: 0 8px 20px -8px rgba(86, 70, 242, 0.6);
+  transform: translateY(-1px);
+}
+.ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):active {
+  transform: none;
+}
+.ant-segmented {
+  padding: 3px;
 }
 
 /* ---------- Misc ---------- */
@@ -1666,6 +2004,20 @@ pre.snippet {
 }
 .fade-in {
   animation: fadeIn 0.35s var(--ease) both;
+}
+/* Content enters in a short cascade: tiles first, then the feed — calm, under half a second in total. */
+.page > * ,
+.kpis > * {
+  animation: fadeIn 0.45s var(--ease) both;
+}
+.kpis > :nth-child(2) {
+  animation-delay: 0.05s;
+}
+.kpis > :nth-child(3) {
+  animation-delay: 0.1s;
+}
+.kpis > :nth-child(4) {
+  animation-delay: 0.15s;
 }
 @keyframes fadeIn {
   from {

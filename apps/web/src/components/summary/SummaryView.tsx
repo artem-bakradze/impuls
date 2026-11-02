@@ -317,6 +317,10 @@ export function SummaryView({ model }: { model: SummaryModel }) {
                 <span className="t-eyebrow">Потрачено из бюджета месяца</span>
                 <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
                   <span className="v">{formatRub(model.spentMonth)}</span>
+                  {/* The month's budget as a bar (campaign-settings: spend and what is left on the budget bar). */}
+                  <span className="budget-bar" aria-hidden="true">
+                    <i style={{ width: `${model.monthBudget > 0 ? Math.min(100, Math.max(1.5, (model.spentMonth / model.monthBudget) * 100)) : 0}%` }} />
+                  </span>
                   <span className="sub">из {formatRub(model.monthBudget)} — больше не потратим</span>
                   {monthLine ? <span className="sub" data-testid="launch-month">{monthLine}</span> : null}
                 </div>

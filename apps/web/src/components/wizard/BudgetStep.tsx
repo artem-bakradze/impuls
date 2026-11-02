@@ -56,7 +56,7 @@ export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & 
       {plan ? (
         <div className="forecast fade-in">
           <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
-            <span className="t-eyebrow" style={{ color: "rgba(255,255,255,0.75)" }}>
+            <span className="t-eyebrow">
               Сколько потратим
             </span>
             <div style={{ fontWeight: 650, fontSize: 22 }} data-testid="budget-ceiling">

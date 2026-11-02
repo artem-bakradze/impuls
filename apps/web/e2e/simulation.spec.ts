@@ -27,7 +27,7 @@ test("an owner runs the simulation, sees the service decide and goes on to a rea
   await page.waitForURL("**/summary");
 
   const bar = page.getByTestId("simulation-bar");
-  await expect(bar).toContainText("Симуляция — реклама не показывается, время ускорено");
+  await expect(bar).toContainText("Симуляция — реклама не показывается");
   // One mark about ads that are not real: the pult, without the stand banner.
   await expect(page.getByTestId("test-mode-banner")).toHaveCount(0);
   await bar.getByRole("button", { name: "Пауза" }).click();

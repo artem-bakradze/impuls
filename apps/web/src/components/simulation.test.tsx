@@ -165,13 +165,16 @@ describe("simulation pult", () => {
   it("shows the virtual day and the controls", () => {
     render(<SimulationBar initial={status} />);
     expect(screen.getByTestId("simulation-day").textContent).toBe("День 9 из 30 · 14:00");
-    expect(screen.getByText(/Симуляция — реклама не показывается, время ускорено/)).toBeTruthy();
-    for (const name of [/Пауза/, /\+1 день/, /До следующего решения/]) {
+    // The speed is on the pult, not only in the menu: a slow day must not look like a stuck one.
+    expect(screen.getByTestId("simulation-speed").textContent).toBe("1 день = 10 с");
+    expect(screen.getByText(/Симуляция — реклама не показывается/)).toBeTruthy();
+    // Restart is a control of its own, not a hidden menu item.
+    for (const name of [/Пауза/, /\+1 день/, /До следующего решения/, /Начать заново/]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();
     }
-    // The rare actions are in the menu: the speed, «Начать заново» and «Запустить по-настоящему».
+    // The rare actions stay in the labelled menu: the speed and «Запустить по-настоящему».
     fireEvent.click(screen.getByRole("button", { name: /Ещё/ }));
-    for (const text of ["1 день = 10 секунд", "Начать заново", "Запустить по-настоящему"]) {
+    for (const text of ["1 день = 10 секунд", "1 день = 1 минута", "Запустить по-настоящему"]) {
       expect(screen.getByText(text)).toBeTruthy();
     }
   });
@@ -183,8 +186,7 @@ describe("simulation pult", () => {
 
   it("warns before «Начать заново» that the agent may decide otherwise", async () => {
     render(<SimulationBar initial={status} />);
-    fireEvent.click(screen.getByRole("button", { name: /Ещё/ }));
-    fireEvent.click(screen.getByText("Начать заново"));
+    fireEvent.click(screen.getByRole("button", { name: "Начать заново" }));
     expect(await screen.findByText(/рынок будет тем же, но агент может решить иначе/)).toBeTruthy();
   });
 

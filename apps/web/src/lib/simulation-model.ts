@@ -27,6 +27,13 @@ export const SPEED_LABELS: Record<SimulationStatus["speed"], string> = {
   real: "Реальное время",
 };
 
+/** The same speeds on the pult itself: short enough to stay on one line with the controls. */
+export const SPEED_SHORT: Record<SimulationStatus["speed"], string> = {
+  fast: "1 день = 10 с",
+  minute: "1 день = 1 мин",
+  real: "реальное время",
+};
+
 export type SimulationAction =
   | { action: "pause" | "resume" | "until_decision" | "step_day" | "extend" | "restart" | "go_real" }
   | { action: "speed"; speed: SimulationStatus["speed"] };

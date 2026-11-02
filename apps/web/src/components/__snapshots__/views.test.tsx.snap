@@ -89,6 +89,14 @@ exports[`SummaryView > shows three numbers without charts or a ring, then the in
               6 300 ₽
             </span>
             <span
+              aria-hidden="true"
+              class="budget-bar"
+            >
+              <i
+                style="width: 42%;"
+              />
+            </span>
+            <span
               class="sub"
             >
               из 

@@ -1,13 +1,13 @@
 "use client";
 
-import { CaretRightOutlined, CheckOutlined, ExperimentOutlined, FastForwardOutlined, MoreOutlined, PauseOutlined, ReloadOutlined, RocketOutlined, StepForwardOutlined } from "@ant-design/icons";
-import { Alert, Button, Dropdown, Modal } from "antd";
+import { CaretRightOutlined, CheckOutlined, FastForwardOutlined, MoreOutlined, PauseOutlined, RocketOutlined, RotateLeftOutlined, StepForwardOutlined } from "@ant-design/icons";
+import { Alert, Button, Dropdown, Modal, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { callApi, runWebJob } from "@/lib/client-api";
-import { agentTurnText, SPEED_LABELS } from "@/lib/simulation-model";
+import { agentTurnText, SPEED_LABELS, SPEED_SHORT } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 
 const POLL_MS = 1_000;
@@ -15,7 +15,7 @@ const POLL_MS = 1_000;
 const clockText = (status: SimulationStatus): string =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: status.timeZone, hour: "2-digit", minute: "2-digit" }).format(new Date(status.at));
 
-/** Days of the scenario as a thin strip under the pult: passed, today, ahead. */
+/** Days of the scenario as a thin strip inside the pult row: passed, today, ahead. */
 function DayStrip({ day, totalDays }: { day: number; totalDays: number }) {
   return (
     <div className="sim-strip" aria-hidden="true">
@@ -28,8 +28,8 @@ function DayStrip({ day, totalDays }: { day: number; totalDays: number }) {
 
 /**
  * The simulation pult on every screen of a simulated business (simulation-mode spec): one row with the virtual day,
- * pause, «+1 день» and «До следующего решения»; the speed, «Начать заново» and «Запустить по-настоящему» are in the
- * menu. It polls the status and refreshes the page when the history grows, so the screens follow the virtual time.
+ * the days strip, pause, «+1 день», «До следующего решения» and «Начать заново»; the speed choice and «Запустить
+ * по-настоящему» are in the menu. It polls the status and refreshes the page when the history grows, so the screens follow the virtual time.
  */
 export function SimulationBar({ initial }: { initial: SimulationStatus }) {
   const router = useRouter();
@@ -111,12 +111,10 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
         children: speeds.map((speed) => ({ key: `speed:${speed}`, label: SPEED_LABELS[speed], icon: speed === status.speed ? <CheckOutlined /> : <span style={{ width: 14, display: "inline-block" }} /> })),
       },
       { type: "divider" },
-      { key: "restart", label: "Начать заново", icon: <ReloadOutlined /> },
       { key: "go_real", label: "Запустить по-настоящему", icon: <RocketOutlined /> },
     ],
     onClick: ({ key }) => {
-      if (key === "restart") confirmRestart();
-      else if (key === "go_real") confirmGoReal();
+      if (key === "go_real") confirmGoReal();
       else if (key.startsWith("speed:")) void act({ action: "speed", speed: key.slice(6) as SimulationStatus["speed"] });
     },
   };
@@ -126,28 +124,33 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
     <div className="sim-bar" data-testid="simulation-bar">
       {modalHolder}
       <div className="sim-bar-inner">
-        <span className="sim-label">
-          <ExperimentOutlined aria-hidden="true" /> Симуляция — реклама не показывается, время ускорено
+        <span className="sim-label" title="Реклама не показывается людям, время идёт быстрее">
+          <span className="sim-live" data-moving={moving} aria-hidden="true" />
+          <span className="sim-label-text">Симуляция — реклама не показывается</span>
         </span>
-        <span className="sim-clock" data-testid="simulation-day">
-          День {status.day} из {status.totalDays}
-          <span className="on-wide"> · {clockText(status)}</span>
+        <span className="sim-time">
+          <span className="sim-clock" data-testid="simulation-day">
+            День {status.day} из {status.totalDays}
+            <span className="on-wide"> · {clockText(status)}</span>
+          </span>
+          <span className="sim-speed" data-testid="simulation-speed" title="Скорость виртуального времени">
+            {SPEED_SHORT[status.speed]}
+          </span>
         </span>
         {status.agentTurn ? (
           <span className="sim-thinking" role="status" data-testid="simulation-agent-turn">
             {agentTurnText(status.agentTurn)}
           </span>
         ) : null}
-        <span className="spacer" />
         <span className="sim-actions">
           {status.ended ? (
             <Button size="small" type="primary" onClick={() => void act({ action: "extend" })} loading={busy === "extend"}>
               Продолжить ещё 30 дней
             </Button>
           ) : (
-            <>
+            <span className="sim-group">
               {moving ? (
-                <Button size="small" icon={<PauseOutlined aria-hidden="true" />} onClick={() => void act({ action: "pause" })} loading={busy === "pause"} aria-label="Пауза">
+                <Button size="small" type="text" icon={<PauseOutlined aria-hidden="true" />} onClick={() => void act({ action: "pause" })} loading={busy === "pause"} aria-label="Пауза">
                   <span className="on-wide">Пауза</span>
                 </Button>
               ) : (
@@ -155,24 +158,27 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
                   <span className="on-wide">Продолжить</span>
                 </Button>
               )}
-              <Button size="small" icon={<StepForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "step_day" })} loading={busy === "step_day"} aria-label="+1 день">
+              <Button size="small" type="text" icon={<StepForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "step_day" })} loading={busy === "step_day"} aria-label="+1 день">
                 <span className="on-wide">+1 день</span>
                 <span className="on-narrow">+1</span>
               </Button>
-              <Button size="small" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "until_decision" })} loading={busy === "until_decision" || status.status === "until_decision"}
+              <Button size="small" type="text" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "until_decision" })} loading={busy === "until_decision" || status.status === "until_decision"}
                 aria-label="До следующего решения"
               >
-                <span className="on-wide">До следующего решения</span>
-                <span className="on-narrow">До решения</span>
+                <span className="on-xl">До следующего решения</span>
+                <span className="off-xl">До решения</span>
               </Button>
-            </>
+            </span>
           )}
+          <Tooltip title="Начать заново">
+            <Button size="small" type="text" className="sim-icon" icon={<RotateLeftOutlined aria-hidden="true" />} onClick={() => { confirmRestart(); }} loading={busy === "restart"} aria-label="Начать заново" />
+          </Tooltip>
           <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button size="small" type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: скорость, начать заново, запустить по-настоящему" loading={busy === "restart" || busy === "go_real" || busy === "speed"} />
+            <Button size="small" type="text" className="sim-icon" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: скорость и запуск по-настоящему" loading={busy === "go_real" || busy === "speed"} />
           </Dropdown>
         </span>
+        <DayStrip day={status.day} totalDays={status.totalDays} />
       </div>
-      <DayStrip day={status.day} totalDays={status.totalDays} />
       {decision ? (
         <div className="sim-bar-inner">
           <Alert
