@@ -116,6 +116,23 @@ export const checkModerationAndBalance = async (ctx: JobContext, businessId: str
     await enqueueAgentEvent(ctx, businessId, { kind: "moderation_rejected", adIds: rejected });
   }
 
+  const business = await ctx.store.getBusiness(businessId);
+  const today = toLocalDate(ctx.clock.now(), business.timeZone);
+  // Direct pauses ads itself when the landing page does not open (State OFF_BY_MONITORING). The summary says so;
+  // the owner gets no email about it (campaign-settings spec). A weekly reminder beats a wall of identical rows.
+  if (platformAds.some((ad) => ad.monitoringStopped === true)) {
+    const weekAgo = ctx.clock.now().getTime() - 7 * 86_400_000;
+    const reminded = (await ctx.store.notifications(businessId)).some((n) => n.kind === "site_unavailable" && n.at.getTime() >= weekAgo);
+    if (!reminded) {
+      await ctx.store.notify({
+        businessId,
+        kind: "site_unavailable",
+        message: "Ваш сайт не открывается — показы приостановлены, чтобы не тратить деньги впустую.",
+        at: ctx.clock.now(),
+      });
+    }
+  }
+
   let balance: Kopecks;
   try {
     balance = await platform.getBalance();
@@ -125,8 +142,6 @@ export const checkModerationAndBalance = async (ctx: JobContext, businessId: str
     }
     throw error;
   }
-  const business = await ctx.store.getBusiness(businessId);
-  const today = toLocalDate(ctx.clock.now(), business.timeZone);
   const last7 = (await ctx.store.stats(businessId, addDays(today, -6), today)).reduce((sum, r) => sum + r.spend, 0);
   const perDay = last7 / 7;
   if (perDay <= 0) {

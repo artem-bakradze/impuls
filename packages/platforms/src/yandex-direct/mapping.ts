@@ -217,6 +217,8 @@ export const parseAd = (raw: JsonRecord): PlatformAd => {
     text: text(textAd.Text),
     moderation,
     rejectionReason: moderation === "rejected" ? clarification || null : null,
+    // Direct names the site-monitoring pause explicitly; the service shows it on the summary (platform-integration).
+    monitoringStopped: text(raw.State) === "OFF_BY_MONITORING",
   };
 };
 

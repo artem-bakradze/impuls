@@ -360,6 +360,7 @@ describe("request shape", () => {
           rawAd(),
           rawAd({ Id: 202, State: "SUSPENDED", Status: "REJECTED", StatusClarification: "Нарушены правила" }),
           rawAd({ Id: 203, Status: "DRAFT" }),
+          rawAd({ Id: 204, State: "OFF_BY_MONITORING" }),
         ],
       }),
     ]);
@@ -369,7 +370,11 @@ describe("request shape", () => {
       ["201", "active", "accepted", null],
       ["202", "paused", "rejected", "Нарушены правила"],
       ["203", "active", "pending", null],
+      ["204", "active", "accepted", null],
     ]);
+    // Direct paused the ad itself: status stays active, the reason is the monitoring stop.
+    expect(ads.find((a) => a.id === "204")?.monitoringStopped).toBe(true);
+    expect(ads.filter((a) => a.id !== "204").every((a) => !a.monitoringStopped)).toBe(true);
   });
 
   it("checks changes since a timestamp and filters to service campaigns", async () => {

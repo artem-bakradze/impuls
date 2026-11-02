@@ -325,7 +325,7 @@ export class SimulatedPlatform implements AdPlatform {
   createAd(input: NewAd): Promise<PlatformAd> {
     this.campaign(input.campaignId);
     const { landingUrl, ...fields } = input;
-    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, ...fields };
+    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, monitoringStopped: false, ...fields };
     this.ads.set(ad.id, ad);
     this.landingUrls.set(ad.id, landingUrl);
     this.truths.set(ad.id, this.options.truthFor(ad));
@@ -425,6 +425,16 @@ export class SimulatedPlatform implements AdPlatform {
     this.record(ad.campaignId, "CHILDREN");
   }
 
+  /** Direct stopped the campaign's ads by site monitoring: the landing page does not open. */
+  stopAdsBySiteMonitoring(campaignId: string): void {
+    for (const ad of this.ads.values()) {
+      if (ad.campaignId === campaignId) {
+        ad.monitoringStopped = true;
+      }
+    }
+    this.record(campaignId, "CHILDREN");
+  }
+
   /** Moderation verdict from the platform side. */
   moderate(adId: string, moderation: PlatformAd["moderation"], rejectionReason: string | null = null): void {
     const ad = this.ad(adId);
@@ -468,8 +478,10 @@ export class SimulatedPlatform implements AdPlatform {
       const spentToday = this.cells.filter((c) => c.campaignId === campaign.id && c.date === date).reduce((s, c) => s + c.spend, 0);
       let dayRoom = Math.max(0, dailyCap - spentToday);
       // Direct rotates the ads of a group; starting each hour from another ad keeps a new A/B variant from getting
-      // only what the older ads left of the limit.
-      const shown = [...this.ads.values()].filter((ad) => ad.campaignId === campaign.id && ad.status === "active" && ad.moderation === "accepted");
+      // only what the older ads left of the limit. An ad stopped by site monitoring is not shown.
+      const shown = [...this.ads.values()].filter(
+        (ad) => ad.campaignId === campaign.id && ad.status === "active" && ad.moderation === "accepted" && ad.monitoringStopped !== true,
+      );
       const first = shown.length === 0 ? 0 : Math.floor(hourEnd.getTime() / 3_600_000) % shown.length;
       const mix = this.settingsIndex(campaign.id);
       const settings = this.settingsOf(campaign.id, mix);

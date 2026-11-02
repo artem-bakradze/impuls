@@ -69,6 +69,11 @@ export interface PlatformAd {
   text: string;
   moderation: ModerationStatus;
   rejectionReason: string | null;
+  /**
+   * The platform paused this ad itself because the landing page does not open (Direct `State` = `OFF_BY_MONITORING`).
+   * `status` stays active: the service did not stop the ad, and guards must not treat it as its own pause.
+   */
+  monitoringStopped: boolean;
 }
 
 /** Metrica goal that counts leads and the target cost per lead (ЦСО) for lead-paying strategies. */
