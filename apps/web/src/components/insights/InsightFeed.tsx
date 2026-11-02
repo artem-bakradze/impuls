@@ -208,6 +208,12 @@ function WeeklyReview({ weekly, timeZone, onRollback }: { weekly: WeeklyReviewMo
 }
 
 function DayReview({ day, timeZone, onRollback }: { day: DayReviewModel; timeZone: string; onRollback: (item: HistoryItem) => void }) {
+  /**
+   * A turn that only observed: the message, «Что заметили» and «Что решили» all say «nothing changes», so the day reads
+   * as one line and its insights stay one click away.
+   */
+  const observationsOnly = !day.quiet && day.rulesReason === null && day.weekly === null && day.insights.length > 0 && day.insights.every((card) => card.decision.status === "none");
+  const [open, setOpen] = useState(false);
   return (
     <section className="stack day-review" style={{ "--gap": "10px" } as React.CSSProperties} data-testid="day-review">
       <h3 className="t-h3">{day.from ? `С ${formatLocalDate(day.from)} по ${formatLocalDate(day.date)}` : `Разбор ${formatLocalDate(day.date)}`}</h3>
@@ -220,7 +226,20 @@ function DayReview({ day, timeZone, onRollback }: { day: DayReviewModel; timeZon
           <span>{day.rulesReason}</span>
         </div>
       ) : null}
-      {day.quiet ? (
+      {observationsOnly ? (
+        <div className="note" data-testid="observation-day">
+          <span className="note-icon">
+            <CheckOutlined aria-hidden="true" />
+          </span>
+          <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
+            <strong style={{ color: "var(--text)" }}>{QUIET_DAY}</strong>
+            {day.summary ? <span>{day.summary}</span> : null}
+            <button type="button" className="link-button" style={{ alignSelf: "flex-start" }} aria-expanded={open} onClick={() => setOpen(!open)}>
+              {open ? "Скрыть, что заметили" : `Что заметили (${day.insights.length})`}
+            </button>
+          </div>
+        </div>
+      ) : day.quiet ? (
         <div className="note" data-testid="quiet-day">
           <span className="note-icon">
             <CheckOutlined aria-hidden="true" />
@@ -235,9 +254,9 @@ function DayReview({ day, timeZone, onRollback }: { day: DayReviewModel; timeZon
           {day.summary}
         </p>
       ) : null}
-      {day.insights.map((card) => (
-        <InsightCard key={card.id} card={card} timeZone={timeZone} onRollback={onRollback} />
-      ))}
+      {observationsOnly && !open
+        ? null
+        : day.insights.map((card) => <InsightCard key={card.id} card={card} timeZone={timeZone} onRollback={onRollback} />)}
     </section>
   );
 }

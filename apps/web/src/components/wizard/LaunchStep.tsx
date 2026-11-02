@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
+import { formatLocalDate } from "@/lib/format";
 import { advertisedText, budgetCeilingText, COUNTER_MISSING_WARNING, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
@@ -65,7 +66,13 @@ export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
   const items: { icon: ReactNode; title: string; text: string; step: number }[] = [
     { icon: <ShopOutlined />, title: "Что рекламируем", text: advertisedText(draft.card), step: 2 },
     { icon: <ClockCircleOutlined />, title: "Где и когда", text: `Город «${draft.card.city}», ${hoursWords(draft.card)}`, step: 2 },
-    { icon: <WalletOutlined />, title: "Бюджет", text: budgetCeilingText(budget, today), step: 4 },
+    {
+      icon: <WalletOutlined />,
+      title: "Бюджет",
+      // The simulated month starts on its own date, not today, so the owner sees why it differs from the budget step.
+      text: simulation ? `Симуляция начнётся ${formatLocalDate(today)}. ${budgetCeilingText(budget, today)}` : budgetCeilingText(budget, today),
+      step: 4,
+    },
     { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", "), step: 3 },
   ];
 

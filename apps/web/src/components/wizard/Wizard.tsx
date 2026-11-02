@@ -6,7 +6,7 @@ import { Alert, Button } from "antd";
 import { useState } from "react";
 import type { Creatives, ExtractCardResult } from "@impuls/worker";
 import { callApi, LLM_POLL_ATTEMPTS, runWebJob } from "@/lib/client-api";
-import { mergeExtractedCard, SIMULATION_STEP_TITLE, STEP_COUNT, stepIssues, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
+import { mergeExtractedCard, SIMULATION_STEP_TITLE, STEP_COUNT, stepIssues, unreadableNotice, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
@@ -119,8 +119,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
     let next = current;
     if (outcome.kind === "done") {
       next = mergeExtractedCard(current, outcome.output.card);
-      const names = { site: "сайт", maps: "Яндекс Карты", vk: "ВКонтакте" } as const;
-      setNotice(outcome.output.unreadable.length > 0 ? `Не получилось прочитать: ${outcome.output.unreadable.map((u) => names[u]).join(", ")}. Проверьте и дополните карточку.` : null);
+      setNotice(unreadableNotice(outcome.output.unreadable, next));
     } else {
       setNotice(outcome.kind === "error" ? outcome.message : "Читаем страницу дольше обычного — заполните карточку сами, это быстро.");
     }

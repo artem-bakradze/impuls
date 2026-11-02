@@ -101,7 +101,7 @@ function BudgetDay({ group, timeZone, monthlyBudgetRub, onRollback }: { group: B
             <span className="t-small">{formatLocalDate(group.date)}</span>
           </div>
           <p className="t-body">
-            Сколько тратить в день, уменьшали {group.entries.length} {plural(group.entries.length, "раз", "раза", "раз")} — чтобы не выйти за {formatRub(monthlyBudgetRub * 100)} в месяц.
+            Сколько тратить в неделю, уменьшали {group.entries.length} {plural(group.entries.length, "раз", "раза", "раз")} — чтобы не выйти за {formatRub(monthlyBudgetRub * 100)} в месяц.
           </p>
           <ul className="diff">
             {group.limits.map((limit) => (
@@ -111,7 +111,7 @@ function BudgetDay({ group, timeZone, monthlyBudgetRub, onRollback }: { group: B
             ))}
           </ul>
           <button type="button" className="link-button" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(!open)} aria-expanded={open}>
-            {open ? <UpOutlined aria-hidden="true" /> : <DownOutlined aria-hidden="true" />} {open ? "Скрыть подробности" : `Все ${group.entries.length} изменений`}
+            {open ? <UpOutlined aria-hidden="true" /> : <DownOutlined aria-hidden="true" />} {open ? "Скрыть подробности" : `Все изменения за день (${group.entries.length})`}
           </button>
           {open ? (
             <ol className="feed" style={{ marginTop: 4 }}>
@@ -133,7 +133,7 @@ export function HistoryView({ items, names, timeZone, monthlyBudgetRub }: { item
 
   return (
     <div className="page page-narrow">
-      <PageHead title="История изменений" lead="Всё, что меняли сервис, вы и кабинет Директа. Любое изменение можно вернуть." />
+      <PageHead title="История изменений" lead="Всё, что меняли сервис, вы и кабинет Директа. Почти любое изменение можно вернуть одной кнопкой." />
       {visible.length === 0 ? (
         <div className="surface">
           <Empty icon={<HistoryOutlined aria-hidden="true" />} title="Здесь пока пусто">

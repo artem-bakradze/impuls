@@ -16,6 +16,7 @@ import {
   stepIssues,
   stepProblems,
   timeZoneOf,
+  unreadableNotice,
   withCity,
   withNormalizedLinks,
 } from "./onboarding";
@@ -86,6 +87,19 @@ describe("card extraction", () => {
     expect(merged.card.services).toEqual([{ name: "Педикюр", priceRub: 2_000 }]);
     expect(merged.card.category).toBe("Студия маникюра");
     expect(merged.card.openTo).toBe(draft.card.openTo);
+  });
+
+  it("says where the card came from when the site could not be opened, and stays silent on a mostly empty card", () => {
+    const draft = emptyDraft();
+    draft.sources.about = "Студия маникюра в Казани";
+    const filled = mergeExtractedCard(draft, found);
+    expect(unreadableNotice(["site"], filled)).toBe("Не получилось открыть: сайт. Карточку заполнили по вашему описанию — проверьте её.");
+    expect(unreadableNotice(["maps", "vk"], mergeExtractedCard(emptyDraft(), found))).toBe(
+      "Не получилось открыть: Яндекс Карты, ВКонтакте. Карточку заполнили по остальным ссылкам — проверьте её.",
+    );
+    expect(unreadableNotice([], filled)).toBeNull();
+    // The card step shows its single «почти ничего не получилось прочитать» notice instead.
+    expect(unreadableNotice(["site"], draft)).toBeNull();
   });
 });
 

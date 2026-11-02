@@ -164,6 +164,17 @@ describe("SummaryView", () => {
     expect(document.body.textContent).not.toContain("Яндекс иногда пересчитывает");
   });
 
+  it("reads a day that only observed as one line, with its insights one click away", () => {
+    const watchCard: InsightCardModel = { ...pauseCard, id: "i3", decision: { text: "Пока ничего не меняю: данных мало.", status: "none" }, rollback: null };
+    const day = { date: "2026-12-01", from: null, summary: "Реклама только начала собирать данные.", quiet: false, rulesReason: null, insights: [watchCard], weekly: null };
+    render(<SummaryView model={summary({ feed: feed({ days: [day] }) })} />);
+    expect(plain(screen.getByTestId("observation-day"))).toContain("Посмотрели рекламу — менять ничего не нужно");
+    expect(plain(screen.getByTestId("observation-day"))).toContain("Реклама только начала собирать данные.");
+    expect(screen.queryByTestId("insight")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Что заметили (1)" }));
+    expect(plain(screen.getByTestId("insight"))).toContain("Пока ничего не меняю: данных мало.");
+  });
+
   it("says that the rules decided alone that day and why", () => {
     const ruleCard: InsightCardModel = { ...pauseCard, id: "i2", author: "rule", rollback: null };
     const day = { date: "2026-10-27", from: null, summary: null, quiet: false, rulesReason: "Сегодня решения принимали страховочные правила: помощник был недоступен", insights: [ruleCard], weekly: null };

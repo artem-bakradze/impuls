@@ -68,7 +68,11 @@ function RunNumbers({ label, run, accent }: { label: string; run: RunTotals; acc
 
 /** The top of the screen: what the decisions gave so far, against the same scenario without them. */
 function ComparisonCard({ comparison, day, totalDays, decisions, result }: { comparison: Comparison; day: number; totalDays: number; decisions: number[]; result: RunResult | null }) {
-  const diff = differenceText(comparison.serviceNow.leads, comparison.baselineNow.leads);
+  // Before the first decision both runs differ only by random spread: a red «−100%» on day 1 would blame the service for noise.
+  const diff =
+    decisions.length === 0 && result === null
+      ? { text: "Решений ещё не было", tone: "neutral" as const }
+      : differenceText(comparison.serviceNow.leads, comparison.baselineNow.leads);
   return (
     <Surface className="surface-pad" data-testid="sim-comparison">
       <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>

@@ -130,6 +130,18 @@ export const cardMostlyEmpty = (card: OnboardingDraft["card"]): boolean =>
 
 const filled = (value: string): boolean => value.trim().length > 0;
 
+const SOURCE_NAMES: Record<LinkKind, string> = { site: "сайт", maps: "Яндекс Карты", vk: "ВКонтакте" };
+
+/**
+ * Card-step notice for links that could not be opened. A mostly empty card already has its single «почти ничего»
+ * notice (business-onboarding spec), so nothing more is shown; otherwise the owner learns where the card came from.
+ */
+export const unreadableNotice = (unreadable: readonly LinkKind[], draft: OnboardingDraft): string | null => {
+  if (unreadable.length === 0 || cardMostlyEmpty(draft.card)) return null;
+  const from = filled(draft.sources.about) ? "вашему описанию" : "остальным ссылкам";
+  return `Не получилось открыть: ${unreadable.map((u) => SOURCE_NAMES[u]).join(", ")}. Карточку заполнили по ${from} — проверьте её.`;
+};
+
 export type LinkKind = "site" | "maps" | "vk";
 
 const withScheme = (value: string): string => (/^https?:\/\//i.test(value) ? value : `https://${value.replace(/^\/+/, "")}`);
