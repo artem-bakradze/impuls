@@ -1,8 +1,8 @@
 import { HeuristicPolicy, IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
 import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
 import { rubles } from "@impuls/core";
-import { and, createDb, createPool, decryptToken, eq, isNull, parseTokenKey, schema } from "@impuls/db";
-import { SimulatedPlatform } from "@impuls/platforms";
+import { and, createDb, createPool, decryptToken, encryptToken, eq, isNull, parseTokenKey, schema } from "@impuls/db";
+import { refreshYandexToken, SimulatedPlatform } from "@impuls/platforms";
 import type { AdPlatform } from "@impuls/platforms";
 import { PgBoss } from "pg-boss";
 import { systemClock } from "./clock";
@@ -18,6 +18,7 @@ import { SmtpMailer } from "./email";
 import { FileMiniSiteStore } from "./minisite-store";
 import { BusinessDirectPlatform } from "./direct-platform";
 import type { DirectTokenSource } from "./direct-platform";
+import { createDirectTokenSource } from "./direct-tokens";
 
 const logger = createLogger();
 /**
@@ -53,14 +54,45 @@ const main = async (): Promise<void> => {
       throw new Error("TOKEN_ENCRYPTION_KEY is required with DIRECT_API_MODE=production");
     }
     const key = parseTokenKey(config.TOKEN_ENCRYPTION_KEY);
+    if (config.YANDEX_CLIENT_ID === undefined || config.YANDEX_CLIENT_SECRET === undefined) {
+      throw new Error("YANDEX_CLIENT_ID and YANDEX_CLIENT_SECRET are required with DIRECT_API_MODE=production");
+    }
     const db = createDb(pool);
-    const tokens: DirectTokenSource = async (businessId) => {
-      const [row] = await db
-        .select({ token: schema.platformAccounts.accessTokenEnc })
-        .from(schema.platformAccounts)
-        .where(and(eq(schema.platformAccounts.businessId, businessId), isNull(schema.platformAccounts.revokedAt)));
-      return row ? decryptToken(key, row.token) : null;
-    };
+    const clientId = config.YANDEX_CLIENT_ID;
+    const clientSecret = config.YANDEX_CLIENT_SECRET;
+    const tokens: DirectTokenSource = createDirectTokenSource({
+      store: {
+        read: async (businessId) => {
+          const [row] = await db
+            .select({
+              accessTokenEnc: schema.platformAccounts.accessTokenEnc,
+              refreshTokenEnc: schema.platformAccounts.refreshTokenEnc,
+              tokenExpiresAt: schema.platformAccounts.tokenExpiresAt,
+            })
+            .from(schema.platformAccounts)
+            .where(and(eq(schema.platformAccounts.businessId, businessId), isNull(schema.platformAccounts.revokedAt)));
+          return row ?? null;
+        },
+        replace: async (businessId, expectedAccessTokenEnc, values) => {
+          const updated = await db
+            .update(schema.platformAccounts)
+            .set(values)
+            .where(
+              and(
+                eq(schema.platformAccounts.businessId, businessId),
+                eq(schema.platformAccounts.accessTokenEnc, expectedAccessTokenEnc),
+                isNull(schema.platformAccounts.revokedAt),
+              ),
+            )
+            .returning({ businessId: schema.platformAccounts.businessId });
+          return updated.length > 0;
+        },
+      },
+      decrypt: (encrypted) => decryptToken(key, encrypted),
+      encrypt: (token) => encryptToken(key, token),
+      refresh: (refreshToken) => refreshYandexToken(fetch, { clientId, clientSecret }, refreshToken, systemClock.now()),
+      now: () => systemClock.now(),
+    });
     // The request journal (platform-integration spec) goes to the structured log, never with the token.
     platformFor = (businessId) => new BusinessDirectPlatform(businessId, tokens, (entry) => logger.info("Direct API request", { ...entry }));
   }

@@ -22,7 +22,8 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `DIRECT_API_MODE` | `simulator` \| `production` |
-| `TOKEN_ENCRYPTION_KEY` | required in `production`: base64 of 32 bytes, same as in web; decrypts Direct OAuth tokens |
+| `TOKEN_ENCRYPTION_KEY` | required in `production`: base64 of 32 bytes, same as in web; encrypts and decrypts Direct OAuth tokens |
+| `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | required in `production`: the same user-authorization OAuth app as in web; the worker renews the business's Direct token with it |
 | `AGENT_RUNTIME` | `openai` (agent on the OpenAI Agents API; required with `DIRECT_API_MODE=production`), `heuristic` (deterministic test agent with insights, free: e2e and a stand) or `idle` (no agent: guards and safety net only) |
 | `OPENAI_AGENT_MODEL` | required with `AGENT_RUNTIME=openai`: `gpt-6-luna` (chosen on 2026-10-30 after `pnpm eval:agent`, see `docs/research/agents-api.md`) |
 | `AGENT_PRICE_INPUT_RUB_PER_MTOK`, `AGENT_PRICE_OUTPUT_RUB_PER_MTOK` | required with `AGENT_RUNTIME=openai`: the model's price in rubles per million input and output tokens |

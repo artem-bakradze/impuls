@@ -60,10 +60,12 @@ describe("loadConfig", () => {
     expect(loadConfig({ ...complete, AGENT_RUNTIME: "heuristic" })).toMatchObject({ AGENT_RUNTIME: "heuristic" });
   });
 
-  it("requires the token encryption key and the agent on the model in production", () => {
-    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production" })).toThrow(/TOKEN_ENCRYPTION_KEY/);
-    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toThrow(/AGENT_RUNTIME: must be openai/);
-    expect(loadConfig({ ...complete, ...openai, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toMatchObject({ DIRECT_API_MODE: "production" });
+  it("requires the token encryption key, the Yandex OAuth app and the agent on the model in production", () => {
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production" })).toThrow(/TOKEN_ENCRYPTION_KEY.*YANDEX_CLIENT_ID.*YANDEX_CLIENT_SECRET/);
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toThrow(/YANDEX_CLIENT_ID/);
+    expect(
+      loadConfig({ ...complete, ...openai, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k", YANDEX_CLIENT_ID: "cid", YANDEX_CLIENT_SECRET: "cs" }),
+    ).toMatchObject({ DIRECT_API_MODE: "production" });
   });
 });
 

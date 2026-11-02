@@ -28,7 +28,8 @@ pnpm --filter @impuls/worker start
 `AGENT_RUNTIME=heuristic` runs the deterministic test agent (insights and day reviews without model calls);
 `openai` also needs `OPENAI_API_KEY`, `OPENAI_AGENT_MODEL`, the prices and the spend limits (`docs/deployment.md`).
 Missing variables stop the worker with a list of problems. There are two modes: `simulator` (local, CI, staging) and
-`production` (real Direct with each business's own OAuth token, needs `TOKEN_ENCRYPTION_KEY`). Yandex shut the Direct
+`production` (real Direct with each business's own OAuth token, needs `TOKEN_ENCRYPTION_KEY`,
+`YANDEX_CLIENT_ID` and `YANDEX_CLIENT_SECRET` to renew that token). Yandex shut the Direct
 sandbox down on 2026-07-15; `DIRECT_API_MODE=sandbox` is refused at startup.
 
 ## Running the web app locally

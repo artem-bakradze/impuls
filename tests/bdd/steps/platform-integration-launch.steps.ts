@@ -55,7 +55,16 @@ describeFeature(modes, ({ Scenario }) => {
         AGENT_MONTHLY_LIMIT_RUB: "300",
         AGENT_SIMULATION_RUN_LIMIT_RUB: "100",
       };
-      expect(loadConfig({ ...workerEnv, ...agent, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "key" }).DIRECT_API_MODE).toBe("production");
+      expect(
+        loadConfig({
+          ...workerEnv,
+          ...agent,
+          DIRECT_API_MODE: "production",
+          TOKEN_ENCRYPTION_KEY: "key",
+          YANDEX_CLIENT_ID: "cid",
+          YANDEX_CLIENT_SECRET: "cs",
+        }).DIRECT_API_MODE,
+      ).toBe("production");
       platform = new BusinessDirectPlatform(
         "b1",
         (businessId) => Promise.resolve(businessId === "b1" ? "y0_owner" : null),

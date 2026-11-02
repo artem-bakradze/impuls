@@ -54,9 +54,16 @@ const ConfigSchema = z.object({
   OPENAI_PROXY_URL: z.url().optional(),
   /** Required in production: key for the encrypted Direct OAuth tokens (base64, 32 bytes). */
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  /** Required in production: the user-authorization OAuth app that refreshes the Direct tokens. */
+  YANDEX_CLIENT_ID: z.string().min(1).optional(),
+  YANDEX_CLIENT_SECRET: z.string().min(1).optional(),
 }).superRefine((config, ctx) => {
-  if (config.DIRECT_API_MODE === "production" && !config.TOKEN_ENCRYPTION_KEY) {
-    ctx.addIssue({ code: "custom", path: ["TOKEN_ENCRYPTION_KEY"], message: "is required with DIRECT_API_MODE=production" });
+  if (config.DIRECT_API_MODE === "production") {
+    for (const key of ["TOKEN_ENCRYPTION_KEY", "YANDEX_CLIENT_ID", "YANDEX_CLIENT_SECRET"] as const) {
+      if (!config[key]) {
+        ctx.addIssue({ code: "custom", path: [key], message: "is required with DIRECT_API_MODE=production" });
+      }
+    }
   }
   if (config.CREATIVES === "openai") {
     for (const key of ["OPENAI_API_KEY", "OPENAI_TEXT_MODEL"] as const) {
