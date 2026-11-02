@@ -1,4 +1,4 @@
-import { IdlePolicy } from "@impuls/agent";
+import { IdlePolicy, QuietPolicy } from "@impuls/agent";
 import { PlatformError } from "@impuls/platforms";
 import { describe, expect, it } from "vitest";
 import { handleWebJob } from "./web-jobs";
@@ -7,7 +7,7 @@ import { SimulationDriver } from "./simulation";
 
 describe("launch from the wizard", () => {
   it("creates one campaign per direction with site monitoring, logs «Реклама запущена» and queues a launch turn", async () => {
-    const sim = new SimulationDriver({ start: new Date("2026-10-28T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    const sim = new SimulationDriver({ start: new Date("2026-10-28T09:00:00Z"), seed: 1, agent: new QuietPolicy() });
     await sim.store.saveBusiness({
       id: "b1",
       userId: "u1",
@@ -15,11 +15,10 @@ describe("launch from the wizard", () => {
       monthlyBudgetRub: 15_000,
       launchedOn: null,
       csoSource: { kind: "user", goal: 30_000 },
-      autonomy: "auto",
       miniSite: null,
       leadGoalId: null,
-      weeklySummaryEnabled: true,
-      card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "Пн–Вс 10:00–22:00", advantages: [] },
+      mode: "direct",
+      card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "Пн–Вс 10:00–22:00", advantages: [], name: "Ноготок", address: "Москва, ул. Профсоюзная, 1", city: "Москва", siteUrl: "https://nogotok.example/" },
     });
     const plan = {
       landingUrl: "https://nogotok.example/",

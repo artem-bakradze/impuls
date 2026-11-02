@@ -37,16 +37,20 @@ export const e2eWebEnv = (): Record<string, string> => ({
   AUTH_TRUST_HOST: "true",
   AUTH_TEST_LOGIN: "enabled",
   DIRECT_API_MODE: "simulator",
+  SUPPORT_EMAIL: "support@impuls.test",
 });
 
 /** Published mini-sites of the e2e worker (a temp directory, recreated per run by global setup). */
 export const e2eMiniSiteDir = (): string => join(tmpdir(), "impuls-e2e-minisites");
 
-/** Worker on the simulator; emails go to the local Mailpit inbox from docs/development.md. */
+/**
+ * Worker on the simulator with the deterministic test agent (decisions and insights without model calls); emails go
+ * to the local Mailpit inbox from docs/development.md.
+ */
 export const e2eWorkerEnv = (): Record<string, string> => ({
   DATABASE_URL: e2eDatabaseUrl(),
   DIRECT_API_MODE: "simulator",
-  AGENT_RUNTIME: "idle",
+  AGENT_RUNTIME: "heuristic",
   CREATIVES: "template",
   SMTP_URL: "smtp://localhost:1025",
   MAIL_FROM: "Импульс e2e <noreply@impuls.test>",

@@ -5,10 +5,46 @@ import type {
   CsoSource,
   Direction,
   EffectivenessClass,
+  InsightMetric,
+  InsightPeriod,
+  Kopecks,
   LocalDate,
   UserDecision,
 } from "@impuls/core";
-import type { DailyStatRow } from "@impuls/platforms";
+import type { DailyStatRow, DeviceAdjustments, SimulatorState } from "@impuls/platforms";
+import type { LaunchPlan } from "./launch";
+
+export type BusinessMode = "direct" | "simulation";
+
+/** `stepping`: «+1 день» moves the simulation; the ticker leaves it alone (add-agent-insights decision 8). */
+export type SimulationStatus = "running" | "paused" | "until_decision" | "stepping";
+
+/** Result of the control run «если бы сервис ничего не делал» over the same period. */
+export interface SimulationBaseline {
+  days: number;
+  spend: Kopecks;
+  leads: number;
+  /** Spend and leads of each day of the control run, from the first day, for the comparison by day. */
+  daily: { spend: Kopecks; leads: number }[];
+}
+
+/** Virtual time and saved market of a business in the simulation mode. */
+export interface SimulationRecord {
+  businessId: string;
+  scenario: string;
+  seed: number;
+  plan: LaunchPlan;
+  startedAt: Date;
+  simNow: Date;
+  endsAt: Date;
+  /** Real time of the last tick; null while paused. */
+  lastTickAt: Date | null;
+  /** Virtual milliseconds per real millisecond. */
+  speed: number;
+  status: SimulationStatus;
+  state: SimulatorState;
+  baseline: SimulationBaseline | null;
+}
 
 export interface BusinessRecord {
   id: string;
@@ -17,15 +53,30 @@ export interface BusinessRecord {
   monthlyBudgetRub: number;
   launchedOn: LocalDate | null;
   csoSource: CsoSource;
-  autonomy: "auto" | "ask";
-  /** The weekly summary email can be switched off; critical emails cannot. */
-  weeklySummaryEnabled: boolean;
   /** Mini-site for businesses without their own site; `card` is MiniSiteCard JSON. */
   miniSite: { slug: string; card: string; metrikaCounterId: number; advertiser: { name: string; inn: string } } | null;
   /** Metrica goal that counts leads; null until analytics is connected. Lead-paying strategies need it. */
   leadGoalId: string | null;
-  /** Public business card fields passed to the agent (allowlist). */
-  card: { category: string; services: { name: string; priceRub: number | null }[]; area: string; hours: string; advantages: string[] };
+  /** «Яндекс Директ» or «Симуляция» (add-simulation-mode); a simulated business never reaches the Direct API. */
+  mode: BusinessMode;
+  /**
+   * Public business card. The agent snapshot copies only allowlisted fields from it; `city` and `siteUrl` are used
+   * by the worker for new ads and campaigns.
+   */
+  card: {
+    category: string;
+    services: { name: string; priceRub: number | null }[];
+    area: string;
+    hours: string;
+    advantages: string[];
+    /** Business name and address: card facts for new ad variants, not passed to the agent. */
+    name: string;
+    address: string;
+    /** City the ads are shown in. */
+    city: string;
+    /** The owner's site every ad leads to. */
+    siteUrl: string;
+  };
 }
 
 export interface DirectionRecord extends Direction {
@@ -34,8 +85,21 @@ export interface DirectionRecord extends Direction {
   /** Paused by the owner («Поставить рекламу на паузу») — never resumed automatically. */
   pausedByUser: boolean;
   schedule: string;
-  geoRadiusKm: number;
+  city: string;
+  /** Key phrases of the launch plan (empty for directions launched before add-agent-analyst-stage1). */
+  keywords: string[];
+  /** Campaign-level negative phrases and bid adjustments as last applied or reconciled. */
+  negativeKeywords: string[];
+  deviceAdjustments: DeviceAdjustments;
+  deviceAdjustedOn: { mobile: LocalDate | null; desktop: LocalDate | null };
 }
+
+/** Settings of a new direction before the analyst levers touch it. */
+export const NO_TRAFFIC_SETTINGS: Pick<DirectionRecord, "negativeKeywords" | "deviceAdjustments" | "deviceAdjustedOn"> = {
+  negativeKeywords: [],
+  deviceAdjustments: { mobile: 0, desktop: 0 },
+  deviceAdjustedOn: { mobile: null, desktop: null },
+};
 
 export interface AdRecord extends Ad {
   platformAdId: string;
@@ -54,7 +118,7 @@ export interface ChangeEntry {
   actor: Actor;
   author: ChangeAuthor;
   action: LoggedAction;
-  objectKind: "direction" | "ad" | "business" | "minisite";
+  objectKind: "direction" | "ad" | "business" | "minisite" | "goal" | "card";
   objectId: string;
   before: Snapshot;
   after: Snapshot;
@@ -62,11 +126,64 @@ export interface ChangeEntry {
   reasonCode: string;
   explanation: string;
   turnId: string | null;
+  /** The insight that explains this decision (insights spec); set right after the change is executed. */
+  insightId?: string | null;
   createdAt: Date;
   error: string | null;
   revertedById: string | null;
   /** «Что стало после», filled 7 days after an automated change. */
   outcome: string | null;
+}
+
+/** A fact of an insight as it was at the time: what, about which object, for which period, how much. */
+export interface InsightFactRecord {
+  key: string;
+  object: string;
+  metric: InsightMetric;
+  period: InsightPeriod;
+  value: number;
+  unit: "rub" | "count";
+}
+
+/**
+ * Insight (insights spec): what the service noticed, on which facts, what it decided — the action and the guard's
+ * answer, or why nothing changes — and what comes next.
+ */
+export interface InsightRecord {
+  id: string;
+  businessId: string;
+  turnId: string | null;
+  source: "agent" | "rule";
+  reasonCode: string;
+  observation: string;
+  facts: InsightFactRecord[];
+  decision: { kind: "action" | "none"; text: string; status: "applied" | "clamped" | "rejected" | "none"; changeIds: string[] };
+  next: string;
+  /** The ad or direction the insight is about, for «На самом деле» in a simulation. */
+  objectRef: { kind: "ad" | "direction"; id: string } | null;
+  createdAt: Date;
+}
+
+export type HypothesisStatus = "checking" | "confirmed" | "rejected" | "dropped";
+
+/** One entry of the agent's hypothesis journal (ad-agent spec «Журнал гипотез»). */
+export interface HypothesisRecord {
+  id: string;
+  businessId: string;
+  openedTurnId: string | null;
+  closedTurnId: string | null;
+  /** What is checked, in plain words. */
+  statement: string;
+  facts: InsightFactRecord[];
+  /** How and by which day it is checked. */
+  check: string;
+  checkOn: LocalDate;
+  status: HypothesisStatus;
+  /** What came out, on the facts of the closing turn. */
+  result: string | null;
+  resultFacts: InsightFactRecord[];
+  openedAt: Date;
+  closedAt: Date | null;
 }
 
 export interface Evaluation {
@@ -102,7 +219,17 @@ export interface AgentTurnRecord {
   context: unknown;
   calls: unknown[];
   summary: string | null;
+  /** The summary passed the checks and is shown as «Разбор дня» (insights spec). */
+  summaryValid: boolean;
+  /** Token usage and its source; null for a turn without a model (test policies). */
+  inputTokens: number | null;
+  outputTokens: number | null;
+  usageSource: "api" | "estimate" | null;
+  costKopecks: number;
 }
+
+/** What the insight feed needs of a turn: when, how it ended and its day review (insights spec «Разбор дня»). */
+export type TurnDigest = Pick<AgentTurnRecord, "id" | "trigger" | "status" | "startedAt" | "summary" | "summaryValid">;
 
 /** An event waiting for the next agent turn; several events are merged into one turn. */
 export interface InboxEvent {
@@ -111,20 +238,6 @@ export interface InboxEvent {
   trigger: { kind: string; adIds?: string[]; experimentIds?: string[] };
   createdAt: Date;
   consumedByTurnId: string | null;
-}
-
-/** «Спрашивать перед крупными изменениями»: an agent action waiting for the owner. */
-export interface ApprovalRequest {
-  id: string;
-  businessId: string;
-  command: Command;
-  objectId: string;
-  reasonCode: string;
-  explanation: string;
-  turnId: string;
-  createdAt: Date;
-  status: "pending" | "approved" | "declined" | "expired";
-  decidedAt: Date | null;
 }
 
 /** Weekly answer «сколько обращений стали клиентами». */
@@ -168,7 +281,13 @@ export interface Store {
   ads(businessId: string): Promise<AdRecord[]>;
   saveAd(ad: AdRecord): Promise<void>;
   appendChange(entry: Omit<ChangeEntry, "id">): Promise<ChangeEntry>;
-  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void>;
+  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome" | "insightId">>): Promise<void>;
+  saveInsight(insight: InsightRecord): Promise<void>;
+  /** Insights of a business, oldest first. */
+  insights(businessId: string): Promise<InsightRecord[]>;
+  /** The hypothesis journal of a business, oldest first. */
+  hypotheses(businessId: string): Promise<HypothesisRecord[]>;
+  saveHypothesis(hypothesis: HypothesisRecord): Promise<void>;
   changes(businessId: string): Promise<ChangeEntry[]>;
   pendingChanges(): Promise<ChangeEntry[]>;
   upsertStats(businessId: string, rows: readonly DailyStatRow[]): Promise<void>;
@@ -183,17 +302,17 @@ export interface Store {
   saveExperiment(experiment: Experiment): Promise<void>;
   saveTurn(turn: AgentTurnRecord): Promise<void>;
   turns(businessId: string): Promise<AgentTurnRecord[]>;
+  /** The turns without their context and calls, oldest first. */
+  turnDigests(businessId: string): Promise<TurnDigest[]>;
+  /** When the business's running agent turn started, for the pult; null when no turn runs. */
+  runningTurnStartedAt(businessId: string): Promise<Date | null>;
   /** Agent journal retention: deletes turns started before `before`; returns how many. */
   purgeTurns(before: Date): Promise<number>;
-  notes(businessId: string): Promise<string[]>;
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void>;
   pendingInbox(businessId: string): Promise<InboxEvent[]>;
   consumeInbox(ids: readonly string[], turnId: string): Promise<void>;
-  saveApproval(request: ApprovalRequest): Promise<void>;
   saveClientConfirmation(confirmation: ClientConfirmation): Promise<void>;
   clientConfirmations(businessId: string): Promise<ClientConfirmation[]>;
-  approvals(businessId: string): Promise<ApprovalRequest[]>;
-  saveNotes(businessId: string, notes: readonly string[]): Promise<void>;
   /** Flags are enabled unless explicitly switched off (documented default). Per-business values override global. */
   getFlag(name: FlagName, businessId: string | null): Promise<boolean>;
   setFlag(name: FlagName, value: boolean, businessId: string | null): Promise<void>;
@@ -212,6 +331,21 @@ export interface Store {
   markOwnerDeleted(businessId: string, at: Date): Promise<void>;
   /** Anonymizes owners deleted before `before`; returns how many were purged. */
   purgeDeletedOwners(before: Date): Promise<number>;
+  getSimulation(businessId: string): Promise<SimulationRecord | null>;
+  saveSimulation(simulation: SimulationRecord): Promise<void>;
+  deleteSimulation(businessId: string): Promise<void>;
+  /** Simulations whose virtual time moves: running or going to the next decision. */
+  movingSimulations(): Promise<SimulationRecord[]>;
+  /**
+   * Everything the launch created for a business — campaigns, ads, stats, history, experiments, evaluations,
+   * client answers, notifications, agent journal, hypotheses and cursors; the business row and its card stay.
+   */
+  deleteLaunchData(businessId: string): Promise<void>;
+  /**
+   * «Запустить по-настоящему»: the business is not launched any more, works with Direct and opens the wizard on
+   * `step` with its draft kept, Direct not connected yet.
+   */
+  reopenWizard(businessId: string, step: number): Promise<void>;
 }
 
 export class MemoryStore implements Store {
@@ -225,9 +359,9 @@ export class MemoryStore implements Store {
   private readonly evaluations = new Map<string, Evaluation>();
   private readonly experimentMap = new Map<string, Experiment>();
   private readonly turnList: AgentTurnRecord[] = [];
-  private readonly noteMap = new Map<string, string[]>();
+  private readonly insightList: InsightRecord[] = [];
+  private readonly hypothesisList: HypothesisRecord[] = [];
   private readonly inbox: InboxEvent[] = [];
-  private readonly approvalMap = new Map<string, ApprovalRequest>();
   private readonly confirmations = new Map<string, ClientConfirmation>();
   private readonly flags = new Map<string, boolean>();
   private readonly beats = new Map<string, Date>();
@@ -236,6 +370,7 @@ export class MemoryStore implements Store {
   readonly emails = new Map<string, string>();
   readonly revokedAccounts = new Map<string, Date>();
   readonly deletedOwners = new Map<string, Date>();
+  private readonly simulationMap = new Map<string, SimulationRecord>();
   private seq = 1;
 
   getBusiness(id: string): Promise<BusinessRecord> {
@@ -253,10 +388,10 @@ export class MemoryStore implements Store {
     return Promise.resolve();
   }
   directions(businessId: string): Promise<DirectionRecord[]> {
-    return Promise.resolve([...this.directionMap.values()].filter((d) => d.businessId === businessId).map((d) => ({ ...d })));
+    return Promise.resolve([...this.directionMap.values()].filter((d) => d.businessId === businessId).map((d) => structuredClone(d)));
   }
   saveDirection(direction: DirectionRecord): Promise<void> {
-    this.directionMap.set(direction.id, { ...direction });
+    this.directionMap.set(direction.id, structuredClone(direction));
     return Promise.resolve();
   }
   async ads(businessId: string): Promise<AdRecord[]> {
@@ -272,7 +407,35 @@ export class MemoryStore implements Store {
     this.changeLog.push(stored);
     return Promise.resolve(structuredClone(stored));
   }
-  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void> {
+  saveInsight(insight: InsightRecord): Promise<void> {
+    const index = this.insightList.findIndex((i) => i.id === insight.id);
+    if (index >= 0) this.insightList[index] = structuredClone(insight);
+    else this.insightList.push(structuredClone(insight));
+    return Promise.resolve();
+  }
+  insights(businessId: string): Promise<InsightRecord[]> {
+    return Promise.resolve(
+      this.insightList
+        .filter((i) => i.businessId === businessId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((i) => structuredClone(i)),
+    );
+  }
+  hypotheses(businessId: string): Promise<HypothesisRecord[]> {
+    return Promise.resolve(
+      this.hypothesisList
+        .filter((h) => h.businessId === businessId)
+        .sort((a, b) => a.openedAt.getTime() - b.openedAt.getTime())
+        .map((h) => structuredClone(h)),
+    );
+  }
+  saveHypothesis(hypothesis: HypothesisRecord): Promise<void> {
+    const index = this.hypothesisList.findIndex((h) => h.id === hypothesis.id);
+    if (index >= 0) this.hypothesisList[index] = structuredClone(hypothesis);
+    else this.hypothesisList.push(structuredClone(hypothesis));
+    return Promise.resolve();
+  }
+  updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome" | "insightId">>): Promise<void> {
     const entry = this.changeLog.find((c) => c.id === id);
     if (!entry) {
       return Promise.reject(new Error(`Change ${id} not found`));
@@ -346,12 +509,16 @@ export class MemoryStore implements Store {
   turns(businessId: string): Promise<AgentTurnRecord[]> {
     return Promise.resolve(this.turnList.filter((t) => t.businessId === businessId).map((t) => structuredClone(t)));
   }
-  notes(businessId: string): Promise<string[]> {
-    return Promise.resolve([...(this.noteMap.get(businessId) ?? [])]);
+  turnDigests(businessId: string): Promise<TurnDigest[]> {
+    return Promise.resolve(
+      this.turnList
+        .filter((t) => t.businessId === businessId)
+        .map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: new Date(t.startedAt.getTime()), summary: t.summary, summaryValid: t.summaryValid })),
+    );
   }
-  saveNotes(businessId: string, notes: readonly string[]): Promise<void> {
-    this.noteMap.set(businessId, [...notes]);
-    return Promise.resolve();
+  runningTurnStartedAt(businessId: string): Promise<Date | null> {
+    const running = this.turnList.filter((t) => t.businessId === businessId && t.status === "running").at(-1);
+    return Promise.resolve(running ? new Date(running.startedAt.getTime()) : null);
   }
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
     this.inbox.push({ ...structuredClone(event), id: `inbox-${this.seq++}`, consumedByTurnId: null });
@@ -367,13 +534,6 @@ export class MemoryStore implements Store {
       }
     }
     return Promise.resolve();
-  }
-  saveApproval(request: ApprovalRequest): Promise<void> {
-    this.approvalMap.set(request.id, structuredClone(request));
-    return Promise.resolve();
-  }
-  approvals(businessId: string): Promise<ApprovalRequest[]> {
-    return Promise.resolve([...this.approvalMap.values()].filter((a) => a.businessId === businessId).map((a) => structuredClone(a)));
   }
   saveClientConfirmation(c: ClientConfirmation): Promise<void> {
     this.confirmations.set(`${c.businessId}|${c.weekStart}`, { ...c });
@@ -427,6 +587,50 @@ export class MemoryStore implements Store {
   }
   markOwnerDeleted(businessId: string, at: Date): Promise<void> {
     this.deletedOwners.set(businessId, at);
+    return Promise.resolve();
+  }
+  getSimulation(businessId: string): Promise<SimulationRecord | null> {
+    const simulation = this.simulationMap.get(businessId);
+    return Promise.resolve(simulation ? structuredClone(simulation) : null);
+  }
+  saveSimulation(simulation: SimulationRecord): Promise<void> {
+    this.simulationMap.set(simulation.businessId, structuredClone(simulation));
+    return Promise.resolve();
+  }
+  deleteSimulation(businessId: string): Promise<void> {
+    this.simulationMap.delete(businessId);
+    return Promise.resolve();
+  }
+  movingSimulations(): Promise<SimulationRecord[]> {
+    return Promise.resolve([...this.simulationMap.values()].filter((s) => s.status !== "paused").map((s) => structuredClone(s)));
+  }
+  reopenWizard(businessId: string): Promise<void> {
+    const business = this.businessMap.get(businessId);
+    if (business) {
+      this.businessMap.set(businessId, { ...business, launchedOn: null, mode: "direct" });
+    }
+    return Promise.resolve();
+  }
+  deleteLaunchData(businessId: string): Promise<void> {
+    const directionIds = new Set([...this.directionMap.values()].filter((d) => d.businessId === businessId).map((d) => d.id));
+    const dropWhere = <V>(map: Map<string, V>, matches: (key: string, value: V) => boolean) => {
+      for (const [key, value] of [...map]) if (matches(key, value)) map.delete(key);
+    };
+    const keepOthers = <V extends { businessId: string }>(list: V[]) => list.splice(0, list.length, ...list.filter((v) => v.businessId !== businessId));
+    dropWhere(this.adMap, (_, ad) => directionIds.has(ad.directionId));
+    dropWhere(this.directionMap, (id) => directionIds.has(id));
+    dropWhere(this.statRows, (_, row) => row.businessId === businessId);
+    dropWhere(this.experimentMap, (_, e) => e.businessId === businessId);
+    dropWhere(this.cursors, (key) => key.startsWith(`${businessId}|`));
+    dropWhere(this.confirmations, (key) => key.startsWith(`${businessId}|`));
+    this.evaluations.delete(businessId);
+    this.decisions.delete(businessId);
+    keepOthers(this.changeLog);
+    keepOthers(this.turnList);
+    keepOthers(this.insightList);
+    keepOthers(this.hypothesisList);
+    keepOthers(this.inbox);
+    keepOthers(this.notificationList);
     return Promise.resolve();
   }
   purgeDeletedOwners(before: Date): Promise<number> {

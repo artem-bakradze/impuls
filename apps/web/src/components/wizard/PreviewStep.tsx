@@ -3,9 +3,8 @@
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Segmented } from "antd";
 import { useState } from "react";
-import { cityOf, hasOwnSite } from "@/lib/onboarding";
+import { hasOwnSite } from "@/lib/onboarding";
 import type { AdDraft } from "@/lib/onboarding";
-import { formatRub } from "@/lib/format";
 import { AdPreview } from "./AdPreview";
 import type { StepProps } from "./Wizard";
 
@@ -17,24 +16,30 @@ const hostOf = (url: string): string => {
   }
 };
 
-export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps & { onRegenerate: () => void; busy: boolean }) {
+export function PreviewStep({ draft, onChange, onRegenerate, busy, errors = {} }: StepProps & { onRegenerate: () => void; busy: boolean }) {
   const ads = draft.ads ?? { search: [], network: [] };
   const [channel, setChannel] = useState<"search" | "network">("search");
   const domain = hasOwnSite(draft) ? hostOf(draft.sources.siteUrl) : "ваш сайт";
   const total = ads.search.length + ads.network.length;
   const update = (which: "search" | "network", list: AdDraft[]) => onChange({ ...draft, ads: { ...ads, [which]: list } });
-  const query = [draft.card.services.find((s) => s.name.trim() !== "")?.name ?? draft.card.category, cityOf(draft.card.address)].filter(Boolean).join(" ").toLowerCase();
+  const query = [draft.card.services.find((s) => s.name.trim() !== "")?.name ?? draft.card.category, draft.card.city].filter(Boolean).join(" ").toLowerCase();
   const list = ads[channel];
 
   return (
-    <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+    <div id="field-ads" className={errors.ads ? "stack field-invalid" : "stack"} style={{ "--gap": "18px" } as React.CSSProperties}>
+      {errors.ads ? (
+        <div className="field-error" role="alert">
+          {errors.ads}
+        </div>
+      ) : null}
       <div className="row" style={{ justifyContent: "space-between" }}>
         <Segmented
+          style={{ maxWidth: "100%", overflowX: "auto" }}
           value={channel}
           onChange={(value) => setChannel(value as "search" | "network")}
           options={[
-            { value: "search", label: `В поиске Яндекса · ${ads.search.length}` },
-            { value: "network", label: `На сайтах-партнёрах · ${ads.network.length}` },
+            { value: "search", label: `Поиск Яндекса · ${ads.search.length}` },
+            { value: "network", label: `Сайты-партнёры · ${ads.network.length}` },
           ]}
         />
         <Button type="text" icon={<ReloadOutlined aria-hidden="true" />} onClick={onRegenerate} loading={busy}>
@@ -46,7 +51,9 @@ export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps &
         <div className="serp">
           <div className="serp-bar">
             <SearchOutlined style={{ color: "var(--text-3)" }} />
-            <div className="serp-query">{query || "ваша услуга"}</div>
+            <div className="serp-query" aria-label="Пример запроса">
+              {query || "ваша услуга"}
+            </div>
           </div>
           {list.length === 0 ? <div className="empty t-small">Здесь объявлений не будет.</div> : null}
           {list.map((ad, index) => (
@@ -63,7 +70,7 @@ export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps &
         </div>
       ) : (
         <>
-          <span className="t-small">Так объявления выглядят на сайтах и в приложениях, которые показывают рекламу Яндекса. Фото работ можно будет добавить позже.</span>
+          <span className="t-small">Так объявления выглядят на сайтах и в приложениях, которые показывают рекламу Яндекса.</span>
           {list.length === 0 ? <div className="empty t-small">Здесь объявлений не будет.</div> : null}
           <div className="net-grid">
             {list.map((ad, index) => (
@@ -80,12 +87,6 @@ export function PreviewStep({ draft, onChange, onRegenerate, busy }: StepProps &
           </div>
         </>
       )}
-
-      <div className="note">
-        <span>
-          Показываем людям в городе «{cityOf(draft.card.address) || draft.card.address}» · бюджет {formatRub((draft.budget.monthlyBudgetRub ?? 0) * 100)} в месяц
-        </span>
-      </div>
     </div>
   );
 }

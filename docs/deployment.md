@@ -23,8 +23,14 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | `DATABASE_URL` | PostgreSQL connection string |
 | `DIRECT_API_MODE` | `simulator` \| `production` |
 | `TOKEN_ENCRYPTION_KEY` | required in `production`: base64 of 32 bytes, same as in web; decrypts Direct OAuth tokens |
-| `AGENT_RUNTIME` | `openai` (agent on the OpenAI Agents API) or `idle` (no agent: guards and safety net only) |
-| `OPENAI_AGENT_MODEL` | required with `AGENT_RUNTIME=openai`, e.g. `gpt-6.1-sol` |
+| `AGENT_RUNTIME` | `openai` (agent on the OpenAI Agents API; required with `DIRECT_API_MODE=production`), `heuristic` (deterministic test agent with insights, free: e2e and a stand) or `idle` (no agent: guards and safety net only) |
+| `OPENAI_AGENT_MODEL` | required with `AGENT_RUNTIME=openai`: `gpt-6-luna` (chosen on 2026-10-30 after `pnpm eval:agent`, see `docs/research/agents-api.md`) |
+| `AGENT_PRICE_INPUT_RUB_PER_MTOK`, `AGENT_PRICE_OUTPUT_RUB_PER_MTOK` | required with `AGENT_RUNTIME=openai`: the model's price in rubles per million input and output tokens |
+| `AGENT_MONTHLY_LIMIT_RUB` | required with `AGENT_RUNTIME=openai`: model spend per business per month; above it the rules decide until the 1st |
+| | For `gpt-6-luna`: prices `10` and `50` (≈$0.10 / $0.50 per million at 100 ₽ per dollar — check the OpenAI price list and the rate before a release), monthly limit `50` (a month of daily reviews is ≈12–20 ₽ by the estimate), run limit `30`. |
+| `AGENT_SIMULATION_RUN_LIMIT_RUB` | required with `AGENT_RUNTIME=openai`: model spend per simulation run (a restart starts a new run) |
+| `OPENAI_STRATEGY_MODEL` | optional, with `AGENT_RUNTIME=openai` only: the model of the Monday weekly review, e.g. `gpt-6.1-sol`; without it the review runs on `OPENAI_AGENT_MODEL` |
+| `AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK`, `AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK` | required with `OPENAI_STRATEGY_MODEL`: its price in rubles per million tokens. Its spend counts in the same monthly and run limits: with `gpt-6.1-sol` (a review ≈9 ₽ by the estimate) plan the monthly limit as daily turns plus ≈4–5 reviews, e.g. `100` |
 | `CREATIVES` | `openai` (card extraction and ad texts by the LLM) or `template` (card-only drafts, local stand and e2e) |
 | `OPENAI_API_KEY`, `OPENAI_TEXT_MODEL` | required with `CREATIVES=openai`; text model `gpt-6.1-terra` (see `docs/research/agents-api.md` for the agent model) |
 | `SMTP_URL`, `MAIL_FROM` | outgoing email |
@@ -49,14 +55,62 @@ Whether the approval carries over to the user-facing app is to be confirmed with
 1. `pnpm db:migrate` against the target database (migrations are additive: expand → contract).
 2. Deploy `worker`, then `web`. Rollback = previous images; mini-sites keep working because they are static.
 
+## Showing the mechanics in 10 minutes (simulation mode)
+
+Works in any environment, including production; nothing reaches the Direct API and no money is spent on ads. With
+`AGENT_RUNTIME=openai` the agent's turns are paid (about 30 per 30-day run, within `AGENT_SIMULATION_RUN_LIMIT_RUB`);
+a run takes about 5 minutes plus the agent's reviews (≈17 s each). `heuristic` shows the same screens for free.
+
+1. Sign in, go through the wizard (budget from 10 000 ₽, keep at least 2 search ads for «Одно объявление не приносит
+   клиентов»).
+2. On step 6 choose «Симуляция»: «Обычный месяц» is selected, the others are under «Другие сценарии». Press
+   «Запустить симуляцию». The simulated month starts on the 1st of the next month; 30 virtual days take about
+   5 minutes at the default speed.
+3. On the summary press «Перемотать до первого решения» (or «До следующего решения» on the pult): the simulation
+   stops on the service's first decision about the ads and shows its explanation. The summary has three numbers and
+   the insight feed: the day reviews of the agent and, under them, what it noticed, on which facts, what it decided
+   and what comes next. While the agent reviews a day the pult says «Агент разбирает N-й день…» and the time stands.
+4. «Как решает сервис» starts with the comparison «с сервисом / без сервиса» by day, then the checklist of what the
+   scenario shows (with «обычно к N-му дню») and the feed of the run, where every insight about an ad or advertising
+   says «На самом деле: …» by the scenario's hidden truth against the goal of the decision.
+   «Вы отменили изменение одной кнопкой» is ticked after any rollback, from the history or from a card.
+5. The pult's menu (⋯) has the speed, «Начать заново» and «Запустить по-настоящему»; the latter deletes the
+   simulation and opens step 6 with the same card, budget and ads.
+
 ## Kill switches (no deploy needed)
 
 ```bash
-pnpm --filter @impuls/worker cli flags set agent_enabled off [--business <id>]       # agent only
+pnpm --filter @impuls/worker cli flags set agent_enabled off [--business <id>]       # agent only; the rules decide
+pnpm --filter @impuls/worker cli flags set agent_enabled on                          # back on (on after migrations)
 pnpm --filter @impuls/worker cli flags set automation_enabled off [--business <id>]  # also safety net and experiments
 ```
 
-The budget guard always keeps running.
+The budget guard always keeps running. A global «off» wins over a business value. Before releasing a new agent model
+or instructions version run `pnpm eval:agent` (paid): the agent must not be more expensive than the rules, on the
+analyst scenarios it must be at least 10% cheaper (`ANALYST_SHARE`), and its insights, hypotheses and day reviews must
+pass the checks (`MIN_VALID_SHARE`). With `OPENAI_STRATEGY_MODEL` set the eval runs the weekly reviews on it.
+
+## Agent costs
+
+```bash
+pnpm --filter @impuls/worker cli agent costs --month [YYYY-MM]   # model spend per business; a simulation: its current run
+```
+
+Each turn stores its tokens, their source (`api` or `estimate`) and the cost in kopecks. The OpenAI project budget
+limit stays as the outer fuse.
+
+## Account deletion (on request)
+
+Owners ask for deletion at `SUPPORT_EMAIL` (shown in the settings); there is no button in the app. Check that the
+request comes from the account's email, then queue the deletion to the running worker:
+
+```bash
+pnpm --filter @impuls/worker cli account delete <businessId>
+```
+
+The worker stops the service's campaigns in Direct, revokes the stored OAuth tokens, switches automation off for the
+business and marks the owner deleted; personal data is purged within 30 days by the daily job. Reply to the owner:
+«Реклама остановлена, данные будут удалены».
 
 ## Monitoring
 

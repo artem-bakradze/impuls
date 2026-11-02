@@ -317,6 +317,77 @@ a {
 .note-success .note-icon {
   color: var(--success);
 }
+.note-danger {
+  background: var(--danger-soft);
+  border-color: transparent;
+  color: #7a1710;
+}
+.note-danger .note-icon {
+  color: var(--danger);
+}
+
+/* ---------- Insights ---------- */
+
+.insight-card {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-margin-top: 140px;
+}
+.insight-part {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* «Разбор недели» (insights spec): a card like an insight's, with plain lists of hypotheses. */
+.weekly-review {
+  padding: 16px 18px;
+}
+.weekly-review ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.weekly-title {
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+  margin: 0;
+}
+.insight-observation {
+  font-weight: 600;
+  color: var(--text);
+}
+.insight-facts {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 14px;
+}
+.insight-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.insight-facts dt {
+  color: var(--text-2);
+  min-width: 0;
+}
+.insight-facts dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.day-summary {
+  color: var(--text-2);
+}
 
 .divider {
   height: 1px;
@@ -345,8 +416,10 @@ a {
   justify-content: center;
   align-items: center;
   gap: 8px;
-  height: 30px;
-  padding: 0 16px;
+  min-height: 30px;
+  padding: 5px 16px;
+  text-align: center;
+  line-height: 1.35;
   font-size: 12.5px;
   font-weight: 550;
   color: #6e3a06;
@@ -355,6 +428,7 @@ a {
 }
 .test-banner::before {
   content: "";
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -362,6 +436,136 @@ a {
 }
 
 /* ---------- App header & tab bar ---------- */
+
+/* Simulation pult under the header (simulation-mode spec): always in sight, wraps on phones. */
+.sim-bar {
+  position: sticky;
+  top: 61px;
+  z-index: 40;
+  background: #f4f1ff;
+  border-bottom: 1px solid #ddd6fe;
+}
+.sim-bar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.sim-bar-inner .spacer {
+  flex: 1;
+}
+.sim-ribbon {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.sim-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+.sim-clock {
+  font-size: 13.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+/* «Агент разбирает 8-й день…»: the time stands while it shows. */
+.sim-thinking {
+  font-size: 12.5px;
+  color: var(--accent-ink);
+  animation: sim-thinking 1.6s ease-in-out infinite;
+}
+@keyframes sim-thinking {
+  50% {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sim-thinking {
+    animation: none;
+  }
+}
+.sim-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Days of the scenario as a strip along the bottom edge of the pult. */
+.sim-strip {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 16px 6px;
+  display: flex;
+  gap: 2px;
+}
+.sim-strip i {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: #ddd6fe;
+}
+.sim-strip i[data-state="done"] {
+  background: var(--accent);
+}
+.sim-strip i[data-state="now"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+.on-narrow {
+  display: none;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.legend-item i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+/* «На самом деле» next to «Сервис видит» under each lane of the ribbon. */
+.sim-truth {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.diff-mark {
+  background: #fff1b8;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+@media (max-width: 720px) {
+  .sim-bar {
+    top: 57px;
+  }
+  .sim-label {
+    font-size: 11.5px;
+    width: 100%;
+  }
+  .on-wide {
+    display: none;
+  }
+  .on-narrow {
+    display: inline;
+  }
+  .sim-truth {
+    grid-template-columns: 1fr;
+  }
+}
 
 .app-header {
   position: sticky;
@@ -642,10 +846,11 @@ a {
   font-size: 13.5px;
   line-height: 1.45;
 }
+/* Hangs below the card so it never covers the last event. */
 .mock-float {
   position: absolute;
   right: -18px;
-  bottom: -22px;
+  bottom: -50px;
   max-width: 260px;
   box-shadow: var(--shadow-lg);
   animation: float 6s var(--ease) infinite;
@@ -679,43 +884,21 @@ a {
     padding: 16px 16px 120px;
   }
 }
-.stages {
+.steps-bar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 28px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-bottom: 24px;
 }
-.stage {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.stage-bar {
+.steps-bar > i {
   height: 4px;
   border-radius: 99px;
   background: var(--border);
-  overflow: hidden;
+  transition: background 0.4s var(--ease);
 }
-.stage-bar > i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
+.steps-bar > i[data-state="done"],
+.steps-bar > i[data-state="current"] {
   background: var(--accent);
-  transition: width 0.5s var(--ease);
-}
-.stage-label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-.stage[data-state="current"] .stage-label {
-  color: var(--text);
-}
-.stage[data-state="done"] .stage-label {
-  color: var(--accent);
 }
 .step-head {
   margin-bottom: 20px;
@@ -745,11 +928,8 @@ a {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
 }
-.wizard-hint {
+.wizard-footer-inner .spacer {
   flex: 1;
-  font-size: 13.5px;
-  color: var(--text-3);
-  text-align: right;
 }
 
 .field {
@@ -759,8 +939,9 @@ a {
 }
 .field-label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
@@ -778,6 +959,35 @@ a {
   font-weight: 550;
   color: var(--warning);
 }
+.link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.missing-optional {
+  color: var(--text-3);
+}
+.field-error {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--danger);
+  line-height: 1.45;
+}
+.field-invalid .ant-input,
+.field-invalid .ant-input-affix-wrapper,
+.field-invalid .ant-input-number:not(.optional-input),
+.field-invalid .ant-select-selector,
+.field-invalid .choice {
+  border-color: var(--danger) !important;
+}
+.field-invalid {
+  scroll-margin-top: 96px;
+}
 .missing::before {
   content: "";
   width: 6px;
@@ -791,6 +1001,7 @@ a {
   gap: 18px;
 }
 .form-section + .form-section {
+  margin-top: 24px;
   padding-top: 22px;
   border-top: 1px solid var(--border);
 }
@@ -809,6 +1020,10 @@ a {
   background: var(--surface);
   cursor: pointer;
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+}
+/* Ant Design's own wrapper styles win over `.choice` alone and press the box to the border. */
+.choice.ant-checkbox-wrapper {
+  padding: 14px 16px;
 }
 .choice:hover {
   border-color: var(--border-strong);
@@ -884,19 +1099,11 @@ a {
 .forecast .t-small {
   color: rgba(255, 255, 255, 0.78);
 }
-.month-strip {
-  display: flex;
-  gap: 2px;
-  margin-top: 12px;
-}
-.month-strip i {
-  flex: 1;
-  height: 6px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.22);
-}
-.month-strip i[data-on="true"] {
-  background: #fff;
+.forecast-divider {
+  width: 100%;
+  margin: 10px 0 4px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
 }
 
 /* Generation progress */
@@ -977,17 +1184,15 @@ li[data-state="done"] .gen-dot {
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
 }
+/* A sample query, not an input: plain text without a field frame. */
 .serp-query {
   flex: 1;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
+  min-width: 0;
   font-size: 14px;
   color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ad-card {
   position: relative;
@@ -1002,6 +1207,7 @@ li[data-state="done"] .gen-dot {
   background: var(--surface-2);
 }
 .ad-card .ad-meta {
+  padding-right: 72px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1038,19 +1244,6 @@ li[data-state="done"] .gen-dot {
   right: 12px;
   display: flex;
   gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s var(--ease);
-}
-.ad-card:hover .ad-actions,
-.ad-card:focus-within .ad-actions,
-.ad-net:hover .ad-actions,
-.ad-net:focus-within .ad-actions {
-  opacity: 1;
-}
-@media (hover: none) {
-  .ad-actions {
-    opacity: 1;
-  }
 }
 .ad-edit {
   display: flex;
@@ -1107,7 +1300,8 @@ li[data-state="done"] .gen-dot {
 }
 .checklist li {
   display: grid;
-  grid-template-columns: 36px 1fr;
+  grid-template-columns: 36px 1fr auto;
+  align-items: start;
   gap: 14px;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);

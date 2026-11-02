@@ -1,4 +1,4 @@
-import { IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
+import { HeuristicPolicy, IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
 import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { and, createDb, createPool, decryptToken, eq, isNull, parseTokenKey, schema } from "@impuls/db";
@@ -7,24 +7,33 @@ import type { AdPlatform } from "@impuls/platforms";
 import { PgBoss } from "pg-boss";
 import { systemClock } from "./clock";
 import { loadConfig } from "./config";
-import type { JobContext } from "./context";
+import type { AgentCosts, JobContext } from "./context";
 import { CommandExecutor } from "./executor";
 import { createLogger } from "./logger";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
-import { startScheduler } from "./scheduler";
+import { startScheduler, WEB_JOB_CONCURRENCY } from "./scheduler";
+import { MAX_MOVING_SIMULATIONS, startSimulationTicker } from "./simulation-mode";
 import { SmtpMailer } from "./email";
 import { FileMiniSiteStore } from "./minisite-store";
 import { BusinessDirectPlatform } from "./direct-platform";
 import type { DirectTokenSource } from "./direct-platform";
 
 const logger = createLogger();
+/**
+ * Up to three nested locks (simulation or job, agent turn, business) for each of the simulation ticks, web jobs and the
+ * hourly dispatch running at once.
+ */
+const LOCK_POOL_SIZE = 3 * (MAX_MOVING_SIMULATIONS + WEB_JOB_CONCURRENCY + 1);
 
 const main = async (): Promise<void> => {
   const config = loadConfig(process.env);
   const pool = createPool(config.DATABASE_URL);
   const store = new PgStore(createDb(pool));
-  const locks = new PgLockManager(pool);
+  // Locks hold their connections while the work inside them queries through the main pool, so they get a pool of
+  // their own, sized for the nested locks of the pg-boss handlers and of the simulations moved at once.
+  const lockPool = createPool(config.DATABASE_URL, LOCK_POOL_SIZE);
+  const locks = new PgLockManager(lockPool);
 
   let platformFor: (businessId: string) => AdPlatform;
   let advance: () => void = () => undefined;
@@ -69,24 +78,61 @@ const main = async (): Promise<void> => {
     creatives = new TemplateCreativeEngine();
   }
   let agent: AgentRuntime;
+  let agentCosts: AgentCosts | undefined;
+  let strategist: JobContext["strategist"];
   if (config.AGENT_RUNTIME === "openai") {
-    if (!config.OPENAI_API_KEY || !config.OPENAI_AGENT_MODEL) {
-      throw new Error("OPENAI_API_KEY and OPENAI_AGENT_MODEL are required with AGENT_RUNTIME=openai");
+    const { OPENAI_API_KEY, OPENAI_AGENT_MODEL, AGENT_PRICE_INPUT_RUB_PER_MTOK, AGENT_PRICE_OUTPUT_RUB_PER_MTOK, AGENT_MONTHLY_LIMIT_RUB, AGENT_SIMULATION_RUN_LIMIT_RUB } = config;
+    if (!OPENAI_API_KEY || !OPENAI_AGENT_MODEL || !AGENT_PRICE_INPUT_RUB_PER_MTOK || !AGENT_PRICE_OUTPUT_RUB_PER_MTOK || !AGENT_MONTHLY_LIMIT_RUB || !AGENT_SIMULATION_RUN_LIMIT_RUB) {
+      throw new Error("The model, its prices and the spend limits are required with AGENT_RUNTIME=openai");
     }
-    agent = new OpenAiAgentRuntime({ apiKey: config.OPENAI_API_KEY, model: config.OPENAI_AGENT_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) });
+    agent = new OpenAiAgentRuntime({ apiKey: OPENAI_API_KEY, model: OPENAI_AGENT_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) });
+    agentCosts = {
+      inputKopecksPerMTok: Math.round(AGENT_PRICE_INPUT_RUB_PER_MTOK * 100),
+      outputKopecksPerMTok: Math.round(AGENT_PRICE_OUTPUT_RUB_PER_MTOK * 100),
+      monthlyLimitKopecks: Math.round(AGENT_MONTHLY_LIMIT_RUB * 100),
+      simulationRunLimitKopecks: Math.round(AGENT_SIMULATION_RUN_LIMIT_RUB * 100),
+    };
+    const { OPENAI_STRATEGY_MODEL, AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK, AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK } = config;
+    if (OPENAI_STRATEGY_MODEL) {
+      if (!AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK || !AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK) {
+        throw new Error("The strategy model's prices are required with OPENAI_STRATEGY_MODEL");
+      }
+      strategist = {
+        runtime: new OpenAiAgentRuntime({ apiKey: OPENAI_API_KEY, model: OPENAI_STRATEGY_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) }),
+        costs: {
+          ...agentCosts,
+          inputKopecksPerMTok: Math.round(AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK * 100),
+          outputKopecksPerMTok: Math.round(AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK * 100),
+        },
+      };
+    }
   } else {
-    agent = new IdlePolicy();
+    agent = config.AGENT_RUNTIME === "heuristic" ? new HeuristicPolicy() : new IdlePolicy();
   }
-  const ctx: JobContext = { store, clock: systemClock, locks, executor, platformFor, agent, creatives };
+  const ctx: JobContext = {
+    store,
+    clock: systemClock,
+    locks,
+    executor,
+    platformFor,
+    agent,
+    creatives,
+    ...(agentCosts !== undefined && { agentCosts }),
+    ...(strategist !== undefined && { strategist }),
+  };
 
   const boss = new PgBoss(config.DATABASE_URL);
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
   await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL, teamEmail: config.TEAM_ALERT_EMAIL });
-  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null });
+  // Businesses in the simulation mode live on their own virtual clocks (add-simulation-mode decision 4).
+  const stopTicker = startSimulationTicker(ctx, logger);
+  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null });
 
   const shutdown = async (): Promise<void> => {
+    stopTicker();
     await boss.stop();
+    await lockPool.end();
     await pool.end();
   };
   process.once("SIGTERM", () => void shutdown());

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircleFilled, CheckOutlined, ClockCircleOutlined, MessageOutlined, RiseOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, CheckOutlined, ClockCircleOutlined, ExperimentOutlined, MessageOutlined, RiseOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Input } from "antd";
 import { Logo, LogoMark } from "./ui/Logo";
 
@@ -32,7 +32,7 @@ function ProductMock() {
           <LogoMark size={24} />
           <span className="t-h3">Неделя 14–20 октября</span>
         </div>
-        <span className="chip chip-success">В цели</span>
+        <span className="chip chip-success">Работает</span>
       </div>
       <div className="mock-kpis">
         <div className="mock-kpi">
@@ -45,7 +45,9 @@ function ProductMock() {
         <div className="mock-kpi">
           <div className="t-small">Цена обращения</div>
           <div className="v t-num">640 ₽</div>
-          <div className="t-small">цель 800 ₽</div>
+          <div className="t-small" style={{ color: "var(--success)" }}>
+            ↓ 150 ₽
+          </div>
         </div>
         <div className="mock-kpi">
           <div className="t-small">Потрачено</div>
@@ -69,7 +71,7 @@ function ProductMock() {
             <RiseOutlined />
           </span>
           <span>
-            <b>Добавил 20% к «Маникюр — Поиск»:</b> 6 обращений по 520 ₽ — дешевле вашей цели.
+            <b>Добавили 20% рекламе в поиске:</b> 6 обращений по 520 ₽ — дешевле остальной.
           </span>
         </div>
         <div className="mock-event">
@@ -77,7 +79,7 @@ function ProductMock() {
             <ThunderboltOutlined />
           </span>
           <span>
-            <b>Отключил «Маникюр без записи»:</b> 2 600 ₽ за 14 дней и ни одного обращения.
+            <b>Отключили «Маникюр без записи»:</b> 2 600 ₽ за 14 дней и ни одного обращения.
           </span>
         </div>
       </div>
@@ -115,7 +117,7 @@ export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTes
                   <ClockCircleOutlined />
                 </span>
                 <span>
-                  <b>10 минут до запуска.</b> Без кабинетов, ставок и ключевых фраз.
+                  <b>10 минут до запуска.</b> Нужны только сайт и аккаунт в Яндекс Директе — без ставок и ключевых фраз.
                 </span>
               </li>
               <li>
@@ -132,6 +134,14 @@ export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTes
                 </span>
                 <span>
                   <b>Каждое изменение — простыми словами</b> и с кнопкой «Вернуть как было».
+                </span>
+              </li>
+              <li>
+                <span className="benefit-icon">
+                  <ExperimentOutlined />
+                </span>
+                <span>
+                  <b>Можно сначала посмотреть в симуляции:</b> месяц рекламы за 5 минут, без денег и без Директа — и видно, как сервис принимает решения.
                 </span>
               </li>
             </ul>

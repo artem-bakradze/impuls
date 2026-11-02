@@ -1,23 +1,17 @@
 "use client";
 
-import { DesktopOutlined, HistoryOutlined, NodeIndexOutlined, RobotOutlined, RollbackOutlined, UserOutlined } from "@ant-design/icons";
-import { Button, Select } from "antd";
+import { BulbOutlined, DesktopOutlined, DownOutlined, HistoryOutlined, NodeIndexOutlined, RobotOutlined, RollbackOutlined, SafetyCertificateOutlined, UpOutlined, UserOutlined } from "@ant-design/icons";
+import { Button } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { formatDateTime } from "@/lib/format";
-import { AUTHOR_LABELS, filterHistory, TYPE_LABELS } from "@/lib/history-view";
-import type { HistoryAuthor, HistoryFilter, HistoryItem, HistoryType, Names } from "@/lib/history-view";
+import { formatDateTime, formatLocalDate, formatRub, plural } from "@/lib/format";
+import { AUTHOR_LABELS, foldBudgetAdjustments, newestFirst } from "@/lib/history-view";
+import type { BudgetGroup, HistoryAuthor, HistoryItem, Names } from "@/lib/history-view";
+import { InsightCard } from "../insights/InsightFeed";
 import { Chip, Empty, PageHead } from "../ui/primitives";
 import { RollbackDialog } from "./RollbackDialog";
-
-const PERIODS = [
-  { value: 7, label: "За неделю" },
-  { value: 30, label: "За месяц" },
-  { value: 90, label: "За 3 месяца" },
-  { value: 0, label: "За всё время" },
-];
 
 const AVATARS: Record<HistoryAuthor, ReactNode> = {
   service: <RobotOutlined />,
@@ -25,16 +19,15 @@ const AVATARS: Record<HistoryAuthor, ReactNode> = {
   cabinet: <DesktopOutlined />,
 };
 
-/** Filters appear once there is more than one entry to filter. */
-const FILTERS_FROM = 2;
 
 export function HistoryEntry({ item, timeZone, onRollback }: { item: HistoryItem; timeZone: string; onRollback: (item: HistoryItem) => void }) {
+  const [why, setWhy] = useState(false);
   return (
     <li className="feed-item fade-in">
       <span className="feed-avatar" data-author={item.author} aria-hidden="true">
         {AVATARS[item.author]}
       </span>
-      <article className="surface feed-card" data-testid="history-entry">
+      <article className="surface feed-card" data-testid="history-entry" id={item.id} style={{ scrollMarginTop: 140 }}>
         <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
           <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
             <span style={{ fontWeight: 600 }}>{item.object}</span>
@@ -52,7 +45,7 @@ export function HistoryEntry({ item, timeZone, onRollback }: { item: HistoryItem
             <ul className="diff">
               {item.diff.map((row) => (
                 <li key={row.label}>
-                  {row.label}: было «{row.before}» → стало «{row.after}»
+                  {row.label}: было {row.before} → стало {row.after}
                 </li>
               ))}
             </ul>
@@ -70,6 +63,11 @@ export function HistoryEntry({ item, timeZone, onRollback }: { item: HistoryItem
             ) : item.reverted ? null : (
               <span className="t-small">{item.rollback.reason}</span>
             )}
+            {item.insight ? (
+              <button type="button" className="link-button" onClick={() => setWhy(!why)} aria-expanded={why}>
+                <BulbOutlined aria-hidden="true" /> Почему
+              </button>
+            ) : null}
             {item.turnId ? (
               <Link href={`/history/turn/${item.turnId}`} style={{ fontSize: 14, fontWeight: 550 }}>
                 <NodeIndexOutlined style={{ marginRight: 6 }} />
@@ -77,45 +75,65 @@ export function HistoryEntry({ item, timeZone, onRollback }: { item: HistoryItem
               </Link>
             ) : null}
           </div>
+          {why && item.insight ? <InsightCard card={item.insight} timeZone={timeZone} /> : null}
         </div>
       </article>
     </li>
   );
 }
 
-export function HistoryView({ items, names, timeZone }: { items: HistoryItem[]; names: Names; timeZone: string }) {
+/** One row for a day of budget-guard limit cuts, with every cut inside on demand (change-history spec). */
+function BudgetDay({ group, timeZone, monthlyBudgetRub, onRollback }: { group: BudgetGroup; timeZone: string; monthlyBudgetRub: number; onRollback: (item: HistoryItem) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="feed-item fade-in">
+      <span className="feed-avatar" data-author="service" aria-hidden="true">
+        <SafetyCertificateOutlined />
+      </span>
+      <article className="surface feed-card" data-testid="history-budget-day">
+        <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
+          <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+            <span style={{ fontWeight: 600 }}>Защита бюджета</span>
+            <Chip tone="accent" plain>
+              {AUTHOR_LABELS.service}
+            </Chip>
+            <span className="spacer" />
+            <span className="t-small">{formatLocalDate(group.date)}</span>
+          </div>
+          <p className="t-body">
+            Лимиты подстроены {group.entries.length} {plural(group.entries.length, "раз", "раза", "раз")}, чтобы не выйти за {formatRub(monthlyBudgetRub * 100)} в месяц.
+          </p>
+          <ul className="diff">
+            {group.limits.map((limit) => (
+              <li key={limit.object}>
+                {limit.object}: было {limit.from} → стало {limit.to}
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="link-button" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(!open)} aria-expanded={open}>
+            {open ? <UpOutlined aria-hidden="true" /> : <DownOutlined aria-hidden="true" />} {open ? "Скрыть подробности" : `Все ${group.entries.length} изменений`}
+          </button>
+          {open ? (
+            <ol className="feed" style={{ marginTop: 4 }}>
+              {group.entries.map((item) => (
+                <HistoryEntry key={item.id} item={item} timeZone={timeZone} onRollback={onRollback} />
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      </article>
+    </li>
+  );
+}
+
+export function HistoryView({ items, names, timeZone, monthlyBudgetRub }: { items: HistoryItem[]; names: Names; timeZone: string; monthlyBudgetRub: number }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<HistoryFilter>({ author: "all", type: "all", days: null });
   const [selected, setSelected] = useState<HistoryItem | null>(null);
-  const visible = useMemo(() => filterHistory(items, filter, new Date()), [items, filter]);
+  const visible = useMemo(() => foldBudgetAdjustments(newestFirst(items), timeZone), [items, timeZone]);
 
   return (
     <div className="page page-narrow">
       <PageHead title="История изменений" lead="Всё, что меняли сервис, вы и кабинет Директа. Любое изменение можно вернуть." />
-      {items.length >= FILTERS_FROM ? (
-        <div className="row" style={{ "--gap": "8px", marginBottom: 20 } as React.CSSProperties}>
-          <Select<HistoryAuthor | "all">
-            aria-label="Кто сделал"
-            style={{ minWidth: 190 }}
-            value={filter.author}
-            onChange={(author) => setFilter({ ...filter, author })}
-            options={[
-              { value: "all", label: "Все авторы" },
-              { value: "service", label: "Сделал сервис" },
-              { value: "user", label: "Сделали вы" },
-              { value: "cabinet", label: "Изменено в кабинете Директа" },
-            ]}
-          />
-          <Select<HistoryType | "all">
-            aria-label="Что менялось"
-            style={{ minWidth: 160 }}
-            value={filter.type}
-            onChange={(type) => setFilter({ ...filter, type })}
-            options={[{ value: "all", label: "Все изменения" }, ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ value: value as HistoryType, label }))]}
-          />
-          <Select<number> aria-label="За какой период" style={{ minWidth: 150 }} value={filter.days ?? 0} onChange={(days) => setFilter({ ...filter, days: days === 0 ? null : days })} options={PERIODS} />
-        </div>
-      ) : null}
       {visible.length === 0 ? (
         <div className="surface">
           <Empty icon={<HistoryOutlined aria-hidden="true" />} title="Здесь пока пусто">
@@ -124,9 +142,13 @@ export function HistoryView({ items, names, timeZone }: { items: HistoryItem[]; 
         </div>
       ) : (
         <ol className="feed">
-          {visible.map((item) => (
-            <HistoryEntry key={item.id} item={item} timeZone={timeZone} onRollback={setSelected} />
-          ))}
+          {visible.map((row) =>
+            row.kind === "entry" ? (
+              <HistoryEntry key={row.item.id} item={row.item} timeZone={timeZone} onRollback={setSelected} />
+            ) : (
+              <BudgetDay key={row.group.id} group={row.group} timeZone={timeZone} monthlyBudgetRub={monthlyBudgetRub} onRollback={setSelected} />
+            ),
+          )}
         </ol>
       )}
       {selected ? (

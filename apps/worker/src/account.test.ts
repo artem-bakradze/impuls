@@ -28,7 +28,7 @@ describe("agent journal retention", () => {
 });
 
 describe("account deletion on the simulator", () => {
-  it("stops campaigns, revokes tokens, deletes notes, keeps the agent off and purges personal data after 30 days", async () => {
+  it("stops campaigns, revokes tokens, keeps the agent off and purges personal data after 30 days", async () => {
     const sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 5, agent: new AdversarialPolicy() });
     await sim.launchBusiness({
       id: "b1",
@@ -39,14 +39,12 @@ describe("account deletion on the simulator", () => {
     });
     const store = sim.store as MemoryStore;
     store.emails.set("b1", "owner@example.com");
-    await store.saveNotes("b1", ["заметка"]);
     await sim.runDays(3);
 
     expect(await deleteAccount(sim.ctx, "b1")).toEqual({ message: "Реклама остановлена, данные будут удалены" });
     const campaigns = await sim.platform.getCampaigns((await store.directions("b1")).map((d) => d.platformCampaignId));
     expect(campaigns.every((c) => c.status === "paused")).toBe(true);
     expect(store.revokedAccounts.has("b1")).toBe(true);
-    expect(await store.notes("b1")).toEqual([]);
 
     const turnsBefore = (await store.turns("b1")).length;
     await sim.runDays(29);

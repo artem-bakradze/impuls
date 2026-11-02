@@ -5,7 +5,7 @@ test("new owner signs in, goes through the wizard and launches ads on the simula
   const email = uniqueEmail("launch");
   await login(page, email);
   await page.waitForURL("**/wizard");
-  await expect(page.getByTestId("test-mode-banner")).toHaveText("Тестовый режим — реклама не показывается");
+  await expect(page.getByTestId("test-mode-banner")).toHaveText("Тестовый стенд — Яндекс Директ не подключён, реклама не показывается");
 
   await fillFirstSteps(page);
   await fillBudget(page);
@@ -23,7 +23,7 @@ test("new owner signs in, goes through the wizard and launches ads on the simula
   await next(page);
   await page.reload();
   await expectStep(page, 4, "Бюджет");
-  await expect(page.getByLabel("Цена одного обращения")).toHaveValue("300");
+  await expect(page.getByTestId("auto-goal")).toBeVisible();
 
   await finishWizard(page);
   await expect(page.getByTestId("first-day")).toContainText("Первые результаты появятся в течение суток");

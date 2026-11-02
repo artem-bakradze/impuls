@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`SummaryView > shows the four numbers, the goal line, the service's actions and the clients question 1`] = `
+exports[`SummaryView > shows three numbers without charts or a ring, then the insight feed instead of the week's actions 1`] = `
 <div>
   <div
     class="page"
@@ -80,32 +80,21 @@ exports[`SummaryView > shows the four numbers, the goal line, the service's acti
             Потрачено из бюджета месяца
           </span>
           <div
-            class="row"
-            style="justify-content: space-between; flex-wrap: nowrap;"
+            class="stack"
+            style="--gap: 4px;"
           >
-            <div
-              class="stack"
-              style="--gap: 4px;"
-            >
-              <span
-                class="v"
-              >
-                6 300 ₽
-              </span>
-              <span
-                class="sub"
-              >
-                из 
-                15 000 ₽
-                 · больше не потратим
-              </span>
-            </div>
             <span
-              aria-label="Потрачено 42% бюджета"
-              class="ring"
-              data-label="42%"
-              style="--p: 42;"
-            />
+              class="v"
+            >
+              6 300 ₽
+            </span>
+            <span
+              class="sub"
+            >
+              из 
+              15 000 ₽
+               — больше не потратим
+            </span>
           </div>
           <span
             class="sub"
@@ -123,7 +112,7 @@ exports[`SummaryView > shows the four numbers, the goal line, the service's acti
           </span>
           <div
             class="row"
-            style="justify-content: space-between; flex-wrap: nowrap; align-items: flex-end;"
+            style="justify-content: space-between; flex-wrap: wrap; align-items: flex-end; --gap: 6px;"
           >
             <span
               class="v"
@@ -147,7 +136,7 @@ exports[`SummaryView > shows the four numbers, the goal line, the service's acti
           </span>
           <div
             class="row"
-            style="justify-content: space-between; flex-wrap: nowrap; align-items: flex-end;"
+            style="justify-content: space-between; flex-wrap: wrap; align-items: flex-end; --gap: 6px;"
           >
             <span
               class="v"
@@ -178,245 +167,6 @@ exports[`SummaryView > shows the four numbers, the goal line, the service's acti
           Дороже цели
         </span>
       </div>
-      <div
-        class="grid-2"
-      >
-        <section
-          class="surface "
-        >
-          <div
-            class="surface-head"
-          >
-            <div
-              class="row"
-              style="gap: 10px;"
-            >
-              <h2
-                class="t-h3"
-              >
-                Что я сделал за неделю
-              </h2>
-            </div>
-          </div>
-          <div
-            class="surface-body"
-            style="padding-top: 4px; padding-bottom: 8px;"
-          >
-            <div
-              class="list-row"
-            >
-              <span
-                class="icon-tile accent"
-              >
-                <span
-                  aria-label="robot"
-                  class="anticon anticon-robot"
-                  role="img"
-                >
-                  <svg
-                    aria-hidden="true"
-                    data-icon="robot"
-                    fill="currentColor"
-                    focusable="false"
-                    height="1em"
-                    viewBox="64 64 896 896"
-                    width="1em"
-                  >
-                    <path
-                      d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"
-                    />
-                  </svg>
-                </span>
-              </span>
-              <div
-                class="stack"
-                style="--gap: 3px;"
-              >
-                <span
-                  class="t-body"
-                >
-                  Отключил объявление «Маникюр без записи»: за 2 недели оно потратило 2 400 ₽.
-                </span>
-                <span
-                  class="t-small"
-                >
-                  27 октября в 09:00
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-        <section
-          class="surface "
-        >
-          <div
-            class="surface-head"
-          >
-            <div
-              class="row"
-              style="gap: 10px;"
-            >
-              <h2
-                class="t-h3"
-              >
-                Нужно ваше участие
-              </h2>
-            </div>
-            <span
-              class="chip chip-accent "
-            >
-              1
-            </span>
-          </div>
-          <div
-            class="surface-body"
-          >
-            <div
-              class="stack"
-              style="--gap: 12px;"
-            >
-              <div
-                class="note"
-                data-testid="clients-question"
-              >
-                <span
-                  class="note-icon"
-                >
-                  <span
-                    aria-label="user-add"
-                    class="anticon anticon-user-add"
-                    role="img"
-                  >
-                    <svg
-                      aria-hidden="true"
-                      data-icon="user-add"
-                      fill="currentColor"
-                      focusable="false"
-                      height="1em"
-                      viewBox="64 64 896 896"
-                      width="1em"
-                    >
-                      <path
-                        d="M678.3 642.4c24.2-13 51.9-20.4 81.4-20.4h.1c3 0 4.4-3.6 2.2-5.6a371.67 371.67 0 00-103.7-65.8c-.4-.2-.8-.3-1.2-.5C719.2 505 759.6 431.7 759.6 349c0-137-110.8-248-247.5-248S264.7 212 264.7 349c0 82.7 40.4 156 102.6 201.1-.4.2-.8.3-1.2.5-44.7 18.9-84.8 46-119.3 80.6a373.42 373.42 0 00-80.4 119.5A373.6 373.6 0 00137 888.8a8 8 0 008 8.2h59.9c4.3 0 7.9-3.5 8-7.8 2-77.2 32.9-149.5 87.6-204.3C357 628.2 432.2 597 512.2 597c56.7 0 111.1 15.7 158 45.1a8.1 8.1 0 008.1.3zM512.2 521c-45.8 0-88.9-17.9-121.4-50.4A171.2 171.2 0 01340.5 349c0-45.9 17.9-89.1 50.3-121.6S466.3 177 512.2 177s88.9 17.9 121.4 50.4A171.2 171.2 0 01683.9 349c0 45.9-17.9 89.1-50.3 121.6C601.1 503.1 558 521 512.2 521zM880 759h-84v-84c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v84h-84c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h84v84c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-84h84c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8z"
-                      />
-                    </svg>
-                  </span>
-                </span>
-                <div
-                  class="stack"
-                  style="--gap: 10px;"
-                >
-                  <strong
-                    style="color: var(--text);"
-                  >
-                    Сколько обращений стали клиентами?
-                  </strong>
-                  <span>
-                    С 
-                    19 октября
-                     по 
-                    25 октября
-                     было обращений: 
-                    11
-                    . Сколько из них стали вашими клиентами?
-                  </span>
-                  <div
-                    class="row"
-                    style="--gap: 8px;"
-                  >
-                    <div
-                      class="ant-input-number ant-input-number-mode-input css-var-root ant-input-number-css-var css-dev-only-do-not-override-1y106cm ant-input-number-outlined"
-                    >
-                      <input
-                        aria-label="Сколько стали клиентами"
-                        aria-valuemax="11"
-                        aria-valuemin="0"
-                        autocomplete="off"
-                        class="ant-input-number-input"
-                        role="spinbutton"
-                        step="1"
-                        value=""
-                      />
-                      <div
-                        class="ant-input-number-actions"
-                      >
-                        <span
-                          aria-disabled="false"
-                          aria-label="Increase Value"
-                          class="ant-input-number-action ant-input-number-action-up"
-                          role="button"
-                          unselectable="on"
-                        >
-                          <span
-                            aria-label="up"
-                            class="anticon anticon-up"
-                            role="img"
-                          >
-                            <svg
-                              aria-hidden="true"
-                              data-icon="up"
-                              fill="currentColor"
-                              focusable="false"
-                              height="1em"
-                              viewBox="64 64 896 896"
-                              width="1em"
-                            >
-                              <path
-                                d="M890.5 755.3L537.9 269.2c-12.8-17.6-39-17.6-51.7 0L133.5 755.3A8 8 0 00140 768h75c5.1 0 9.9-2.5 12.9-6.6L512 369.8l284.1 391.6c3 4.1 7.8 6.6 12.9 6.6h75c6.5 0 10.3-7.4 6.5-12.7z"
-                              />
-                            </svg>
-                          </span>
-                        </span>
-                        <span
-                          aria-disabled="false"
-                          aria-label="Decrease Value"
-                          class="ant-input-number-action ant-input-number-action-down"
-                          role="button"
-                          unselectable="on"
-                        >
-                          <span
-                            aria-label="down"
-                            class="anticon anticon-down"
-                            role="img"
-                          >
-                            <svg
-                              aria-hidden="true"
-                              data-icon="down"
-                              fill="currentColor"
-                              focusable="false"
-                              height="1em"
-                              viewBox="64 64 896 896"
-                              width="1em"
-                            >
-                              <path
-                                d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"
-                              />
-                            </svg>
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      class="ant-btn css-dev-only-do-not-override-1y106cm css-var-root ant-btn-primary ant-btn-color-primary ant-btn-variant-solid"
-                      disabled=""
-                      type="button"
-                    >
-                      <span>
-                        Ответить
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-      <span
-        class="t-small"
-      >
-        Данные за последние 3 дня могут уточняться: Яндекс иногда пересчитывает расходы задним числом.
-      </span>
       <section
         class="surface "
       >
@@ -430,63 +180,412 @@ exports[`SummaryView > shows the four numbers, the goal line, the service's acti
             <h2
               class="t-h3"
             >
-              Подробнее по направлениям
+              Нужно ваше участие
             </h2>
           </div>
+          <span
+            class="chip chip-accent "
+          >
+            1
+          </span>
         </div>
         <div
           class="surface-body"
-          style="padding-top: 4px; padding-bottom: 8px;"
         >
           <div
-            class="list-row"
-            style="align-items: center;"
+            class="stack"
+            style="--gap: 12px;"
           >
             <div
-              class="stack"
-              style="--gap: 4px; flex: 1 1 0%; min-width: 0px;"
+              class="note"
+              data-testid="clients-question"
+            >
+              <span
+                class="note-icon"
+              >
+                <span
+                  aria-label="user-add"
+                  class="anticon anticon-user-add"
+                  role="img"
+                >
+                  <svg
+                    aria-hidden="true"
+                    data-icon="user-add"
+                    fill="currentColor"
+                    focusable="false"
+                    height="1em"
+                    viewBox="64 64 896 896"
+                    width="1em"
+                  >
+                    <path
+                      d="M678.3 642.4c24.2-13 51.9-20.4 81.4-20.4h.1c3 0 4.4-3.6 2.2-5.6a371.67 371.67 0 00-103.7-65.8c-.4-.2-.8-.3-1.2-.5C719.2 505 759.6 431.7 759.6 349c0-137-110.8-248-247.5-248S264.7 212 264.7 349c0 82.7 40.4 156 102.6 201.1-.4.2-.8.3-1.2.5-44.7 18.9-84.8 46-119.3 80.6a373.42 373.42 0 00-80.4 119.5A373.6 373.6 0 00137 888.8a8 8 0 008 8.2h59.9c4.3 0 7.9-3.5 8-7.8 2-77.2 32.9-149.5 87.6-204.3C357 628.2 432.2 597 512.2 597c56.7 0 111.1 15.7 158 45.1a8.1 8.1 0 008.1.3zM512.2 521c-45.8 0-88.9-17.9-121.4-50.4A171.2 171.2 0 01340.5 349c0-45.9 17.9-89.1 50.3-121.6S466.3 177 512.2 177s88.9 17.9 121.4 50.4A171.2 171.2 0 01683.9 349c0 45.9-17.9 89.1-50.3 121.6C601.1 503.1 558 521 512.2 521zM880 759h-84v-84c0-4.4-3.6-8-8-8h-56c-4.4 0-8 3.6-8 8v84h-84c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h84v84c0 4.4 3.6 8 8 8h56c4.4 0 8-3.6 8-8v-84h84c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8z"
+                    />
+                  </svg>
+                </span>
+              </span>
+              <div
+                class="stack"
+                style="--gap: 10px;"
+              >
+                <strong
+                  style="color: var(--text);"
+                >
+                  Сколько обращений стали клиентами?
+                </strong>
+                <span>
+                  С 
+                  19 октября
+                   по 
+                  25 октября
+                   было обращений: 
+                  11
+                  . Сколько из них стали вашими клиентами?
+                </span>
+                <div
+                  class="row"
+                  style="--gap: 8px;"
+                >
+                  <div
+                    class="ant-input-number ant-input-number-mode-input css-var-root ant-input-number-css-var css-dev-only-do-not-override-1y106cm ant-input-number-outlined"
+                  >
+                    <input
+                      aria-label="Сколько стали клиентами"
+                      aria-valuemax="11"
+                      aria-valuemin="0"
+                      autocomplete="off"
+                      class="ant-input-number-input"
+                      role="spinbutton"
+                      step="1"
+                      value=""
+                    />
+                    <div
+                      class="ant-input-number-actions"
+                    >
+                      <span
+                        aria-disabled="false"
+                        aria-label="Increase Value"
+                        class="ant-input-number-action ant-input-number-action-up"
+                        role="button"
+                        unselectable="on"
+                      >
+                        <span
+                          aria-label="up"
+                          class="anticon anticon-up"
+                          role="img"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            data-icon="up"
+                            fill="currentColor"
+                            focusable="false"
+                            height="1em"
+                            viewBox="64 64 896 896"
+                            width="1em"
+                          >
+                            <path
+                              d="M890.5 755.3L537.9 269.2c-12.8-17.6-39-17.6-51.7 0L133.5 755.3A8 8 0 00140 768h75c5.1 0 9.9-2.5 12.9-6.6L512 369.8l284.1 391.6c3 4.1 7.8 6.6 12.9 6.6h75c6.5 0 10.3-7.4 6.5-12.7z"
+                            />
+                          </svg>
+                        </span>
+                      </span>
+                      <span
+                        aria-disabled="false"
+                        aria-label="Decrease Value"
+                        class="ant-input-number-action ant-input-number-action-down"
+                        role="button"
+                        unselectable="on"
+                      >
+                        <span
+                          aria-label="down"
+                          class="anticon anticon-down"
+                          role="img"
+                        >
+                          <svg
+                            aria-hidden="true"
+                            data-icon="down"
+                            fill="currentColor"
+                            focusable="false"
+                            height="1em"
+                            viewBox="64 64 896 896"
+                            width="1em"
+                          >
+                            <path
+                              d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"
+                            />
+                          </svg>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    class="ant-btn css-dev-only-do-not-override-1y106cm css-var-root ant-btn-primary ant-btn-color-primary ant-btn-variant-solid"
+                    disabled=""
+                    type="button"
+                  >
+                    <span>
+                      Ответить
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section
+        class="stack"
+        data-testid="summary-feed"
+        style="--gap: 14px;"
+      >
+        <div
+          class="row"
+          style="justify-content: space-between; align-items: center;"
+        >
+          <h2
+            class="t-h2"
+          >
+            Что сервис заметил и решил
+          </h2>
+        </div>
+        <div
+          class="stack"
+          data-testid="insight-feed"
+          style="--gap: 22px;"
+        >
+          <section
+            class="stack day-review"
+            data-testid="day-review"
+            style="--gap: 10px;"
+          >
+            <h3
+              class="t-h3"
+            >
+              Разбор 27 октября
+            </h3>
+            <p
+              class="t-body day-summary"
+              data-testid="day-summary"
+            >
+              Отключили одно объявление: оно тратило деньги без обращений.
+            </p>
+            <article
+              class="surface insight-card"
+              data-testid="insight"
+              id="insight-i1"
             >
               <div
                 class="row"
                 style="--gap: 8px;"
               >
                 <span
-                  style="font-weight: 600;"
+                  aria-hidden="true"
+                  class="icon-tile accent"
                 >
-                  Маникюр — Поиск
+                  <span
+                    aria-label="robot"
+                    class="anticon anticon-robot"
+                    role="img"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      data-icon="robot"
+                      fill="currentColor"
+                      focusable="false"
+                      height="1em"
+                      viewBox="64 64 896 896"
+                      width="1em"
+                    >
+                      <path
+                        d="M300 328a60 60 0 10120 0 60 60 0 10-120 0zM852 64H172c-17.7 0-32 14.3-32 32v660c0 17.7 14.3 32 32 32h680c17.7 0 32-14.3 32-32V96c0-17.7-14.3-32-32-32zm-32 660H204V128h616v596zM604 328a60 60 0 10120 0 60 60 0 10-120 0zm250.2 556H169.8c-16.5 0-29.8 14.3-29.8 32v36c0 4.4 3.3 8 7.4 8h729.1c4.1 0 7.4-3.6 7.4-8v-36c.1-17.7-13.2-32-29.7-32zM664 508H360c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h304c4.4 0 8-3.6 8-8v-60c0-4.4-3.6-8-8-8z"
+                      />
+                    </svg>
+                  </span>
                 </span>
                 <span
-                  class="chip chip-success "
+                  class="chip chip-accent chip-plain"
                 >
-                  работает
+                  Сервис
+                </span>
+                <span
+                  class="spacer"
+                />
+                <span
+                  class="t-small"
+                >
+                  27 октября в 09:00
                 </span>
               </div>
-              <span
-                class="t-small"
+              <div
+                class="insight-part"
               >
-                Поиск Яндекса
-              </span>
-            </div>
-            <div
-              class="stack t-num"
-              style="--gap: 2px; text-align: right;"
-            >
-              <span
-                style="font-weight: 600;"
+                <span
+                  class="t-eyebrow"
+                >
+                  Что заметили
+                </span>
+                <p
+                  class="t-body insight-observation"
+                >
+                  Объявление «Маникюр без записи» тратит деньги и не приводит клиентов.
+                </p>
+              </div>
+              <div
+                class="insight-part"
               >
-                6 300 ₽
-              </span>
-              <span
-                class="t-small"
+                <span
+                  class="t-eyebrow"
+                >
+                  На каких данных
+                </span>
+                <dl
+                  class="insight-facts"
+                >
+                  <div>
+                    <dt>
+                      Объявление «Маникюр без записи»: расход за 14 дней
+                    </dt>
+                    <dd
+                      class="t-num"
+                    >
+                      1 530 ₽
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      Объявление «Маникюр без записи»: обращения за 14 дней
+                    </dt>
+                    <dd
+                      class="t-num"
+                    >
+                      0
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      Цель
+                    </dt>
+                    <dd
+                      class="t-num"
+                    >
+                      300 ₽ за обращение
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              <div
+                class="insight-part"
               >
-                обращений 
-                11
-                 · 572 ₽ за обращение
-              </span>
-            </div>
-          </div>
+                <span
+                  class="t-eyebrow"
+                >
+                  Что решили
+                </span>
+                <div
+                  class="row"
+                  style="--gap: 8px; align-items: center;"
+                >
+                  <span
+                    class="t-body"
+                    style="flex: 1 1 220px;"
+                  >
+                    Отключили объявление «Маникюр без записи»
+                  </span>
+                  <span
+                    class="chip chip-success "
+                  >
+                    Применено
+                  </span>
+                </div>
+                <button
+                  class="ant-btn css-dev-only-do-not-override-1y106cm css-var-root ant-btn-default ant-btn-color-default ant-btn-variant-outlined ant-btn-sm"
+                  style="align-self: flex-start; margin-top: 4px;"
+                  type="button"
+                >
+                  <span
+                    class="ant-btn-icon"
+                  >
+                    <span
+                      aria-hidden="true"
+                      aria-label="rollback"
+                      class="anticon anticon-rollback"
+                      role="img"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        data-icon="rollback"
+                        fill="currentColor"
+                        focusable="false"
+                        height="1em"
+                        viewBox="64 64 896 896"
+                        width="1em"
+                      >
+                        <path
+                          d="M793 242H366v-74c0-6.7-7.7-10.4-12.9-6.3l-142 112a8 8 0 000 12.6l142 112c5.2 4.1 12.9.4 12.9-6.3v-74h415v470H175c-4.4 0-8 3.6-8 8v60c0 4.4 3.6 8 8 8h618c35.3 0 64-28.7 64-64V306c0-35.3-28.7-64-64-64z"
+                        />
+                      </svg>
+                    </span>
+                  </span>
+                  <span>
+                    Вернуть как было
+                  </span>
+                </button>
+              </div>
+              <div
+                class="insight-part"
+              >
+                <span
+                  class="t-eyebrow"
+                >
+                  Что дальше
+                </span>
+                <p
+                  class="t-body"
+                >
+                  Через 7 дней сравним цену обращения рекламы в поиске с прежней.
+                </p>
+              </div>
+            </article>
+          </section>
         </div>
       </section>
+      <div
+        class="stack"
+        style="--gap: 10px;"
+      >
+        <button
+          aria-expanded="false"
+          class="link-button"
+          style="align-self: flex-start;"
+          type="button"
+        >
+          <span
+            aria-hidden="true"
+            aria-label="down"
+            class="anticon anticon-down"
+            role="img"
+          >
+            <svg
+              aria-hidden="true"
+              data-icon="down"
+              fill="currentColor"
+              focusable="false"
+              height="1em"
+              viewBox="64 64 896 896"
+              width="1em"
+            >
+              <path
+                d="M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"
+              />
+            </svg>
+          </span>
+           Цифры по площадкам
+        </button>
+      </div>
+      <span
+        class="t-small"
+      >
+        Данные за последние 3 дня могут уточняться: Яндекс иногда пересчитывает расходы задним числом.
+      </span>
     </div>
   </div>
 </div>

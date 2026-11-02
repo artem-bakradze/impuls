@@ -45,7 +45,17 @@ describeFeature(modes, ({ Scenario }) => {
     const requests: string[] = [];
     let platform: BusinessDirectPlatform;
     Given("сервис запущен в режиме боевого API, и владелец бизнеса подключил свой Директ", () => {
-      expect(loadConfig({ ...workerEnv, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "key" }).DIRECT_API_MODE).toBe("production");
+      // Real ads run with the agent on the model, its prices and spend limits (add-agent-insights decision 6).
+      const agent = {
+        AGENT_RUNTIME: "openai",
+        OPENAI_API_KEY: "k",
+        OPENAI_AGENT_MODEL: "gpt-6-luna",
+        AGENT_PRICE_INPUT_RUB_PER_MTOK: "250",
+        AGENT_PRICE_OUTPUT_RUB_PER_MTOK: "1000",
+        AGENT_MONTHLY_LIMIT_RUB: "300",
+        AGENT_SIMULATION_RUN_LIMIT_RUB: "100",
+      };
+      expect(loadConfig({ ...workerEnv, ...agent, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "key" }).DIRECT_API_MODE).toBe("production");
       platform = new BusinessDirectPlatform(
         "b1",
         (businessId) => Promise.resolve(businessId === "b1" ? "y0_owner" : null),
@@ -73,6 +83,7 @@ describeFeature(modes, ({ Scenario }) => {
         YANDEX_CLIENT_SECRET: "cs",
         TOKEN_ENCRYPTION_KEY: "key",
         APP_URL: "https://app.example",
+        SUPPORT_EMAIL: "support@impuls.test",
       });
       expect(isTestMode(web)).toBe(false);
     });

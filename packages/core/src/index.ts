@@ -7,5 +7,7 @@ export * from "./guard";
 export * from "./safety-net";
 export * from "./ab-test";
 export * from "./explanations";
+export * from "./insights";
+export * from "./segments";
 export * from "./rng";
 export * from "./creatives";

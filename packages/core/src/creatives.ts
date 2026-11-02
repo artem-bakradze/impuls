@@ -13,6 +13,34 @@ const GUARANTEE = /(гарантир\p{L}*\s+результат\p{L}*|100\s?%\s+
 const CAPS_WORD = /(?<!\p{L})\p{Lu}{4,}(?!\p{L})/u;
 const ALLOWED_ABBREVIATIONS = /(?<!\p{L})(СПА|SPA|МКАД)(?!\p{L})/gu;
 
+const plain = (text: string): string => text.toLowerCase().replace(/ё/g, "е").replace(/[\u00a0\u202f]/g, " ");
+
+/** Words that say nothing about the business; they never count towards a fact. */
+const FILLER = new Set(["всей", "весь", "всех", "каждого", "каждый", "каждой", "который", "которые", "также", "очень", "более", "ваших", "наших", "свой", "своих"]);
+
+/** Word stem tolerant to Russian endings: «доставки» and «доставку» share «достав». */
+const stem = (word: string): string => word.slice(0, Math.max(4, Math.ceil(word.length * 0.7)));
+
+/**
+ * Whether the ad mentions a card fact: the fact as is (a price, «до 20:00»), or its meaningful words in any form —
+ * all of a short phrase, half of a long one («Онлайн-настройка по всей России» → «онлайн … по всей России»).
+ */
+export const mentionsFact = (adText: string, fact: string): boolean => {
+  const text = plain(adText);
+  const phrase = plain(fact);
+  if (text.includes(phrase)) {
+    return true;
+  }
+  const words = [...new Set((phrase.match(/\p{L}{4,}/gu) ?? []).filter((w) => !FILLER.has(w)))];
+  if (words.length === 0) {
+    return false;
+  }
+  const textStems = (text.match(/\p{L}{4,}/gu) ?? []).map(stem);
+  const found = words.filter((w) => textStems.some((t) => t.startsWith(stem(w)) || stem(w).startsWith(t))).length;
+  // A short phrase needs every word; a long one half of them, but never a single generic word.
+  return found >= (words.length <= 2 ? words.length : Math.max(2, Math.ceil(words.length / 2)));
+};
+
 /** Validates one ad. `facts` are card facts (prices, district, services, hours); at least one must appear. */
 export const validateAdText = (ad: { title: string; text: string; title2?: string }, facts: readonly string[] = []): CreativeIssue[] => {
   const issues: CreativeIssue[] = [];
@@ -44,8 +72,7 @@ export const validateAdText = (ad: { title: string; text: string; title2?: strin
   if (CAPS_WORD.test(all.replace(ALLOWED_ABBREVIATIONS, ""))) {
     issues.push({ code: "CAPS", message: "слова целиком заглавными буквами не пропустит модерация" });
   }
-  const normalized = all.toLowerCase().replace(/[  ]/g, " ");
-  if (facts.length > 0 && !facts.some((f) => normalized.includes(f.toLowerCase().replace(/[  ]/g, " ")))) {
+  if (facts.length > 0 && !facts.some((f) => mentionsFact(all, f))) {
     issues.push({ code: "NO_FACT", message: "в объявлении нет ни одного факта из карточки бизнеса" });
   }
   return issues;

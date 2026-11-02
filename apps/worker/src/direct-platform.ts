@@ -2,6 +2,8 @@ import { PlatformError, YANDEX_DIRECT_CAPABILITIES, YandexDirectPlatform } from 
 import type {
   AdPatch,
   AdPlatform,
+  BreakdownDimension,
+  BreakdownRow,
   CampaignPatch,
   ChangesResult,
   DailyStatRow,
@@ -11,6 +13,7 @@ import type {
   PlatformAd,
   PlatformCampaign,
   PlatformCapabilities,
+  TrafficSettings,
 } from "@impuls/platforms";
 import type { Kopecks, LocalDate } from "@impuls/core";
 
@@ -80,6 +83,14 @@ export class BusinessDirectPlatform implements AdPlatform {
 
   async getStats(campaignIds: readonly string[], from: LocalDate, to: LocalDate): Promise<DailyStatRow[]> {
     return (await this.platform()).getStats(campaignIds, from, to);
+  }
+
+  async getBreakdown(campaignIds: readonly string[], from: LocalDate, to: LocalDate, dimension: BreakdownDimension): Promise<BreakdownRow[]> {
+    return (await this.platform()).getBreakdown(campaignIds, from, to, dimension);
+  }
+
+  async getTrafficSettings(campaignIds: readonly string[]): Promise<TrafficSettings[]> {
+    return (await this.platform()).getTrafficSettings(campaignIds);
   }
 
   async getBalance(): Promise<Kopecks> {

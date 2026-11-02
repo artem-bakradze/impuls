@@ -92,3 +92,23 @@ export const fetchPublicPage = async (raw: string, fetchImpl: typeof fetch = fet
     return new TextDecoder("utf-8").decode(body);
   }
 };
+
+/** Ways a Yandex Metrica counter number appears in a page: the tag snippet, the noscript pixel, old code and Tilda. */
+const COUNTER_ID_PATTERNS = [
+  /\bym\(\s*['"]?(\d{4,12})['"]?\s*,\s*['"]init['"]/,
+  /mc\.yandex\.(?:ru|com|by|kz)\/watch\/(\d{4,12})/,
+  /\byaCounter(\d{4,12})\b/,
+  /\bmainMetrikaId\s*=\s*['"]?(\d{4,12})/,
+];
+const COUNTER_SCRIPT = /mc\.yandex\.(?:ru|com|by|kz)\/metrika\/(?:tag|watch)\.js/;
+
+/** Whether the page has Yandex Metrica code, and the counter number when the code names it. */
+export const findMetrikaCounter = (html: string): { found: boolean; counterId: number | null } => {
+  for (const pattern of COUNTER_ID_PATTERNS) {
+    const match = pattern.exec(html);
+    if (match?.[1]) {
+      return { found: true, counterId: Number(match[1]) };
+    }
+  }
+  return { found: COUNTER_SCRIPT.test(html), counterId: null };
+};

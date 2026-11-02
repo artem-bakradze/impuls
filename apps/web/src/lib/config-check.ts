@@ -23,6 +23,8 @@ const ConfigSchema = z
     AUTH_GOOGLE_ID: z.string().min(1),
     AUTH_GOOGLE_SECRET: z.string().min(1),
     DIRECT_API_MODE: directApiMode,
+    /** Support address shown in the settings: account deletion is done on request (auth spec). */
+    SUPPORT_EMAIL: z.email(),
     YANDEX_CLIENT_ID: z.string().min(1).optional(),
     YANDEX_CLIENT_SECRET: z.string().min(1).optional(),
     /** Key for the encrypted Direct OAuth tokens (base64, 32 bytes). */

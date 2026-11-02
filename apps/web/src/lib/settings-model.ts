@@ -6,18 +6,18 @@ export interface SettingsModel {
   siteUrl: string | null;
   /** Published mini-site, or the card data to prefill its form when the business has no own site. */
   miniSite: { published: boolean; slug: string; businessName: string; phone: string; address: string; hours: string; telegram: string; metrikaCounterId: number | null; advertiserName: string; advertiserInn: string; services: { name: string; priceRub: number }[] };
-  radiusKm: number;
+  city: string;
   schedule: { raw: string; days: (typeof DAY_OPTIONS)[number]; from: string; to: string } | { raw: string; days: null; from: null; to: null };
   monthlyBudgetRub: number;
   goal: { mode: "user" | "auto"; rub: number };
   paused: boolean;
-  autonomy: "auto" | "ask";
+  /** Where the owner asks to delete the account (auth spec: deletion by request to support). */
+  supportEmail: string;
   ads: { id: string; title: string; text: string; status: "active" | "paused"; moderation: "accepted" | "pending" | "rejected"; direction: string }[];
-  directions: { id: string; name: string; channel: "search" | "network"; strategy: string; weeklyLimit: number; status: "active" | "paused"; schedule: string; radiusKm: number }[];
-  approvals: { id: string; explanation: string; status: "pending" | "approved" | "declined" | "expired"; at: string }[];
+  directions: { id: string; name: string; channel: "search" | "network"; strategy: string; weeklyLimit: number; status: "active" | "paused"; schedule: string; city: string }[];
 }
 
-const SCHEDULE = /^(Пн–Вс|Пн–Пт|Пн–Сб) (\d{2}:00)–(\d{2}:00)$/;
+const SCHEDULE = /^(Пн–Вс|Пн–Пт|Пн–Сб|Вт–Вс) (\d{2}:00)–(\d{2}:00)$/;
 
 /** Parses the display schedule the wizard writes («Пн–Вс 10:00–20:00»); other formats are shown as text only. */
 export const parseSchedule = (raw: string): SettingsModel["schedule"] => {
@@ -32,11 +32,4 @@ export const MODERATION_WORDS: Record<SettingsModel["ads"][number]["moderation"]
   accepted: "Яндекс одобрил",
   pending: "Яндекс проверяет",
   rejected: "Яндекс не пропустил",
-};
-
-export const APPROVAL_WORDS: Record<SettingsModel["approvals"][number]["status"], string> = {
-  pending: "Ждёт вашего ответа",
-  approved: "Вы согласились",
-  declined: "Вы отказались",
-  expired: "Истёк — вы не ответили за 48 часов",
 };

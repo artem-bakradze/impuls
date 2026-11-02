@@ -53,7 +53,7 @@ export const snapshot: TurnSnapshot = {
   today: "2026-10-29",
   business: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "Москва, м. Профсоюзная, радиус 3 км", hours: "Пн–Вс 10:00–22:00", advantages: ["Работаем без выходных"] },
   goal: { costPerLeadRub: 800, mode: "user" },
-  budget: { monthRub: 30_000, spentRub: 12_400 },
+  budget: { monthRub: 30_000, spentRub: 12_400, leftRub: 17_600, evenPaceRub: 28_000 },
   strategyCatalog: [
     { id: "WB_MAXIMUM_CLICKS", title: "Максимум кликов с недельным лимитом" },
     { id: "AVERAGE_CPA", title: "Оптимизация обращений по средней цене" },
@@ -63,13 +63,22 @@ export const snapshot: TurnSnapshot = {
     { id: "a1", directionId: "d1", status: "active", title: "Маникюр у метро", text: "Маникюр с покрытием 1 800 ₽", class: "effective", spend14Rub: 3_100, leads14: 6 },
     { id: "a2", directionId: "d1", status: "active", title: "Маникюр без записи", text: "Приходите без записи", class: "ineffective", spend14Rub: 2_600, leads14: 0 },
   ],
+  experiment: null,
   userDecisions: [],
-  notes: [],
+  facts: [
+    { key: "ad:a2:spend:14d", object: "объявление «Маникюр без записи»", metric: "spend", period: "14d", value: 2_600, unit: "rub" },
+    { key: "ad:a2:leads:14d", object: "объявление «Маникюр без записи»", metric: "leads", period: "14d", value: 0, unit: "count" },
+    { key: "goal:goal:now", object: "цель", metric: "goal", period: "now", value: 800, unit: "rub" },
+  ],
 };
 
 const tools: AgentToolbox = {
   act: (command) => Promise.resolve(command.type === "PauseAd" ? { status: "applied", message: "выполнено" } : { status: "rejected", code: "NOT_IN_RECORDING", message: "в записи разрешена только пауза объявления" }),
-  saveNote: () => Promise.resolve(),
+  observe: () => Promise.resolve({ status: "applied", message: "инсайт сохранён" }),
+  recentInsights: () => Promise.resolve([]),
+  breakdown: () => Promise.resolve({ status: "rejected", code: "NOT_IN_RECORDING", message: "в записи разрезов нет" }),
+  hypotheses: () => Promise.resolve([]),
+  saveHypothesis: () => Promise.resolve({ status: "rejected", code: "NOT_IN_RECORDING", message: "в записи журнала гипотез нет" }),
 };
 
 const runtime = new OpenAiAgentRuntime({ apiKey, model, fetch: recordingFetch });

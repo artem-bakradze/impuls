@@ -1,12 +1,16 @@
 import "server-only";
-import { addDays, costPerLead, emptyStats, monthKey, weekStart } from "@impuls/core";
+import { addDays, costPerLead, daysBetween, emptyStats, monthKey, weekStart } from "@impuls/core";
 import type { LocalDate, PerformanceStats } from "@impuls/core";
-import { aggregate, loadBusinessView, weeklyClientCost } from "@impuls/worker";
+import { aggregate, isAdDecision, loadBusinessView, weeklyClientCost } from "@impuls/worker";
+import { budgetForecast } from "../summary-model";
+import { buildInsightFeed } from "./insights";
 import type { SummaryModel, SummaryPeriod } from "../summary-model";
-import { platformCapabilities, readOnlyContext } from "./read-context";
+import { businessClock, platformCapabilities, readOnlyContext } from "./read-context";
 import { store } from "./runtime";
 
-const ACTIONS_WINDOW_DAYS = 7;
+const DAY_MS = 86_400_000;
+/** Genitive month names: «до конца октября», «с 1 ноября». */
+const MONTHS_OF = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 const NOTIFICATION_WINDOW_DAYS = 14;
 
 const periodRange = (period: SummaryPeriod, today: LocalDate): { from: LocalDate; to: LocalDate; prevFrom: LocalDate; prevTo: LocalDate } => {
@@ -27,17 +31,18 @@ const total = (rows: Awaited<ReturnType<ReturnType<typeof store>["stats"]>>): Pe
 /** Everything the summary screen shows (analytics spec «Сводка»), computed from the store only. */
 export const buildSummary = async (businessId: string, period: SummaryPeriod): Promise<SummaryModel> => {
   const s = store();
-  const ctx = readOnlyContext();
-  const view = await loadBusinessView(s, businessId, ctx.clock, platformCapabilities());
+  const ctx = readOnlyContext(await businessClock(businessId));
+  const view = await loadBusinessView(s, businessId, ctx.clock, platformCapabilities((await s.getBusiness(businessId)).mode));
   const { business, today } = view;
   const range = periodRange(period, today);
-  const [rows, prevRows, changes, notifications, approvals, confirmations] = await Promise.all([
+  const [rows, prevRows, changes, notifications, confirmations, feed, simulation] = await Promise.all([
     s.stats(businessId, range.from, range.to),
     s.stats(businessId, range.prevFrom, range.prevTo),
     s.changes(businessId),
     s.notifications(businessId),
-    s.approvals(businessId),
     s.clientConfirmations(businessId),
+    buildInsightFeed(businessId, { since: range.from }),
+    business.mode === "simulation" ? s.getSimulation(businessId) : Promise.resolve(null),
   ]);
   const current = total(rows);
   const previous = total(prevRows);
@@ -54,16 +59,22 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
   const answered = confirmations.some((c) => c.weekStart === lastWeek);
 
   const now = ctx.clock.now().getTime();
-  const actions = changes
-    .filter((c) => c.author === "service" && c.status === "applied" && now - c.createdAt.getTime() <= ACTIONS_WINDOW_DAYS * 86_400_000)
-    .reverse()
-    .slice(0, 10)
-    .map((c) => ({ id: c.id, at: c.createdAt.toISOString(), text: c.explanation }));
 
   const campaignToDirection = new Map(view.directions.map((d) => [d.platformCampaignId, d.id]));
   const byDirection = aggregate(rows, (r) => campaignToDirection.get(r.campaignId) ?? r.campaignId);
   const cpl = costPerLead(current);
   const cso = view.cso;
+
+  const launchedOn = business.launchedOn ?? today;
+  const launchMonth =
+    monthKey(today) === monthKey(launchedOn) && launchedOn.slice(8, 10) !== "01"
+      ? {
+          budget: view.monthBudget,
+          monthName: MONTHS_OF[Number(launchedOn.slice(5, 7)) - 1] ?? "",
+          nextMonthName: MONTHS_OF[Number(launchedOn.slice(5, 7)) % 12] ?? "",
+        }
+      : null;
+  const status = cpl === null ? "no_data" : cpl <= cso ? "within" : "above";
 
   const allPaused = view.directions.length > 0 && view.directions.every((d) => d.status === "paused");
   const moderation = { pending: 0, accepted: 0, rejected: 0 };
@@ -75,33 +86,43 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
     timeZone: business.timeZone,
     period,
     state: allPaused ? "paused" : allRows.length === 0 ? "first_day" : "running",
+    simulation: simulation ? { secondsPerDay: DAY_MS / simulation.speed / 1_000 } : null,
+    launchedDays: daysBetween(launchedOn, today) + 1,
+    // The previous period entirely before the launch: nothing to compare with.
+    compare: launchedOn < range.from,
+    launchMonth,
+    monthlyBudget: business.monthlyBudgetRub * 100,
     moderation,
     monthBudget: view.monthBudget,
     spentMonth: view.spentMonth,
+    budgetForecast: budgetForecast(view.monthBudget, view.spentMonth, [...view.spendLast7.values()].reduce((sum, v) => sum + v, 0), today),
     spend: { value: current.spend, previous: previous.spend },
     leads: { value: current.leads, previous: previous.leads },
     clients: { value: clientsIn(range.from, range.to), previous: clientsIn(range.prevFrom, range.prevTo) },
     clientCost:
       clientCost.kind === "known"
         ? { kind: "known", costPerClient: clientCost.costPerClient, clients: clientCost.clients, week: lastWeek }
-        : { kind: "unknown", costPerLead: clientCost.costPerLead, hint: clientCost.hint, week: lastWeek },
+        : // One cost per lead on the summary: the selected period's, as in the goal line (analytics spec).
+          { kind: "unknown", costPerLead: cpl, hint: clientCost.hint, week: lastWeek },
     goal: {
       mode: business.csoSource.kind,
       cso,
+      learned: business.csoSource.kind === "auto" && cso !== business.csoSource.reference,
       current: cpl,
-      status: cpl === null ? "no_data" : cpl <= cso ? "within" : "above",
+      status,
     },
-    actions,
+    feed,
+    decided: changes.some((c) => c.author === "service" && c.status === "applied" && isAdDecision(c)),
     attention: {
       notifications: notifications
-        .filter((n) => now - n.at.getTime() <= NOTIFICATION_WINDOW_DAYS * 86_400_000)
+        .filter((n) => now - n.at.getTime() <= NOTIFICATION_WINDOW_DAYS * DAY_MS)
+        // Advice to raise the goal that the current «в цели» contradicts is out of date.
+        .filter((n) => n.kind !== "goal_unreachable" || status === "above")
         .sort((a, b) => b.at.getTime() - a.at.getTime())
         .slice(0, 10)
         .map((n, index) => ({ id: `${n.at.toISOString()}-${index}`, kind: n.kind, message: n.message, at: n.at.toISOString() })),
-      approvals: approvals
-        .filter((a) => a.status === "pending")
-        .map((a) => ({ id: a.id, explanation: a.explanation, at: a.createdAt.toISOString() })),
-      clientsQuestion: !answered && lastWeekLeads > 0 ? { week: lastWeek, weekEnd: addDays(lastWeek, 6), leads: lastWeekLeads } : null,
+      // A scenario has no real clients to count (simulation-mode spec).
+      clientsQuestion: simulation === null && !answered && lastWeekLeads > 0 ? { week: lastWeek, weekEnd: addDays(lastWeek, 6), leads: lastWeekLeads } : null,
     },
     directions: view.directions.map((d) => {
       const stats = byDirection.get(d.id) ?? emptyStats();
@@ -110,6 +131,8 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
         name: d.name,
         channel: d.channel,
         status: d.status,
+        ads: view.ads.filter((a) => a.directionId === d.id && a.status === "active").length,
+        weeklyLimit: d.weeklyLimit,
         spend: stats.spend,
         leads: stats.leads,
         costPerLead: costPerLead(stats),

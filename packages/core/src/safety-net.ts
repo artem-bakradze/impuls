@@ -18,6 +18,12 @@ export interface SafetyNetInput {
   /** First day each ad was classified as borderline in the current streak. */
   borderlineSince: ReadonlyMap<string, LocalDate>;
   adsInExperiments: ReadonlySet<string>;
+  /**
+   * Whether a turn of a deciding agent took place in the last 24 hours. Only then the rules wait for it; otherwise
+   * (the agent is off, unavailable, out of its cost limit) they act on the evaluation of the same day and start an
+   * experiment as soon as an ad is borderline (optimization-engine and ab-testing specs).
+   */
+  agentActed: boolean;
 }
 
 export type SafetyAction =
@@ -81,6 +87,8 @@ export const safetyNet = (input: SafetyNetInput): SafetyAction[] => {
   }
 
   let slots = MAX_ACTIVE_EXPERIMENTS - state.activeExperiments;
+  // A check needs traffic: never in advertising that is paused (earlier or right now).
+  const activeDirections = new Set(state.directions.filter((d) => d.status === "active" && !pausedNow.has(d.id)).map((d) => d.id));
   for (const ad of state.ads) {
     if (slots <= 0) {
       break;
@@ -88,16 +96,16 @@ export const safetyNet = (input: SafetyNetInput): SafetyAction[] => {
     const since = input.borderlineSince.get(ad.id);
     if (
       ad.status === "active" &&
-      !pausedNow.has(ad.directionId) &&
+      activeDirections.has(ad.directionId) &&
       state.adClasses.get(ad.id) === "borderline" &&
       since !== undefined &&
-      daysBetween(since, state.today) >= EXPERIMENT_DELAY_DAYS &&
+      daysBetween(since, state.today) >= (input.agentActed ? EXPERIMENT_DELAY_DAYS : 0) &&
       !input.adsInExperiments.has(ad.id) &&
       !input.touchedByAgent.has(ad.id)
     ) {
       actions.push({
         kind: "command",
-        command: { type: "StartExperiment", directionId: ad.directionId, adId: ad.id, hypothesis: "" },
+        command: { type: "StartExperiment", directionId: ad.directionId, adId: ad.id, kind: "offer", hypothesis: "" },
         reasonCode: "SAFETY_START_EXPERIMENT",
       });
       slots--;

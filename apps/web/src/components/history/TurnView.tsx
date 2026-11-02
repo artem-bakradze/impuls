@@ -15,7 +15,8 @@ export interface TurnViewModel {
   status: string;
   startedAt: string;
   context: unknown;
-  calls: { justification: { text: string }; result: { status: string; message: string } }[];
+  /** Turns before add-agent-insights carried a `justification` instead of the insight. */
+  calls: { insight?: { observation: string }; justification?: { text: string }; result: { status: string; message: string } }[];
 }
 
 const STATUS_LABELS: Record<string, { text: string; tone: Tone; icon: ReactNode }> = {
@@ -28,6 +29,7 @@ const STATUS_LABELS: Record<string, { text: string; tone: Tone; icon: ReactNode 
 const TRIGGERS: Record<string, string> = {
   launch: "Запуск рекламы",
   daily_review: "Ежедневный разбор",
+  weekly_review: "Разбор недели",
   moderation_rejected: "Отказ модерации",
   experiment_finished: "Итог проверки",
   settings_changed: "Изменение настроек",
@@ -70,7 +72,7 @@ export function TurnView({ turn, timeZone }: { turn: TurnViewModel; timeZone: st
                 <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
                   <Chip tone={label.tone}>{label.text}</Chip>
                 </div>
-                <p className="t-body">{call.justification.text}</p>
+                <p className="t-body">{call.insight?.observation ?? call.justification?.text ?? ""}</p>
                 <span className="t-small">Ответ: {call.result.message}</span>
               </div>
             </div>

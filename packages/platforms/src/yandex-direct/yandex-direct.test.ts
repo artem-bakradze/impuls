@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PlatformError } from "../contract";
 import type { DirectRequestLogEntry } from "./client";
 import { DIRECT_MAX_ATTEMPTS } from "./client";
-import { kopecksToMicros, microsToKopecks, parseStatsTsv } from "./mapping";
+import { bidModifierToPercent, buildTimeTargeting, kopecksToMicros, microsToKopecks, parseBreakdownTsv, parseStatsTsv, percentToBidModifier } from "./mapping";
 import { YandexDirectPlatform } from "./platform";
 import type { YandexDirectPlatformOptions } from "./platform";
 
@@ -253,6 +253,17 @@ describe("request shape", () => {
     await platform.updateCampaign("101", { schedule: "09:00–18:00" });
     const items = (requests[0]?.body as { params: { Campaigns: { TimeTargeting: { Schedule: { Items: string[] } } }[] } }).params.Campaigns[0]?.TimeTargeting.Schedule.Items;
     expect(items?.[6]).toBe(["7", ...Array.from({ length: 24 }, (_, h) => (h >= 9 && h < 18 ? "100" : "0"))].join(","));
+  });
+
+  it("moves the campaign's ad group to the region of a new city", async () => {
+    const { platform, requests } = setup([
+      geoRegions,
+      json({ AdGroups: [{ Id: 301 }] }),
+      json({ UpdateResults: [{ Id: 301 }] }),
+      json({ Campaigns: [rawCampaign] }),
+    ]);
+    await platform.updateCampaign("101", { city: "Санкт-Петербург" });
+    expect(requests[2]?.body).toEqual({ method: "update", params: { AdGroups: [{ Id: 301, RegionIds: [2] }] } });
   });
 
   it("updates the weekly limit keeping the strategy, then suspends", async () => {
@@ -557,5 +568,177 @@ describe("request journal", () => {
 
   it("refuses to start without a token", () => {
     expect(() => new YandexDirectPlatform({ token: "", submitAdsForModeration: true, logger: () => undefined })).toThrow(/token is required/);
+  });
+});
+
+describe("time targeting", () => {
+  const hoursOf = (schedule: string, day: number): number[] => {
+    const items = (buildTimeTargeting(schedule) as { Schedule: { Items: string[] } }).Schedule.Items;
+    return (items[day]?.split(",").slice(1) ?? []).map(Number);
+  };
+  const on = (hours: number[]): number[] => hours.flatMap((v, h) => (v > 0 ? [h] : []));
+
+  it("runs round the clock for 00:00–24:00", () => {
+    expect(on(hoursOf("Пн–Вс 00:00–24:00", 0))).toHaveLength(24);
+  });
+
+  it("keeps the night hours of a schedule past midnight", () => {
+    expect(on(hoursOf("Пн–Вс 22:00–02:00", 3))).toEqual([0, 1, 22, 23]);
+  });
+
+  it("switches Monday off for «Вт–Вс»", () => {
+    expect(on(hoursOf("Вт–Вс 10:00–20:00", 0))).toEqual([]);
+    expect(on(hoursOf("Вт–Вс 10:00–20:00", 1))).toHaveLength(10);
+  });
+
+  it("refuses equal opening and closing hours", () => {
+    expect(() => buildTimeTargeting("Пн–Вс 10:00–10:00")).toThrow(PlatformError);
+  });
+});
+
+// Shapes from the Direct v5 documentation (Reports, Campaigns, BidModifiers); confirmed live in add-agent-analyst-stage1 task 1.1.
+const QUERY_TSV = [
+  '"impuls-query-1 (2026-10-14 - 2026-10-27)"',
+  "CampaignId\tQuery\tImpressions\tClicks\tCost\tConversions",
+  "101\tремонт квартир москва\t300\t20\t600.50\t3",
+  "101\tремонт квартир бесплатно\t90\t6\t180.00\t--",
+  "101\tремонт квартир москва\t10\t1\t30.00\t0",
+  "101\t--\t5\t0\t0.00\t--",
+  "Total rows: 4",
+  "",
+].join("\n");
+
+const DEVICE_TSV = [
+  '"impuls-device-1 (2026-10-14 - 2026-10-27)"',
+  "CampaignId\tDevice\tImpressions\tClicks\tCost\tConversions",
+  "101\tMOBILE\t500\t30\t900.00\t1",
+  "101\tDESKTOP\t200\t15\t450.00\t3",
+  "101\tTABLET\t20\t1\t30.00\t--",
+  "101\tSMART_TV\t4\t1\t30.00\t--",
+  "Total rows: 4",
+  "",
+].join("\n");
+
+const modifier = (id: number, device: "mobile" | "desktop", bidModifier: number) => ({
+  Id: id,
+  CampaignId: 101,
+  Level: "CAMPAIGN",
+  Type: device === "mobile" ? "MOBILE_ADJUSTMENT" : "DESKTOP_ADJUSTMENT",
+  ...(device === "mobile" ? { MobileAdjustment: { BidModifier: bidModifier } } : { DesktopAdjustment: { BidModifier: bidModifier } }),
+});
+
+describe("analyst levers and breakdowns (add-agent-analyst-stage1)", () => {
+  it("converts Direct bid modifiers to adjustment percents and back", () => {
+    expect(bidModifierToPercent(70)).toBe(-30);
+    expect(bidModifierToPercent(150)).toBe(50);
+    expect(percentToBidModifier(-25)).toBe(75);
+  });
+
+  it("parses a query report, merging repeated queries and skipping rows without a query", () => {
+    expect(parseBreakdownTsv(QUERY_TSV, "query")).toEqual([
+      { campaignId: "101", segment: "ремонт квартир москва", impressions: 310, clicks: 21, leads: 3, spend: 63_050 },
+      { campaignId: "101", segment: "ремонт квартир бесплатно", impressions: 90, clicks: 6, leads: 0, spend: 18_000 },
+    ]);
+  });
+
+  it("parses a device report, counting Smart TV with computers", () => {
+    expect(parseBreakdownTsv(DEVICE_TSV, "device")).toEqual([
+      { campaignId: "101", segment: "mobile", impressions: 500, clicks: 30, leads: 1, spend: 90_000 },
+      { campaignId: "101", segment: "desktop", impressions: 204, clicks: 16, leads: 3, spend: 48_000 },
+      { campaignId: "101", segment: "tablet", impressions: 20, clicks: 1, leads: 0, spend: 3_000 },
+    ]);
+  });
+
+  it("requests the search query report with the same attribution and VAT as the daily stats", async () => {
+    const { platform, requests } = setup([{ status: 200, body: QUERY_TSV }]);
+    const rows = await platform.getBreakdown(["101"], "2026-10-14", "2026-10-27", "query");
+    expect(rows).toHaveLength(2);
+    expect(requests[0]?.url).toBe("https://api.direct.yandex.com/json/v5/reports");
+    expect(requests[0]?.body).toMatchObject({
+      params: {
+        SelectionCriteria: { DateFrom: "2026-10-14", DateTo: "2026-10-27", Filter: [{ Field: "CampaignId", Operator: "IN", Values: ["101"] }] },
+        AttributionModels: ["AUTO"],
+        FieldNames: ["CampaignId", "Query", "Impressions", "Clicks", "Cost", "Conversions"],
+        ReportType: "SEARCH_QUERY_PERFORMANCE_REPORT",
+        IncludeVAT: "YES",
+      },
+    });
+  });
+
+  it("requests the device split as a custom report", async () => {
+    const { platform, requests } = setup([{ status: 200, body: DEVICE_TSV }]);
+    await platform.getBreakdown(["101"], "2026-10-14", "2026-10-27", "device");
+    expect(requests[0]?.body).toMatchObject({
+      params: { FieldNames: ["CampaignId", "Device", "Impressions", "Clicks", "Cost", "Conversions"], ReportType: "CUSTOM_REPORT" },
+    });
+    // Different reports get different names, or Direct would return the queued one of the other kind.
+    const names = new Set<unknown>();
+    const other = setup([{ status: 200, body: QUERY_TSV }]);
+    await other.platform.getBreakdown(["101"], "2026-10-14", "2026-10-27", "query");
+    for (const request of [...requests, ...other.requests]) names.add((request.body as { params: { ReportName: unknown } }).params.ReportName);
+    expect(names.size).toBe(2);
+  });
+
+  it("reads negative phrases and campaign-level adjustments", async () => {
+    const { platform, requests } = setup([
+      json({ Campaigns: [{ Id: 101, NegativeKeywords: { Items: ["бесплатно", "вакансии"] } }, { Id: 102, NegativeKeywords: null }] }),
+      json({ BidModifiers: [modifier(9, "mobile", 70)] }),
+    ]);
+    expect(await platform.getTrafficSettings(["101", "102"])).toEqual([
+      { campaignId: "101", negativeKeywords: ["бесплатно", "вакансии"], deviceAdjustments: { mobile: -30, desktop: 0 } },
+      { campaignId: "102", negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } },
+    ]);
+    expect(requests[0]?.body).toEqual({ method: "get", params: { SelectionCriteria: { Ids: [101, 102] }, FieldNames: ["Id", "NegativeKeywords"] } });
+    expect(requests[1]?.url).toBe("https://api.direct.yandex.com/json/v5/bidmodifiers");
+    expect(requests[1]?.body).toEqual({
+      method: "get",
+      params: {
+        SelectionCriteria: { CampaignIds: [101, 102], Levels: ["CAMPAIGN"] },
+        FieldNames: ["Id", "CampaignId", "Type"],
+        MobileAdjustmentFieldNames: ["BidModifier"],
+        DesktopAdjustmentFieldNames: ["BidModifier"],
+      },
+    });
+  });
+
+  it("replaces the whole negative phrase list and removes an empty one with null", async () => {
+    const { platform, requests } = setup([
+      json({ UpdateResults: [{ Id: 101 }] }),
+      json({ Campaigns: [rawCampaign] }),
+      json({ UpdateResults: [{ Id: 101 }] }),
+      json({ Campaigns: [rawCampaign] }),
+    ]);
+    await platform.updateCampaign("101", { negativeKeywords: ["бесплатно", "вакансии"] });
+    await platform.updateCampaign("101", { negativeKeywords: [] });
+    expect(requests[0]?.body).toEqual({ method: "update", params: { Campaigns: [{ Id: 101, NegativeKeywords: { Items: ["бесплатно", "вакансии"] } }] } });
+    expect(requests[2]?.body).toEqual({ method: "update", params: { Campaigns: [{ Id: 101, NegativeKeywords: null }] } });
+  });
+
+  it("changes an existing adjustment and adds a missing one", async () => {
+    const { platform, requests } = setup([
+      json({ BidModifiers: [modifier(9, "mobile", 80)] }),
+      json({ SetResults: [{ Id: 9 }] }),
+      json({ AddResults: [{ Ids: [12] }] }),
+      json({ Campaigns: [rawCampaign] }),
+    ]);
+    await platform.updateCampaign("101", { deviceAdjustments: { mobile: -30, desktop: 20 } });
+    expect(requests[1]?.body).toEqual({ method: "set", params: { BidModifiers: [{ Id: 9, BidModifier: 70 }] } });
+    expect(requests[2]?.body).toEqual({ method: "add", params: { BidModifiers: [{ CampaignId: 101, DesktopAdjustment: { BidModifier: 120 } }] } });
+  });
+
+  it("deletes an adjustment set back to 0% and leaves an unchanged one alone", async () => {
+    const { platform, requests } = setup([
+      json({ BidModifiers: [modifier(9, "mobile", 70), modifier(10, "desktop", 120)] }),
+      json({ DeleteResults: [{ Id: 9 }] }),
+      json({ Campaigns: [rawCampaign] }),
+    ]);
+    await platform.updateCampaign("101", { deviceAdjustments: { mobile: 0, desktop: 20 } });
+    expect(requests).toHaveLength(3);
+    expect(requests[1]?.body).toEqual({ method: "delete", params: { SelectionCriteria: { Ids: [9] } } });
+  });
+
+  it("reports a per-object error of an adjustment", async () => {
+    const { platform } = setup([json({ BidModifiers: [] }), json({ AddResults: [{ Errors: [{ Code: 5005, Message: "Поле задано неверно" }] }] })]);
+    await expectPlatformError(platform.updateCampaign("101", { deviceAdjustments: { mobile: -30, desktop: 0 } }), "DIRECT_ERROR_5005", false);
   });
 });

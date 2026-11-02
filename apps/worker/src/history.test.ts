@@ -1,6 +1,7 @@
 import { IdlePolicy } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
+import { BUDGET_ADJUSTMENT_REASON } from "./change-kinds";
 import { ACTION_META, inverseCommands, recordOutcomes, rollback } from "./history";
 import { SimulationDriver } from "./simulation";
 
@@ -74,7 +75,7 @@ describe("rollback", () => {
     const sim = await world();
     await sim.executor.execute({
       businessId: "b1",
-      command: { type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", hypothesis: "Проверяем оффер" },
+      command: { type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", kind: "offer", hypothesis: "Проверяем оффер", variant: { title: "Маникюр у метро", text: "Первый визит −15%" } },
       actor: "safety_net",
       reasonCode: "SAFETY_START_EXPERIMENT",
       explanation: "Запустил проверку",
@@ -82,6 +83,33 @@ describe("rollback", () => {
     const [entry] = await sim.store.changes("b1");
     expect(await rollback(sim.ctx, { businessId: "b1", entryId: entry?.id ?? "" })).toMatchObject({ kind: "not_reversible" });
     expect(ACTION_META.StartExperiment.irreversibleReason).toBeTruthy();
+  });
+
+  it("takes back a raise in one step when later only a check started and the budget guard cut the same limit", async () => {
+    const sim = await world();
+    const run = (command: Parameters<SimulationDriver["executor"]["execute"]>[0]["command"], actor: "user" | "safety_net" | "budget_guard", reasonCode: string) =>
+      sim.executor.execute({ businessId: "b1", command, actor, reasonCode, explanation: reasonCode });
+    // The raise itself passes without the rules' data checks: what matters is what came after it.
+    await run({ type: "SetSpendLimit", directionId: "b1-d1", weeklyLimit: rubles(2_400) }, "user", "SAFETY_SCALE_EFFECTIVE");
+    await run({ type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", kind: "offer", hypothesis: "Проверяем оффер", variant: { title: "Маникюр у метро", text: "Первый визит −15%" } }, "safety_net", "SAFETY_START_EXPERIMENT");
+    await run({ type: "SetSpendLimit", directionId: "b1-d1", weeklyLimit: rubles(2_300) }, "budget_guard", "BUDGET_FIT");
+    const raise = (await sim.store.changes("b1")).find((c) => c.reasonCode === "SAFETY_SCALE_EFFECTIVE");
+    expect(await rollback(sim.ctx, { businessId: "b1", entryId: raise?.id ?? "" })).toMatchObject({ kind: "done" });
+    expect((await sim.store.directions("b1"))[0]?.weeklyLimit).toBe(rubles(2_000));
+  });
+
+  it("does not roll back a budget-guard limit cut on its own", async () => {
+    const sim = await world();
+    await sim.executor.execute({
+      businessId: "b1",
+      command: { type: "SetSpendLimit", directionId: "b1-d1", weeklyLimit: rubles(1_900) },
+      actor: "budget_guard",
+      reasonCode: "BUDGET_FIT",
+      explanation: "Снизил лимит направления «Маникюр — Поиск» до 1 900 ₽ в неделю, чтобы не выйти за ваш бюджет на месяц.",
+    });
+    const [entry] = await sim.store.changes("b1");
+    expect(await rollback(sim.ctx, { businessId: "b1", entryId: entry?.id ?? "" })).toEqual({ kind: "not_reversible", reason: BUDGET_ADJUSTMENT_REASON });
+    expect((await sim.store.directions("b1"))[0]?.weeklyLimit).toBe(rubles(1_900));
   });
 
   it("builds inverse commands from the before snapshot", () => {

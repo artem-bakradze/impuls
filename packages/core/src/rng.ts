@@ -1,13 +1,20 @@
+/** A PRNG whose whole state is one number: `createRng(rng.state())` continues the same sequence. */
+export interface Rng {
+  (): number;
+  state(): number;
+}
+
 /** Deterministic PRNG (mulberry32). Returns values in [0, 1). */
-export const createRng = (seed: number): (() => number) => {
+export const createRng = (seed: number): Rng => {
   let state = seed >>> 0;
-  return () => {
+  const next = () => {
     state = (state + 0x6d2b79f5) >>> 0;
     let t = state;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  return Object.assign(next, { state: () => state });
 };
 
 /** FNV-1a hash of a string, used to derive seeds from IDs. */

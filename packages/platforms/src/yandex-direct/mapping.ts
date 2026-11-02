@@ -1,6 +1,6 @@
 import type { Channel, Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
 import { PlatformError } from "../contract";
-import type { ChangeArea, DailyStatRow, ModerationStatus, PlatformAd, PlatformCampaign } from "../contract";
+import type { BreakdownDimension, BreakdownRow, ChangeArea, DailyStatRow, Device, ModerationStatus, PlatformAd, PlatformCampaign } from "../contract";
 import { mapDirectError } from "./errors";
 import type { JsonRecord } from "./client";
 
@@ -80,6 +80,8 @@ const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as con
 
 /**
  * Builds `TimeTargeting` from a display schedule such as "Пн–Пт 10:00–22:00" or "10:00–22:00" (every day).
+ * "00:00–24:00" is round the clock; a closing hour before the opening one runs past midnight, and those night hours
+ * are switched on for the same days (an approximation: Direct has no «next day» hours).
  * Each `Schedule.Items` entry is "<day 1–7>,<24 bid percentages>"; 0 switches the hour off, 100 keeps the bid.
  * VERIFY: item format against the contract test (Direct docs: Campaigns.add, TimeTargeting).
  */
@@ -93,12 +95,13 @@ export const buildTimeTargeting = (schedule: string): JsonRecord => {
   const last = toDay ? WEEKDAYS.indexOf(toDay as (typeof WEEKDAYS)[number]) : 6;
   const open = Number(fromHour);
   const close = Number(toHour);
-  if (first > last || open >= close || close > 24) {
+  if (first > last || open === close || open > 23 || close > 24) {
     throw new PlatformError("INVALID_SCHEDULE", `Unsupported schedule range: ${schedule}`, false);
   }
   const items = WEEKDAYS.map((_, day) => {
     const on = day >= first && day <= last;
-    const hours = Array.from({ length: 24 }, (_, hour) => (on && hour >= open && hour < close ? 100 : 0));
+    const overnight = close < open;
+    const hours = Array.from({ length: 24 }, (_, hour) => (on && (overnight ? hour >= open || hour < close : hour >= open && hour < close) ? 100 : 0));
     return [day + 1, ...hours].join(",");
   });
   return { Schedule: { Items: items }, ConsiderWorkingWeekends: "YES" };
@@ -239,6 +242,18 @@ export const singleActionResult = (result: JsonRecord, key: string): string => {
   return id;
 };
 
+/** Checks a single action result that carries no single `Id` (`BidModifiers.add` returns `Ids`). */
+export const checkActionResult = (result: JsonRecord, key: string): void => {
+  const item = records(result[key])[0];
+  if (!item) {
+    throw new PlatformError("DIRECT_INVALID_RESPONSE", `Direct response has no ${key}`, false);
+  }
+  const error = records(item.Errors)[0];
+  if (error) {
+    throw mapDirectError({ code: Number(error.Code), message: text(error.Message), detail: text(error.Details) });
+  }
+};
+
 // --- Changes ---
 
 /** Direct expects `YYYY-MM-DDThh:mm:ssZ` without milliseconds; truncating keeps the check inclusive. */
@@ -289,6 +304,70 @@ export const buildStatsReportParams = (campaignIds: readonly string[], from: Loc
 };
 
 const count = (value: string): number => (value === "--" || value === "" ? 0 : Number(value));
+
+/**
+ * Reports for a breakdown (add-agent-analyst-stage1 design decision 5): devices from `CUSTOM_REPORT` with `Device`,
+ * queries from `SEARCH_QUERY_PERFORMANCE_REPORT` with `Query`, with the same attribution and VAT as the daily stats.
+ */
+export const buildBreakdownReportParams = (campaignIds: readonly string[], from: LocalDate, to: LocalDate, dimension: BreakdownDimension): JsonRecord => {
+  const params: JsonRecord = {
+    SelectionCriteria: {
+      DateFrom: from,
+      DateTo: to,
+      Filter: [{ Field: "CampaignId", Operator: "IN", Values: [...campaignIds] }],
+    },
+    AttributionModels: ["AUTO"],
+    FieldNames: ["CampaignId", dimension === "device" ? "Device" : "Query", "Impressions", "Clicks", "Cost", "Conversions"],
+    ReportType: dimension === "device" ? "CUSTOM_REPORT" : "SEARCH_QUERY_PERFORMANCE_REPORT",
+    DateRangeType: "CUSTOM_DATE",
+    Format: "TSV",
+    IncludeVAT: "YES",
+  };
+  return { ...params, ReportName: `impuls-${dimension}-${fnv1a(JSON.stringify(params))}` };
+};
+
+/** Direct device values; Smart TV counts with computers, as Direct's computer adjustment does. */
+const DIRECT_DEVICES: Readonly<Record<string, Device>> = { MOBILE: "mobile", DESKTOP: "desktop", TABLET: "tablet", SMART_TV: "desktop" };
+
+/** Parses a breakdown TSV into rows per campaign and segment; rows without a segment ("--") are skipped. */
+export const parseBreakdownTsv = (tsv: string, dimension: BreakdownDimension): BreakdownRow[] => {
+  const field = dimension === "device" ? "Device" : "Query";
+  const lines = tsv.split(/\r?\n/).filter((line) => line.length > 0);
+  const headerIndex = lines.findIndex((line) => line.split("\t").includes("CampaignId"));
+  if (headerIndex < 0) {
+    throw new PlatformError("DIRECT_INVALID_RESPONSE", "Direct report has no column header line", false);
+  }
+  const columns = (lines[headerIndex] ?? "").split("\t");
+  const index = (name: string): number => {
+    const i = columns.indexOf(name);
+    if (i < 0) {
+      throw new PlatformError("DIRECT_INVALID_RESPONSE", `Direct report has no ${name} column`, false);
+    }
+    return i;
+  };
+  const at = { campaignId: index("CampaignId"), segment: index(field), impressions: index("Impressions"), clicks: index("Clicks"), cost: index("Cost"), conversions: index("Conversions") };
+  const rows = new Map<string, BreakdownRow>();
+  for (const line of lines.slice(headerIndex + 1)) {
+    if (line.startsWith("Total rows")) continue;
+    const cells = line.split("\t");
+    const cell = (i: number): string => cells[i] ?? "";
+    const raw = cell(at.segment);
+    const segment = dimension === "device" ? DIRECT_DEVICES[raw] : raw === "--" ? undefined : raw;
+    if (segment === undefined || segment === "") continue;
+    const key = `${cell(at.campaignId)}|${segment}`;
+    const row = rows.get(key) ?? { campaignId: cell(at.campaignId), segment, impressions: 0, clicks: 0, leads: 0, spend: 0 };
+    row.impressions += count(cell(at.impressions));
+    row.clicks += count(cell(at.clicks));
+    row.leads += count(cell(at.conversions));
+    row.spend += cell(at.cost) === "--" ? 0 : rublesTextToKopecks(cell(at.cost));
+    rows.set(key, row);
+  }
+  return [...rows.values()];
+};
+
+/** A bid modifier of Direct is a percent of the bid (100 — unchanged); the contract keeps the change (0 — none). */
+export const bidModifierToPercent = (modifier: number): number => modifier - 100;
+export const percentToBidModifier = (percent: number): number => 100 + percent;
 
 /**
  * Parses a Reports TSV: optional title line, the column header line, data rows and an optional

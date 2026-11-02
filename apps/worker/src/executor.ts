@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { guard, toLocalDate } from "@impuls/core";
 import type { Actor, Command } from "@impuls/core";
 import { PlatformError } from "@impuls/platforms";
 import type { AdPlatform, LeadGoal, PlatformAd, PlatformCampaign } from "@impuls/platforms";
 import { publishMiniSite, renderMiniSite } from "@impuls/minisite";
 import type { MiniSiteCard, MiniSiteStore } from "@impuls/minisite";
+import { desiredTraffic, isAnalystCommand, loadAnalystState, normalizePhrase, phrasesMissing, snapshotPhrases, trafficSnapshot } from "./analyst";
 import type { Clock } from "./clock";
 import { businessLockKey } from "./locks";
 import type { LockManager } from "./locks";
@@ -30,7 +32,11 @@ type Target =
   | { kind: "direction"; record: DirectionRecord }
   | { kind: "ad"; record: AdRecord }
   | { kind: "business"; directions: DirectionRecord[] }
-  | { kind: "minisite"; business: BusinessRecord & { miniSite: NonNullable<BusinessRecord["miniSite"]> } };
+  | { kind: "minisite"; business: BusinessRecord & { miniSite: NonNullable<BusinessRecord["miniSite"]> } }
+  /** The owner's cost-per-lead goal; it lives only in the service, so «platform» state is the stored one. */
+  | { kind: "goal"; business: BusinessRecord }
+  /** What the business sells; like the goal, it lives only in the service. */
+  | { kind: "card"; business: BusinessRecord };
 
 export const directionSnapshot = (d: { status: string; weeklyLimit: number; strategyId: string }): Snapshot => ({
   status: d.status,
@@ -39,6 +45,18 @@ export const directionSnapshot = (d: { status: string; weeklyLimit: number; stra
 });
 
 export const adSnapshot = (a: { status: string; title: string; text: string }): Snapshot => ({ status: a.status, title: a.title, text: a.text });
+
+export const goalSnapshot = (business: BusinessRecord): Snapshot => ({
+  csoMode: business.csoSource.kind,
+  csoValue: business.csoSource.kind === "user" ? business.csoSource.goal : business.csoSource.reference,
+});
+
+/** Card fields the owner edits; lists are JSON so a rollback restores them exactly. */
+export const cardSnapshot = (business: BusinessRecord): Snapshot => ({
+  category: business.card.category,
+  services: JSON.stringify(business.card.services),
+  advantages: JSON.stringify(business.card.advantages),
+});
 
 const businessSnapshot = (directions: readonly DirectionRecord[]): Snapshot =>
   Object.fromEntries(directions.map((d) => [d.id, d.status]));
@@ -86,6 +104,10 @@ export class CommandExecutor {
         const miniSite = business.miniSite;
         return miniSite ? { kind: "minisite", business: { ...business, miniSite } } : null;
       }
+      case "SetGoal":
+        return { kind: "goal", business: await store.getBusiness(businessId) };
+      case "UpdateCard":
+        return { kind: "card", business: await store.getBusiness(businessId) };
       default: {
         const direction = (await store.directions(businessId)).find((d) => d.id === command.directionId);
         return direction ? { kind: "direction", record: direction } : null;
@@ -93,11 +115,19 @@ export class CommandExecutor {
     }
   }
 
-  private async platformSnapshot(platform: AdPlatform, target: Target, businessId: string): Promise<Snapshot> {
+  /** `withTraffic`: also the negative phrases and adjustments, read only when an analyst command needs them. */
+  private async platformSnapshot(platform: AdPlatform, target: Target, businessId: string, withTraffic = false): Promise<Snapshot> {
     switch (target.kind) {
       case "direction": {
         const [campaign] = await platform.getCampaigns([target.record.platformCampaignId]);
-        return campaign ? directionSnapshot(campaign) : {};
+        if (!campaign) {
+          return {};
+        }
+        if (!withTraffic) {
+          return directionSnapshot(campaign);
+        }
+        const [settings] = await platform.getTrafficSettings([target.record.platformCampaignId]);
+        return settings ? { ...directionSnapshot(campaign), ...trafficSnapshot(settings) } : directionSnapshot(campaign);
       }
       case "ad": {
         const direction = (await this.deps.store.directions(businessId)).find((d) => d.id === target.record.directionId);
@@ -107,6 +137,10 @@ export class CommandExecutor {
       }
       case "minisite":
         return { card: target.business.miniSite.card };
+      case "goal":
+        return goalSnapshot(target.business);
+      case "card":
+        return cardSnapshot(target.business);
       case "business": {
         const campaigns = await platform.getCampaigns(target.directions.map((d) => d.platformCampaignId));
         const byId = new Map(campaigns.map((c) => [c.id, c.status]));
@@ -116,12 +150,12 @@ export class CommandExecutor {
   }
 
   /** Current platform state of a logged object — used by rollback to show differences. */
-  async currentPlatformSnapshot(businessId: string, objectKind: ChangeEntry["objectKind"], objectId: string): Promise<Snapshot> {
+  async currentPlatformSnapshot(businessId: string, objectKind: ChangeEntry["objectKind"], objectId: string, withTraffic = false): Promise<Snapshot> {
     const { store } = this.deps;
     const platform = this.deps.platformFor(businessId);
     if (objectKind === "direction") {
       const record = (await store.directions(businessId)).find((d) => d.id === objectId);
-      return record ? this.platformSnapshot(platform, { kind: "direction", record }, businessId) : {};
+      return record ? this.platformSnapshot(platform, { kind: "direction", record }, businessId, withTraffic) : {};
     }
     if (objectKind === "ad") {
       const record = (await store.ads(businessId)).find((a) => a.id === objectId);
@@ -131,31 +165,43 @@ export class CommandExecutor {
       const business = await store.getBusiness(businessId);
       return business.miniSite ? { card: business.miniSite.card } : {};
     }
+    if (objectKind === "goal") {
+      return goalSnapshot(await store.getBusiness(businessId));
+    }
+    if (objectKind === "card") {
+      return cardSnapshot(await store.getBusiness(businessId));
+    }
     return this.platformSnapshot(platform, { kind: "business", directions: await store.directions(businessId) }, businessId);
   }
 
   /** Logged snapshot: platform-checked fields plus the field a settings command changes. */
   private logSnapshot(target: Target, command: Command): Snapshot {
-    const base = this.storedSnapshot(target);
+    const base = this.storedSnapshot(target, command);
     if (target.kind === "direction" && command.type === "UpdateSchedule") {
       return { ...base, schedule: target.record.schedule };
     }
     if (target.kind === "direction" && command.type === "UpdateGeo") {
-      return { ...base, geoRadiusKm: target.record.geoRadiusKm };
+      return { ...base, city: target.record.city };
     }
     return base;
   }
 
-  private storedSnapshot(target: Target): Snapshot {
+  private storedSnapshot(target: Target, command?: Command): Snapshot {
     switch (target.kind) {
       case "direction":
-        return directionSnapshot(target.record);
+        return command !== undefined && isAnalystCommand(command)
+          ? { ...directionSnapshot(target.record), ...trafficSnapshot(target.record) }
+          : directionSnapshot(target.record);
       case "ad":
         return adSnapshot(target.record);
       case "business":
         return businessSnapshot(target.directions);
       case "minisite":
         return { card: target.business.miniSite.card };
+      case "goal":
+        return goalSnapshot(target.business);
+      case "card":
+        return cardSnapshot(target.business);
     }
   }
 
@@ -166,13 +212,27 @@ export class CommandExecutor {
     if (!target) {
       return { status: "rejected", code: "OBJECT_NOT_FOUND", message: "объект не найден" };
     }
-    const before = this.storedSnapshot(target);
+    const analyst = isAnalystCommand(request.command);
+    const before = this.storedSnapshot(target, request.command);
     // Reconciliation records platform state as is, so it skips the expected-before check.
-    if (request.actor !== "reconciliation" && !sameSnapshot(before, await this.platformSnapshot(platform, target, request.businessId))) {
+    if (request.actor !== "reconciliation" && !sameSnapshot(before, await this.platformSnapshot(platform, target, request.businessId, analyst))) {
       return { status: "rejected", code: "STATE_CHANGED", message: "состояние объекта изменилось" };
     }
+    if (target.kind === "direction" && analyst && this.changesNothing(target.record, request.command)) {
+      return { status: "rejected", code: "NO_CHANGE", message: "такие настройки у рекламы уже стоят" };
+    }
     const view = await loadBusinessView(store, request.businessId, clock, platform.capabilities());
-    const verdict = guard(view.guardState, request.command, request.actor);
+    let guardState = view.guardState;
+    // The analyst guardrails need a fresh breakdown; only automated actors are checked by them.
+    if (target.kind === "direction" && isAnalystCommand(request.command) && (request.actor === "agent" || request.actor === "safety_net")) {
+      const state = await loadAnalystState(platform, target.record, request.command, {
+        today: view.today,
+        timeZone: view.business.timeZone,
+        changes: await store.changes(request.businessId),
+      });
+      guardState = { ...guardState, analyst: new Map([[target.record.id, state]]) };
+    }
+    const verdict = guard(guardState, request.command, request.actor);
     if (verdict.kind === "reject") {
       return { status: "rejected", code: verdict.reason.code, message: verdict.reason.message };
     }
@@ -184,7 +244,7 @@ export class CommandExecutor {
       author: authorOf(request.actor),
       action: command,
       objectKind: target.kind,
-      objectId: target.kind === "business" || target.kind === "minisite" ? request.businessId : target.record.id,
+      objectId: target.kind === "business" || target.kind === "minisite" || target.kind === "goal" || target.kind === "card" ? request.businessId : target.record.id,
       before: logged,
       after: logged,
       status: "pending",
@@ -210,6 +270,20 @@ export class CommandExecutor {
     }
   }
 
+  /** An analyst command that would leave the settings as they are (e.g. removing a phrase that is not there). */
+  private changesNothing(record: DirectionRecord, command: Command): boolean {
+    switch (command.type) {
+      case "AddNegativeKeywords":
+        return phrasesMissing(command.phrases, record.negativeKeywords).length === 0;
+      case "RemoveNegativeKeywords":
+        return phrasesMissing(command.phrases, record.negativeKeywords).length === command.phrases.length;
+      case "SetDeviceAdjustment":
+        return record.deviceAdjustments[command.device] === command.percent;
+      default:
+        return false;
+    }
+  }
+
   private async apply(
     businessId: string,
     target: Target,
@@ -224,6 +298,11 @@ export class CommandExecutor {
       const updated = { ...record, status: campaign.status, weeklyLimit: campaign.weeklyLimit, strategyId: campaign.strategyId, ...patch };
       await store.saveDirection(updated);
       return directionSnapshot(updated);
+    };
+    const saveTraffic = async (record: DirectionRecord, campaign: PlatformCampaign, patch: Pick<DirectionRecord, "negativeKeywords"> | Pick<DirectionRecord, "deviceAdjustments" | "deviceAdjustedOn">) => {
+      const updated = { ...record, status: campaign.status, weeklyLimit: campaign.weeklyLimit, strategyId: campaign.strategyId, ...patch };
+      await store.saveDirection(updated);
+      return { ...directionSnapshot(updated), ...trafficSnapshot(updated) };
     };
     const saveAd = async (record: AdRecord, ad: PlatformAd) => {
       const updated = { ...record, status: ad.status, title: ad.title, text: ad.text };
@@ -251,7 +330,8 @@ export class CommandExecutor {
             ? { status: "paused" as const }
             : { status: "active" as const, ...(command.weeklyLimit !== undefined ? { weeklyLimit: command.weeklyLimit } : {}) };
         const campaign = await platform.updateCampaign(target.record.platformCampaignId, patch);
-        return saveCampaign(target.record, campaign, { pausedByBudget: false });
+        // A shortage pause of the budget guard is marked, so the guard resumes it when the budget has room again.
+        return saveCampaign(target.record, campaign, { pausedByBudget: command.type === "PauseDirection" && actor === "budget_guard" });
       }
       case "PauseAd":
       case "ResumeAd": {
@@ -290,13 +370,35 @@ export class CommandExecutor {
         return businessSnapshot(updated);
       }
       case "StartExperiment": {
-        if (target.kind !== "direction") break;
+        if (target.kind !== "direction" || command.variant === undefined) break;
+        // The variant is a second ad of the same group, so Direct rotates both inside the campaign's limit (ab-testing spec).
+        const business = await store.getBusiness(businessId);
+        if (business.card.siteUrl === "") {
+          throw new Error(`Business ${businessId} has no site URL for a new ad`);
+        }
+        const created = await platform.createAd({
+          campaignId: target.record.platformCampaignId,
+          title: command.variant.title,
+          text: command.variant.text,
+          landingUrl: business.card.siteUrl,
+        });
+        const variantAdId = `ad-${randomUUID()}`;
+        await store.saveAd({
+          id: variantAdId,
+          directionId: command.directionId,
+          status: created.status,
+          title: created.title,
+          text: created.text,
+          createdOn: today,
+          platformAdId: created.id,
+          moderation: created.moderation,
+        });
         await store.saveExperiment({
           id: `exp-${businessId}-${command.adId}-${today}`,
           businessId,
           directionId: command.directionId,
           adId: command.adId,
-          variantAdId: command.variantAdId ?? null,
+          variantAdId,
           hypothesis: command.hypothesis,
           startedOn: today,
           status: "running",
@@ -325,9 +427,21 @@ export class CommandExecutor {
       }
       case "UpdateGeo": {
         if (target.kind !== "direction") break;
-        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { geoRadiusKm: command.radiusKm });
-        await saveCampaign(target.record, campaign, { geoRadiusKm: command.radiusKm });
-        return { ...directionSnapshot(campaign), geoRadiusKm: command.radiusKm };
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { city: command.city });
+        await saveCampaign(target.record, campaign, { city: command.city });
+        return { ...directionSnapshot(campaign), city: command.city };
+      }
+      case "SetGoal": {
+        if (target.kind !== "goal") break;
+        const updated = { ...target.business, csoSource: command.source };
+        await store.saveBusiness(updated);
+        return goalSnapshot(updated);
+      }
+      case "UpdateCard": {
+        if (target.kind !== "card") break;
+        const updated = { ...target.business, card: { ...target.business.card, ...command.card } };
+        await store.saveBusiness(updated);
+        return cardSnapshot(updated);
       }
       case "UpdateMiniSite":
       case "PublishMiniSite": {
@@ -344,6 +458,23 @@ export class CommandExecutor {
         if (target.kind !== "ad") break;
         const ad = await platform.updateAd(target.record.platformAdId, { title: command.title, text: command.text });
         return saveAd(target.record, ad);
+      }
+      case "AddNegativeKeywords":
+      case "RemoveNegativeKeywords": {
+        if (target.kind !== "direction") break;
+        // The platform takes the whole list: the phrases of other entries stay (change-history spec).
+        const current = target.record.negativeKeywords;
+        const removed = new Set(command.type === "RemoveNegativeKeywords" ? command.phrases.map(normalizePhrase) : []);
+        const negativeKeywords =
+          command.type === "AddNegativeKeywords" ? [...current, ...phrasesMissing(command.phrases, current)] : current.filter((p) => !removed.has(normalizePhrase(p)));
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { negativeKeywords });
+        return saveTraffic(target.record, campaign, { negativeKeywords });
+      }
+      case "SetDeviceAdjustment": {
+        if (target.kind !== "direction") break;
+        const deviceAdjustments = { ...target.record.deviceAdjustments, [command.device]: command.percent };
+        const campaign = await platform.updateCampaign(target.record.platformCampaignId, { deviceAdjustments });
+        return saveTraffic(target.record, campaign, { deviceAdjustments, deviceAdjustedOn: { ...target.record.deviceAdjustedOn, [command.device]: today } });
       }
     }
     throw new Error(`Command ${command.type} does not match target ${target.kind}`);
@@ -384,11 +515,12 @@ export class CommandExecutor {
    * Resolves pending entries left by a crash between the platform call and the result write:
    * platform matches `after` → applied; matches `before` → failed (not applied); otherwise failed and left to reconciliation.
    */
-  async recoverPending(olderThanMs: number): Promise<number> {
+  async recoverPending(olderThanMs: number, ofBusiness: (businessId: string) => boolean = () => true): Promise<number> {
     const { store, clock } = this.deps;
     let resolved = 0;
     for (const entry of await store.pendingChanges()) {
-      if (clock.now().getTime() - entry.createdAt.getTime() < olderThanMs) {
+      // Each executor resolves only entries of businesses on its own platform (Direct vs a simulation).
+      if (!ofBusiness(entry.businessId) || clock.now().getTime() - entry.createdAt.getTime() < olderThanMs) {
         continue;
       }
       await this.deps.locks.withLock(businessLockKey(entry.businessId), async () => {
@@ -409,8 +541,9 @@ export class CommandExecutor {
   }
 
   private async actualSnapshot(entry: ChangeEntry): Promise<Snapshot> {
-    const target = await this.resolveTarget(entry.businessId, entry.action as Command);
-    return target ? this.platformSnapshot(this.deps.platformFor(entry.businessId), target, entry.businessId) : {};
+    const command = entry.action as Command;
+    const target = await this.resolveTarget(entry.businessId, command);
+    return target ? this.platformSnapshot(this.deps.platformFor(entry.businessId), target, entry.businessId, isAnalystCommand(command)) : {};
   }
 
   private desiredSnapshot(entry: ChangeEntry): Snapshot | null {
@@ -430,6 +563,10 @@ export class CommandExecutor {
         return { ...before, status: "active" };
       case "UpdateAdText":
         return { ...before, title: command.title, text: command.text };
+      case "AddNegativeKeywords":
+      case "RemoveNegativeKeywords":
+      case "SetDeviceAdjustment":
+        return desiredTraffic(before, command);
       default:
         return null;
     }
@@ -445,6 +582,10 @@ export class CommandExecutor {
           status: actual.status === "paused" ? "paused" : "active",
           weeklyLimit: Number(actual.weeklyLimit),
           strategyId: String(actual.strategyId),
+          ...("negativeKeywords" in actual && {
+            negativeKeywords: snapshotPhrases(actual),
+            deviceAdjustments: { mobile: Number(actual.mobileAdjustment), desktop: Number(actual.desktopAdjustment) },
+          }),
         });
       }
     } else if (entry.objectKind === "ad") {

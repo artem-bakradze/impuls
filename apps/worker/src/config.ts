@@ -12,10 +12,26 @@ const ConfigSchema = z.object({
   DATABASE_URL: z.string().min(1),
   /** `simulator` runs the market simulator; `production` calls the real Direct API with each business's token. */
   DIRECT_API_MODE: directApiMode,
-  /** Which AgentRuntime to run: `openai` (Agents API) or `idle` (no agent: guards and safety net only). */
-  AGENT_RUNTIME: z.enum(["idle", "openai"]),
+  /**
+   * Which AgentRuntime decides: `openai` (Agents API; required with DIRECT_API_MODE=production), `heuristic` (a free
+   * deterministic agent for stands and e2e) or `idle` (no agent: guards and safety net only).
+   */
+  AGENT_RUNTIME: z.enum(["idle", "heuristic", "openai"]),
   /** Required with AGENT_RUNTIME=openai, e.g. gpt-6.1-sol (docs/research/agents-api.md). */
   OPENAI_AGENT_MODEL: z.string().min(1).optional(),
+  /** Required with AGENT_RUNTIME=openai: model price, rubles per million input / output tokens (ad-agent spec). */
+  AGENT_PRICE_INPUT_RUB_PER_MTOK: z.coerce.number().positive().optional(),
+  AGENT_PRICE_OUTPUT_RUB_PER_MTOK: z.coerce.number().positive().optional(),
+  /** Required with AGENT_RUNTIME=openai: model spend per business per month and per simulation run, rubles. */
+  AGENT_MONTHLY_LIMIT_RUB: z.coerce.number().positive().optional(),
+  AGENT_SIMULATION_RUN_LIMIT_RUB: z.coerce.number().positive().optional(),
+  /**
+   * Optional: the model of the weekly review (add-agent-analyst-stage1 decision 7), e.g. gpt-6.1-sol; without it the
+   * review runs on OPENAI_AGENT_MODEL. With it, its prices in rubles per million tokens are required.
+   */
+  OPENAI_STRATEGY_MODEL: z.string().min(1).optional(),
+  AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK: z.coerce.number().positive().optional(),
+  AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK: z.coerce.number().positive().optional(),
   /** SMTP for notification emails, e.g. smtp://localhost:1025 (Mailpit locally). */
   SMTP_URL: z.string().min(1),
   MAIL_FROM: z.string().min(1),
@@ -50,11 +66,33 @@ const ConfigSchema = z.object({
     }
   }
   if (config.AGENT_RUNTIME === "openai") {
-    for (const key of ["OPENAI_API_KEY", "OPENAI_AGENT_MODEL"] as const) {
+    const required = [
+      "OPENAI_API_KEY",
+      "OPENAI_AGENT_MODEL",
+      "AGENT_PRICE_INPUT_RUB_PER_MTOK",
+      "AGENT_PRICE_OUTPUT_RUB_PER_MTOK",
+      "AGENT_MONTHLY_LIMIT_RUB",
+      "AGENT_SIMULATION_RUN_LIMIT_RUB",
+    ] as const;
+    for (const key of required) {
       if (!config[key]) {
         ctx.addIssue({ code: "custom", path: [key], message: "is required with AGENT_RUNTIME=openai" });
       }
     }
+  }
+  if (config.OPENAI_STRATEGY_MODEL) {
+    if (config.AGENT_RUNTIME !== "openai") {
+      ctx.addIssue({ code: "custom", path: ["OPENAI_STRATEGY_MODEL"], message: "needs AGENT_RUNTIME=openai" });
+    }
+    for (const key of ["AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK", "AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK"] as const) {
+      if (!config[key]) {
+        ctx.addIssue({ code: "custom", path: [key], message: "is required with OPENAI_STRATEGY_MODEL" });
+      }
+    }
+  }
+  // The agent decides by default (add-agent-insights decision 6): real ads run with the model, not without it.
+  if (config.DIRECT_API_MODE === "production" && config.AGENT_RUNTIME !== "openai") {
+    ctx.addIssue({ code: "custom", path: ["AGENT_RUNTIME"], message: "must be openai with DIRECT_API_MODE=production" });
   }
 });
 

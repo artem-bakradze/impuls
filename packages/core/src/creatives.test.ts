@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateAdText } from "./creatives";
+import { mentionsFact, validateAdText } from "./creatives";
 
 const facts = ["1 800 ₽", "Профсоюзная", "до 22:00"];
 
@@ -26,5 +26,13 @@ describe("validateAdText", () => {
 
   it("requires at least one fact from the business card", () => {
     expect(validateAdText({ title: "Маникюр", text: "Приходите к нам" }, facts).map((i) => i.code)).toEqual(["NO_FACT"]);
+  });
+
+  it("counts a fact in other word forms, but not a single shared word of a long phrase", () => {
+    const b2b = ["подключение и настройка платформы автоматизации ресторанной доставки", "Онлайн-настройка по всей России"];
+    expect(validateAdText({ title: "Автоматизация ресторанной доставки", text: "Подключим и настроим платформу" }, b2b)).toEqual([]);
+    expect(validateAdText({ title: "Настроим доставку ресторана", text: "Работаем онлайн по всей России" }, b2b)).toEqual([]);
+    expect(validateAdText({ title: "Платформа для вашего бизнеса", text: "Оставьте заявку" }, b2b).map((i) => i.code)).toEqual(["NO_FACT"]);
+    expect(mentionsFact("Маникюр у метро", "до 22:00")).toBe(false);
   });
 });

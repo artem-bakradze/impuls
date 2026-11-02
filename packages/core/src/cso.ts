@@ -31,7 +31,7 @@ const median = (values: readonly number[]): number => {
 
 /**
  * Goal is unreachable when every direction past learning costs more than ЦСО per lead over 14 days.
- * The suggestion is the median actual cost, rounded to 50 ₽.
+ * The suggestion is the median actual cost, rounded to 50 ₽; up, when the nearest 50 ₽ would not be a raise.
  */
 export const goalAdvice = (costPerLeadByDirection: readonly (Kopecks | null)[], cso: Kopecks): GoalAdvice => {
   // A direction past learning without any lead (null) is not within the goal either.
@@ -40,7 +40,8 @@ export const goalAdvice = (costPerLeadByDirection: readonly (Kopecks | null)[], 
     return { kind: "reachable" };
   }
   const med = median(known);
-  return { kind: "unreachable", medianCostPerLead: Math.round(med), suggestedGoal: Math.round(med / 5000) * 5000 };
+  const nearest = Math.round(med / 5000) * 5000;
+  return { kind: "unreachable", medianCostPerLead: Math.round(med), suggestedGoal: nearest > cso ? nearest : Math.ceil(med / 5000) * 5000 };
 };
 
 /** True when the forecast spend for the month is below 70% of the budget because of the goal. */

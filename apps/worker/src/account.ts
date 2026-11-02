@@ -3,8 +3,9 @@ import type { JobContext } from "./context";
 export const PERSONAL_DATA_RETENTION_DAYS = 30;
 
 /**
- * Account deletion (auth spec): stop the service's campaigns, revoke OAuth tokens, switch the agent off,
- * delete agent notes and mark the owner deleted. Personal data is purged within 30 days by `purgeDeletedAccounts`.
+ * Account deletion on the owner's request to support (auth spec), started by the ops CLI: stop the service's
+ * campaigns, revoke OAuth tokens, switch automation off and mark the owner deleted. Personal data is purged within
+ * 30 days by `purgeDeletedAccounts`.
  */
 export const deleteAccount = async (ctx: JobContext, businessId: string): Promise<{ message: string }> => {
   const stop = await ctx.executor.execute({
@@ -12,7 +13,7 @@ export const deleteAccount = async (ctx: JobContext, businessId: string): Promis
     command: { type: "PauseAll" },
     actor: "user",
     reasonCode: "ACCOUNT_DELETED",
-    explanation: "Вы удалили аккаунт — реклама остановлена.",
+    explanation: "По вашей просьбе аккаунт удаляется — реклама остановлена.",
   });
   if (stop.status === "failed") {
     throw new Error(`Could not stop campaigns before deletion: ${stop.code}`);
@@ -21,7 +22,6 @@ export const deleteAccount = async (ctx: JobContext, businessId: string): Promis
   await ctx.store.setFlag("agent_enabled", false, businessId);
   await ctx.store.setFlag("automation_enabled", false, businessId);
   await ctx.store.revokePlatformAccount(businessId, now);
-  await ctx.store.saveNotes(businessId, []);
   await ctx.store.markOwnerDeleted(businessId, now);
   return { message: "Реклама остановлена, данные будут удалены" };
 };

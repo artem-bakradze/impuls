@@ -22,7 +22,10 @@ export const confirmClients = async (ctx: JobContext, businessId: string, week: 
   const start = weekStart(week);
   const rows = await ctx.store.stats(businessId, start, addDays(start, 6));
   const leads = rows.reduce((sum, r) => sum + r.leads, 0);
-  if (!Number.isInteger(clients) || clients < 0 || clients > leads) {
+  if (Number.isInteger(clients) && clients > leads) {
+    throw new ClientConfirmationError("CLIENTS_OUT_OF_RANGE", `Клиентов не может быть больше, чем обращений — за эту неделю их ${leads}`);
+  }
+  if (!Number.isInteger(clients) || clients < 0) {
     throw new ClientConfirmationError("CLIENTS_OUT_OF_RANGE", `Укажите число от 0 до ${leads}`);
   }
   await ctx.store.saveClientConfirmation({ businessId, weekStart: start, clients, leads });

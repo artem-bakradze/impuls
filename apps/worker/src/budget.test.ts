@@ -47,14 +47,14 @@ describe("budget change during the month", () => {
     expect((await sim.store.changes("b1")).some((c) => c.reasonCode === "BUDGET_NEW_MONTH" && c.status === "applied")).toBe(true);
   });
 
-  it("notifies once at 80% of the month budget", async () => {
+  it("creates no notification at 80% of the month budget: the summary shows the spend bar", async () => {
     const sim = await world(40_000);
     await sim.runDays(10);
     await sim.runHours(1);
     const visible = (await sim.store.stats("b1", "2026-10-01", "2026-10-31")).reduce((s, r) => s + r.spend, 0) / 100;
     await changeBudget(sim.ctx, "b1", Math.ceil(visible / 0.85), true);
     await sim.runHours(2);
-    expect((await sim.store.notifications("b1")).filter((n) => n.kind === "budget_80")).toHaveLength(1);
+    expect(await sim.store.notifications("b1")).toEqual([]);
   });
 
   it("shows the prorated ceiling when the budget changes in the launch month", async () => {

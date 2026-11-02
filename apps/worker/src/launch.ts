@@ -4,6 +4,7 @@ import type { Channel } from "@impuls/core";
 import { PlatformError } from "@impuls/platforms";
 import { enqueueAgentEvent } from "./agent-turn";
 import type { JobContext } from "./context";
+import { NO_TRAFFIC_SETTINGS } from "./store";
 
 export interface LaunchPlan {
   /** Landing page every ad leads to (the owner's site); the platform adapter adds UTM tags. */
@@ -89,7 +90,10 @@ export const launchAds = async (ctx: JobContext, businessId: string, plan: Launc
       pausedByBudget: false,
       pausedByUser: false,
       schedule: business.card.hours,
-      geoRadiusKm: 3,
+      city: plan.city,
+      keywords: [...direction.keywords],
+      ...NO_TRAFFIC_SETTINGS,
+      negativeKeywords: [...direction.negativeKeywords],
     });
     for (const ad of direction.ads) {
       const created = await platform.createAd({ campaignId: campaign.id, title: ad.title, text: ad.text, landingUrl: plan.landingUrl });

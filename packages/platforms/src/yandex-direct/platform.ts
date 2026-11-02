@@ -4,15 +4,19 @@ import { PlatformError } from "../contract";
 import type {
   AdPatch,
   AdPlatform,
+  BreakdownDimension,
+  BreakdownRow,
   CampaignPatch,
   ChangesResult,
   DailyStatRow,
+  DeviceAdjustments,
   LeadGoal,
   NewAd,
   NewCampaign,
   PlatformAd,
   PlatformCampaign,
   PlatformCapabilities,
+  TrafficSettings,
 } from "../contract";
 import { DirectClient } from "./client";
 import type { DirectLogger, DirectRequestGuard, JsonRecord } from "./client";
@@ -20,15 +24,20 @@ import {
   AUTOTARGETING_KEYWORD,
   STRATEGY_AVERAGE_CPA,
   STRATEGY_WB_MAXIMUM_CLICKS,
+  bidModifierToPercent,
   buildBiddingStrategy,
+  buildBreakdownReportParams,
   buildSettings,
   buildStatsReportParams,
   buildTimeTargeting,
+  checkActionResult,
   parseAd,
   parseAverageCpaParams,
+  parseBreakdownTsv,
   parseCampaign,
   parseChangedCampaigns,
   parseStatsTsv,
+  percentToBidModifier,
   records,
   servingChannel,
   singleActionResult,
@@ -303,9 +312,15 @@ export class YandexDirectPlatform implements AdPlatform {
     if (patch.siteMonitoring !== undefined) {
       textCampaign.Settings = buildSettings(patch.siteMonitoring);
     }
-    // geoRadiusKm is kept by the service only: Direct targets ad groups by region (replace-direct-sandbox decision 6).
+    if (patch.city !== undefined) {
+      // Direct targets ad groups by region; a service campaign has exactly one group (replace-direct-sandbox decision 6).
+      const regionId = await this.regionIdOf(patch.city);
+      const adGroupId = await this.adGroupOf(id);
+      const result = await this.client.call("adgroups", "update", { AdGroups: [{ Id: adGroupId, RegionIds: [regionId] }] }, false);
+      singleActionResult(result, "UpdateResults");
+    }
     const timeTargeting = patch.schedule !== undefined ? buildTimeTargeting(patch.schedule) : null;
-    if (Object.keys(textCampaign).length > 0 || timeTargeting) {
+    if (Object.keys(textCampaign).length > 0 || timeTargeting || patch.negativeKeywords !== undefined) {
       const item: JsonRecord = { Id: directId };
       if (Object.keys(textCampaign).length > 0) {
         item.TextCampaign = textCampaign;
@@ -313,8 +328,15 @@ export class YandexDirectPlatform implements AdPlatform {
       if (timeTargeting) {
         item.TimeTargeting = timeTargeting;
       }
+      if (patch.negativeKeywords !== undefined) {
+        // The whole list; an empty one is removed with null (Direct does not accept an empty Items array).
+        item.NegativeKeywords = patch.negativeKeywords.length > 0 ? { Items: [...patch.negativeKeywords] } : null;
+      }
       const result = await this.client.call("campaigns", "update", { Campaigns: [item] }, false);
       singleActionResult(result, "UpdateResults");
+    }
+    if (patch.deviceAdjustments !== undefined) {
+      await this.setDeviceAdjustments(id, patch.deviceAdjustments);
     }
     if (patch.status !== undefined) {
       const method = patch.status === "paused" ? "suspend" : "resume";
@@ -417,6 +439,76 @@ export class YandexDirectPlatform implements AdPlatform {
       throw new PlatformError("DIRECT_INVALID_RESPONSE", "Changes.checkCampaigns returned no Timestamp", false);
     }
     return { checkedAt, campaigns: parseChangedCampaigns(result, campaignIds) };
+  }
+
+  /** Campaign-level bid modifiers for phones and computers: `BidModifiers.get` (design decision 5). */
+  private async getBidModifiers(campaignIds: readonly string[]): Promise<{ id: number; campaignId: string; device: "mobile" | "desktop"; percent: number }[]> {
+    const result = await this.client.call(
+      "bidmodifiers",
+      "get",
+      {
+        SelectionCriteria: { CampaignIds: campaignIds.map(toDirectId), Levels: ["CAMPAIGN"] },
+        FieldNames: ["Id", "CampaignId", "Type"],
+        MobileAdjustmentFieldNames: ["BidModifier"],
+        DesktopAdjustmentFieldNames: ["BidModifier"],
+      },
+      true,
+    );
+    const items = Array.isArray(result.BidModifiers) ? (result.BidModifiers as JsonRecord[]) : [];
+    return items.flatMap((item) => {
+      const mobile = item.MobileAdjustment as JsonRecord | undefined;
+      const desktop = item.DesktopAdjustment as JsonRecord | undefined;
+      const adjustment = mobile ?? desktop;
+      if (!adjustment || typeof adjustment.BidModifier !== "number") return [];
+      return [{ id: Number(item.Id), campaignId: String(item.CampaignId), device: mobile ? ("mobile" as const) : ("desktop" as const), percent: bidModifierToPercent(adjustment.BidModifier) }];
+    });
+  }
+
+  /** Sets the phone and computer adjustments: changes, adds or (back to 0%) deletes the campaign's modifiers. */
+  private async setDeviceAdjustments(campaignId: string, adjustments: DeviceAdjustments): Promise<void> {
+    const existing = await this.getBidModifiers([campaignId]);
+    for (const device of ["mobile", "desktop"] as const) {
+      const percent = adjustments[device];
+      const current = existing.find((m) => m.device === device);
+      if (current && current.percent === percent) continue;
+      if (current && percent === 0) {
+        singleActionResult(await this.client.call("bidmodifiers", "delete", { SelectionCriteria: { Ids: [current.id] } }, false), "DeleteResults");
+      } else if (current) {
+        const result = await this.client.call("bidmodifiers", "set", { BidModifiers: [{ Id: current.id, BidModifier: percentToBidModifier(percent) }] }, false);
+        singleActionResult(result, "SetResults");
+      } else if (percent !== 0) {
+        const adjustment = { BidModifier: percentToBidModifier(percent) };
+        const modifier = device === "mobile" ? { MobileAdjustment: adjustment } : { DesktopAdjustment: adjustment };
+        const result = await this.client.call("bidmodifiers", "add", { BidModifiers: [{ CampaignId: toDirectId(campaignId), ...modifier }] }, false);
+        checkActionResult(result, "AddResults");
+      }
+    }
+  }
+
+  async getTrafficSettings(campaignIds: readonly string[]): Promise<TrafficSettings[]> {
+    if (campaignIds.length === 0) {
+      return [];
+    }
+    const result = await this.client.call("campaigns", "get", { SelectionCriteria: { Ids: campaignIds.map(toDirectId) }, FieldNames: ["Id", "NegativeKeywords"] }, true);
+    const raw = Array.isArray(result.Campaigns) ? (result.Campaigns as JsonRecord[]) : [];
+    const modifiers = await this.getBidModifiers(campaignIds);
+    return campaignIds.map((id) => {
+      const campaign = raw.find((c) => String(c.Id) === id);
+      if (!campaign) {
+        throw new PlatformError("NOT_FOUND", `Campaign ${id} not found`, false);
+      }
+      const negative = campaign.NegativeKeywords as JsonRecord | null | undefined;
+      const items = negative && Array.isArray(negative.Items) ? (negative.Items as unknown[]).map(String) : [];
+      const percentOf = (device: "mobile" | "desktop") => modifiers.find((m) => m.campaignId === id && m.device === device)?.percent ?? 0;
+      return { campaignId: id, negativeKeywords: items, deviceAdjustments: { mobile: percentOf("mobile"), desktop: percentOf("desktop") } };
+    });
+  }
+
+  async getBreakdown(campaignIds: readonly string[], from: LocalDate, to: LocalDate, dimension: BreakdownDimension): Promise<BreakdownRow[]> {
+    if (campaignIds.length === 0) {
+      return [];
+    }
+    return parseBreakdownTsv(await this.client.report(buildBreakdownReportParams(campaignIds, from, to, dimension)), dimension);
   }
 
   async getStats(campaignIds: readonly string[], from: LocalDate, to: LocalDate): Promise<DailyStatRow[]> {

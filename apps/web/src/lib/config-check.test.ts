@@ -7,6 +7,7 @@ const valid = {
   AUTH_GOOGLE_ID: "id",
   AUTH_GOOGLE_SECRET: "secret",
   DIRECT_API_MODE: "simulator",
+  SUPPORT_EMAIL: "support@impuls.test",
 };
 
 describe("web configuration", () => {
@@ -14,6 +15,13 @@ describe("web configuration", () => {
     const rest: Record<string, string> = { ...valid };
     delete rest.AUTH_SECRET;
     expect(() => parseWebConfig(rest)).toThrow(WebConfigError);
+  });
+
+  it("requires a valid support address for account deletion requests", () => {
+    const rest: Record<string, string> = { ...valid };
+    delete rest.SUPPORT_EMAIL;
+    expect(() => parseWebConfig(rest)).toThrow(/SUPPORT_EMAIL/);
+    expect(() => parseWebConfig({ ...valid, SUPPORT_EMAIL: "support" })).toThrow(/SUPPORT_EMAIL/);
   });
 
   it("keeps the test login off unless explicitly enabled", () => {

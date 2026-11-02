@@ -28,6 +28,7 @@ const runtime = (): Runtime => {
 
 export const db = (): Db => runtime().db;
 export const store = (): PgStore => runtime().store;
+export const supportEmail = (): string => webConfig().SUPPORT_EMAIL;
 
 /**
  * pg-boss client used only to send web jobs and read their results. It does not run maintenance,

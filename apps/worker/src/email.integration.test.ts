@@ -1,7 +1,7 @@
 import { IdlePolicy } from "@impuls/agent";
 import { JARGON_STOP_LIST, rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
-import { deliverIncidents, deliverNotifications, emailKinds, queueWeeklySummary, SmtpMailer, subjectFor } from "./email";
+import { deliverIncidents, deliverNotifications, emailKinds, SmtpMailer, subjectFor } from "./email";
 import type { EmailMessage, Mailer } from "./email";
 import { createLogger } from "./logger";
 import { SimulationDriver } from "./simulation";
@@ -45,20 +45,6 @@ describe("email templates", () => {
   });
 });
 
-describe("weekly summary", () => {
-  it("is queued on Monday at 10:00 local time with the clients question, and can be switched off", async () => {
-    const sim = await world();
-    await sim.runHours(24 * 11 + 7); // until Monday 12 Oct 10:00 Moscow (07:00 UTC)
-    expect(await queueWeeklySummary(sim.ctx, "b1", "https://app.example")).toBe(true);
-    const summary = (await sim.store.notifications("b1")).find((n) => n.kind === "weekly_summary");
-    expect(summary?.message).toMatch(/^За неделю потрачено .+ ₽, обращений: \d+/);
-    expect(summary?.message).toContain("Сколько обращений стали клиентами? Ответьте здесь: https://app.example/summary?clients=2026-10-05");
-
-    await sim.store.saveBusiness({ ...(await sim.store.getBusiness("b1")), weeklySummaryEnabled: false });
-    expect(await queueWeeklySummary(sim.ctx, "b1", "https://app.example")).toBe(false);
-  });
-});
-
 describe("team alerts", () => {
   it("emails each incident to the team once", async () => {
     const sim = await world();
@@ -80,13 +66,25 @@ describe("delivery", () => {
     expect(mailer.sent[0]).toMatchObject({ to: "owner@example.com", subject: "Пополните баланс в Яндекс Директе" });
   });
 
+  it("emails only balance, access and moderation; everything else stays on the summary", async () => {
+    const sim = await world();
+    for (const kind of ["budget_95", "goal_unreachable", "underspend", "low_balance", "token_revoked", "moderation_rejected"]) {
+      await sim.store.notify({ businessId: "b1", kind, message: kind, at: sim.clock.now() });
+    }
+    const mailer = new CapturingMailer();
+    expect(await deliverNotifications(sim.ctx, mailer, createLogger(() => undefined))).toBe(3);
+    expect(mailer.sent.map((m) => m.text.split("\n")[0])).toEqual(["low_balance", "token_revoked", "moderation_rejected"]);
+    expect(await deliverNotifications(sim.ctx, mailer, createLogger(() => undefined))).toBe(0);
+    expect((await sim.store.notifications("b1")).map((n) => n.kind)).toContain("budget_95");
+  });
+
   it("delivers to a real SMTP test inbox (Mailpit)", async () => {
     const sim = await world();
     const marker = `Проверка ${Date.now()}`;
-    await sim.store.notify({ businessId: "b1", kind: "budget_80", message: marker, at: sim.clock.now() });
+    await sim.store.notify({ businessId: "b1", kind: "token_revoked", message: marker, at: sim.clock.now() });
     await deliverNotifications(sim.ctx, new SmtpMailer(MAILPIT_SMTP, "Импульс <noreply@impuls.test>"), createLogger(() => undefined));
     const response = await fetch(`${MAILPIT_API}/api/v1/search?query=${encodeURIComponent(marker)}`);
     const body = (await response.json()) as { messages: { Subject: string; To: { Address: string }[] }[] };
-    expect(body.messages[0]).toMatchObject({ Subject: "Израсходовано 80% бюджета месяца", To: [{ Address: "owner@example.com" }] });
+    expect(body.messages[0]).toMatchObject({ Subject: "Потерян доступ к Яндекс Директу", To: [{ Address: "owner@example.com" }] });
   });
 });

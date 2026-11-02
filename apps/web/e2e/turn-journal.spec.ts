@@ -3,7 +3,7 @@ import pg from "pg";
 import { e2eDatabaseUrl } from "./env";
 import { launchNewBusiness, uniqueEmail } from "./helpers";
 
-/** Seeds an agent turn and the history entry it created, as the worker would after an agent action. */
+/** Seeds an agent turn, the history entry it created and its insight, as the worker would after an agent action. */
 const seedAgentTurn = async (email: string): Promise<void> => {
   const client = new pg.Client({ connectionString: e2eDatabaseUrl() });
   await client.connect();
@@ -20,7 +20,12 @@ const seedAgentTurn = async (email: string): Promise<void> => {
     const calls = [
       {
         command: { type: "SetSpendLimit", directionId: row.campaign, weeklyLimit: 360_000 },
-        justification: { reasonCode: "SCALE", text: "Это направление приводит клиентов дешевле цели, поэтому я выделил ему больше денег." },
+        insight: {
+          reasonCode: "SCALE",
+          observation: "Это направление приводит клиентов дешевле цели, поэтому выделили ему больше денег.",
+          factKeys: ["goal:goal:now", "budget:budget_left:month"],
+          next: "Через неделю проверим, выросло ли число обращений.",
+        },
         result: { status: "clamped", message: "урезано: не больше +20% за шаг" },
       },
     ];
@@ -29,18 +34,39 @@ const seedAgentTurn = async (email: string): Promise<void> => {
        VALUES ($1, $2, 'daily_review', 'policy:e2e', 'v1', 'completed', $3, $4, 'ok', now(), now())`,
       [turnId, row.id, JSON.stringify({ trigger: { kind: "daily_review" } }), JSON.stringify(calls)],
     );
+    const changeId = `chg-e2e-${Date.now()}`;
+    const insightId = `ins-e2e-${Date.now()}`;
+    const facts = [
+      { key: "goal:goal:now", object: "цель", metric: "goal", period: "now", value: 800, unit: "rub" },
+      { key: "budget:budget_left:month", object: "бюджет месяца", metric: "budget_left", period: "month", value: 9_700, unit: "rub" },
+    ];
     await client.query(
-      `INSERT INTO change_log (id, business_id, actor, author, action, object_kind, object_id, before, after, status, reason_code, explanation, turn_id)
-       VALUES ($1, $2, 'agent', 'service', $3, 'direction', $4, $5, $6, 'applied', 'SCALE', $7, $8)`,
+      `INSERT INTO insights (id, business_id, turn_id, source, reason_code, observation, facts, decision, next, object_ref, created_at)
+       VALUES ($1, $2, $3, 'agent', 'SCALE', $4, $5, $6, $7, $8, now())`,
       [
-        `chg-e2e-${Date.now()}`,
+        insightId,
+        row.id,
+        turnId,
+        calls[0]?.insight.observation,
+        JSON.stringify(facts),
+        JSON.stringify({ kind: "action", text: "Лимит: реклама в поиске — 3 600 ₽ в неделю — урезано: не больше +20% за шаг", status: "clamped", changeIds: [changeId] }),
+        calls[0]?.insight.next,
+        JSON.stringify({ kind: "direction", id: row.campaign }),
+      ],
+    );
+    await client.query(
+      `INSERT INTO change_log (id, business_id, actor, author, action, object_kind, object_id, before, after, status, reason_code, explanation, turn_id, insight_id)
+       VALUES ($1, $2, 'agent', 'service', $3, 'direction', $4, $5, $6, 'applied', 'SCALE', $7, $8, $9)`,
+      [
+        changeId,
         row.id,
         JSON.stringify(calls[0]?.command),
         row.campaign,
         JSON.stringify({ status: "active", weeklyLimit: 300_000, strategyId: "WB_MAXIMUM_CLICKS" }),
         JSON.stringify({ status: "active", weeklyLimit: 360_000, strategyId: "WB_MAXIMUM_CLICKS" }),
-        calls[0]?.justification.text,
+        calls[0]?.insight.observation,
         turnId,
+        insightId,
       ],
     );
   } finally {
@@ -54,7 +80,13 @@ test("from a history entry made by the agent the owner opens the turn with guard
   await seedAgentTurn(email);
 
   await page.getByRole("link", { name: "История" }).click();
-  const entry = page.getByTestId("history-entry").filter({ hasText: "выделил ему больше денег" });
+  const entry = page.getByTestId("history-entry").filter({ hasText: "выделили ему больше денег" });
+  // «Почему»: the insight of the decision with its facts, right at the entry.
+  await entry.getByRole("button", { name: /Почему/ }).click();
+  const insight = entry.getByTestId("insight");
+  await expect(insight).toContainText("На каких данных");
+  await expect(insight).toContainText("Осталось в этом месяце");
+  await expect(insight).toContainText("урезано: не больше +20% за шаг");
   await entry.getByRole("link", { name: "Как сервис принял это решение" }).click();
 
   await expect(page.getByRole("heading", { name: "Как сервис принял решение" })).toBeVisible();

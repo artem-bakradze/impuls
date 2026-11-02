@@ -36,9 +36,11 @@ const world = async () => {
 };
 
 const state = async (sim: SimulationDriver) => ({
-  directions: (await sim.store.directions("b1")).map((d) => ({ status: d.status, weeklyLimit: d.weeklyLimit, strategyId: d.strategyId, schedule: d.schedule, geo: d.geoRadiusKm })),
+  directions: (await sim.store.directions("b1")).map((d) => ({ status: d.status, weeklyLimit: d.weeklyLimit, strategyId: d.strategyId, schedule: d.schedule, city: d.city })),
   ads: (await sim.store.ads("b1")).map((a) => ({ status: a.status, title: a.title, text: a.text })),
   miniSite: (await sim.store.getBusiness("b1")).miniSite?.card,
+  goal: (await sim.store.getBusiness("b1")).csoSource,
+  card: (await sim.store.getBusiness("b1")).card,
 });
 
 const reversible: { name: string; prepare?: Command; command: Command }[] = [
@@ -51,7 +53,12 @@ const reversible: { name: string; prepare?: Command; command: Command }[] = [
   { name: "PauseAll", command: { type: "PauseAll" } },
   { name: "ResumeAll", prepare: { type: "PauseAll" }, command: { type: "ResumeAll" } },
   { name: "UpdateSchedule", command: { type: "UpdateSchedule", directionId: "b1-d1", schedule: "Пн–Пт 09:00–21:00" } },
-  { name: "UpdateGeo", command: { type: "UpdateGeo", directionId: "b1-d1", radiusKm: 7 } },
+  { name: "UpdateGeo", command: { type: "UpdateGeo", directionId: "b1-d1", city: "Химки" } },
+  { name: "SetGoal", command: { type: "SetGoal", source: { kind: "user", goal: rubles(500) } } },
+  {
+    name: "UpdateCard",
+    command: { type: "UpdateCard", card: { category: "Маникюрная студия", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], advantages: ["Работаем без выходных"] } },
+  },
   { name: "UpdateAdText", command: { type: "UpdateAdText", adId: "b1-d1-a2", title: "Маникюр за час", text: "Без очереди у метро" } },
   { name: "UpdateMiniSite", command: { type: "UpdateMiniSite", card: card(2_000) } },
 ];
@@ -97,9 +104,24 @@ describe("mini-site", () => {
     expect((await sim.store.changes("b1")).at(-1)).toMatchObject({ objectKind: "minisite", author: "user", status: "applied" });
   });
 
-  it("is never changed by the agent", async () => {
+  it("is never changed by the agent, and neither is the business card", async () => {
     const sim = await world();
     const result = await sim.executor.execute({ businessId: "b1", command: { type: "PublishMiniSite" }, actor: "agent", reasonCode: "X", explanation: "Опубликовал" });
     expect(result).toMatchObject({ status: "rejected", code: "NOT_ALLOWED_FOR_AUTOMATION" });
+    const card = await sim.executor.execute({ businessId: "b1", command: { type: "UpdateCard", card: { category: "Салон", services: [], advantages: [] } }, actor: "safety_net", reasonCode: "X", explanation: "Изменил" });
+    expect(card).toMatchObject({ status: "rejected", code: "NOT_ALLOWED_FOR_AUTOMATION" });
+  });
+});
+
+describe("business card", () => {
+  it("keeps the running ads and logs «было → стало» for the owner", async () => {
+    const sim = await world();
+    const ads = (await state(sim)).ads;
+    await run(sim, { type: "UpdateCard", card: { category: "Маникюрная студия", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], advantages: [] } });
+    expect((await sim.store.getBusiness("b1")).card.services).toEqual([{ name: "Маникюр с покрытием", priceRub: 1_800 }]);
+    expect((await state(sim)).ads).toEqual(ads);
+    const entry = (await sim.store.changes("b1")).at(-1);
+    expect(entry).toMatchObject({ objectKind: "card", objectId: "b1", author: "user", status: "applied" });
+    expect(entry?.after.services).toBe(JSON.stringify([{ name: "Маникюр с покрытием", priceRub: 1_800 }]));
   });
 });

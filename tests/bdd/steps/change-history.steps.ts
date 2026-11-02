@@ -1,9 +1,51 @@
 import { rubles } from "@impuls/core";
-import { rollback } from "@impuls/worker";
+import { BUDGET_ADJUSTMENT_REASON, isBudgetAdjustment, rollback } from "@impuls/worker";
 import type { RollbackResult, SimulationDriver } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
+import { describeDiff, foldBudgetAdjustments, newestFirst, objectName } from "../../../apps/web/src/lib/history-view";
+import type { HistoryItem, Names } from "../../../apps/web/src/lib/history-view";
 import { featurePath, launchedWorld } from "./world";
+
+/** A budget-guard cut of the first direction's limit, as the hourly guard logs it. */
+const budgetCut = async (sim: SimulationDriver, rub: number) => {
+  await sim.executor.execute({
+    businessId: "b1",
+    command: { type: "SetSpendLimit", directionId: "b1-d1", weeklyLimit: rubles(rub) },
+    actor: "budget_guard",
+    reasonCode: "BUDGET_FIT",
+    explanation: `Снизил лимит направления «Маникюр — Поиск» до ${rub} ₽ в неделю, чтобы не выйти за ваш бюджет на месяц.`,
+  });
+};
+
+/** The history feed as the history screen builds it (apps/web lib/server/history), without the web runtime. */
+const historyFeed = async (sim: SimulationDriver) => {
+  const directions = await sim.store.directions("b1");
+  const names: Names = {
+    directions: Object.fromEntries(directions.map((d) => [d.id, d.name])),
+    channels: Object.fromEntries(directions.map((d) => [d.id, d.channel])),
+    ads: {},
+    strategies: {},
+  };
+  const items = (await sim.store.changes("b1")).map(
+    (entry): HistoryItem => ({
+      id: entry.id,
+      at: entry.createdAt.toISOString(),
+      author: entry.author,
+      object: objectName(entry.objectKind, entry.objectId, names),
+      diff: describeDiff(entry.before, entry.after, names),
+      explanation: entry.explanation,
+      outcome: entry.outcome,
+      turnId: entry.turnId,
+      insight: null,
+      status: entry.status,
+      reverted: entry.revertedById !== null,
+      rollback: { kind: "available", consequences: [] },
+      budgetAdjustment: isBudgetAdjustment(entry),
+    }),
+  );
+  return foldBudgetAdjustments(newestFirst(items), "Europe/Moscow");
+};
 
 const feature = await loadFeature(featurePath("change-history/rollback.feature"), { language: "ru" });
 
@@ -73,7 +115,14 @@ describeFeature(feature, ({ Scenario }) => {
       sim = await launchedWorld(30_000);
       await sim.executor.execute({
         businessId: "b1",
-        command: { type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", hypothesis: "Проверяем оффер" },
+        command: {
+          type: "StartExperiment",
+          directionId: "b1-d1",
+          adId: "b1-d1-a1",
+          kind: "offer",
+          hypothesis: "Проверяем оффер",
+          variant: { title: "Маникюр у метро", text: "Первый визит −15%" },
+        },
         actor: "safety_net",
         reasonCode: "SAFETY_START_EXPERIMENT",
         explanation: "Запустил проверку",
@@ -85,6 +134,47 @@ describeFeature(feature, ({ Scenario }) => {
     Then("отката нет, и сервис объясняет почему", () => {
       expect(result).toMatchObject({ kind: "not_reversible" });
       expect(result?.kind === "not_reversible" ? result.reason : "").toContain("проверку нельзя отменить");
+    });
+  });
+
+  Scenario("Подстройка лимита защитой бюджета", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    let result: RollbackResult | null = null;
+    Given("защита бюджета снизила лимит рекламы под остаток месяца", async () => {
+      sim = await launchedWorld(30_000);
+      await budgetCut(sim, 1_900);
+    });
+    When("пользователь пытается откатить эту подстройку", async () => {
+      result = await rollback(sim.ctx, { businessId: "b1", entryId: (await sim.store.changes("b1")).at(-1)?.id ?? "" });
+    });
+    Then("отката нет, а подпись говорит, что лимит пересчитывается сам по остатку бюджета", async () => {
+      expect(result).toEqual({ kind: "not_reversible", reason: BUDGET_ADJUSTMENT_REASON });
+      expect(BUDGET_ADJUSTMENT_REASON).toMatch(/^лимит пересчитывается сам по остатку бюджета/);
+      expect((await sim.store.directions("b1"))[0]?.weeklyLimit).toBe(rubles(1_900));
+    });
+  });
+
+  Scenario("Подстройки лимитов за день", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    let feed: Awaited<ReturnType<typeof historyFeed>> = [];
+    Given("за день защита бюджета 3 раза снизила лимит рекламы в поиске", async () => {
+      sim = await launchedWorld(30_000);
+      sim.clock.set(new Date("2026-10-02T07:00:00Z"));
+      for (const rub of [1_950, 1_900, 1_850]) {
+        await budgetCut(sim, rub);
+        sim.clock.set(new Date(sim.clock.now().getTime() + 3_600_000));
+      }
+    });
+    When("пользователь открывает историю", async () => {
+      feed = await historyFeed(sim);
+    });
+    Then("он видит одну строку «Защита бюджета» с тем, как лимит изменился за день, и все 3 записи по нажатию", () => {
+      const days = feed.filter((row) => row.kind === "budget");
+      expect(days).toHaveLength(1);
+      const group = days[0]?.kind === "budget" ? days[0].group : null;
+      expect(group?.entries).toHaveLength(3);
+      expect(group?.limits.map((l) => `${l.object}: ${l.from} → ${l.to}`.replace(/[\u00a0\u202f]/g, " "))).toEqual(["Реклама в поиске: 2 000 ₽ в неделю → 1 850 ₽ в неделю"]);
+      expect(feed.some((row) => row.kind === "entry" && row.item.budgetAdjustment)).toBe(false);
     });
   });
 });

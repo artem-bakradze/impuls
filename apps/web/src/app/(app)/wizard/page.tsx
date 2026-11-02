@@ -3,7 +3,6 @@ import { Wizard } from "@/components/wizard/Wizard";
 import { firstIncompleteStep, STEP_COUNT } from "@/lib/onboarding";
 import { findBusiness, readDraft } from "@/lib/server/business";
 import { webConfig } from "@/lib/server/config";
-import { platformCapabilities } from "@/lib/server/read-context";
 import { requireUserId } from "@/lib/server/session";
 
 export default async function WizardPage({ searchParams }: { searchParams: Promise<{ direct?: string }> }) {
@@ -21,7 +20,6 @@ export default async function WizardPage({ searchParams }: { searchParams: Promi
       initialStep={Math.min(saved, firstIncompleteStep(draft))}
       directApiMode={webConfig().DIRECT_API_MODE}
       directOutcome={direct === "connected" || direct === "denied" || direct === "failed" ? direct : null}
-      minWeeklyLimitRub={platformCapabilities().minWeeklyLimit / 100}
     />
   );
 }

@@ -14,3 +14,12 @@ export const formatLocalDate = (date: string): string => DATE.format(new Date(`$
 
 /** Sentence case for backend messages that start lowercase («состояние объекта изменилось»). */
 export const sentence = (text: string): string => (text.length === 0 ? text : `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`);
+
+/** Russian plural form for a count: plural(2, "раз", "раза", "раз") → «раза». */
+export const plural = (n: number, one: string, few: string, many: string): string => {
+  const tens = Math.abs(n) % 100;
+  const last = Math.abs(n) % 10;
+  if (tens >= 11 && tens <= 14) return many;
+  if (last === 1) return one;
+  return last >= 2 && last <= 4 ? few : many;
+};

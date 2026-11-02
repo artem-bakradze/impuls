@@ -1,4 +1,4 @@
-import { AdversarialPolicy, IdlePolicy, RandomPolicy } from "@impuls/agent";
+import { AdversarialPolicy, IdlePolicy, QuietPolicy, RandomPolicy } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { createRng, evaluateExperiment, rubles, sampleBinomial } from "@impuls/core";
 import type { AdTruth } from "@impuls/platforms";
@@ -59,7 +59,8 @@ describe("clients", () => {
     const before = await weeklyClientCost(sim.ctx, "b1", "2026-10-05");
     expect(before).toMatchObject({ kind: "unknown", hint: "Ответьте, сколько обращений стали клиентами, чтобы видеть стоимость клиента" });
     const leads = (await sim.store.stats("b1", "2026-10-05", "2026-10-11")).reduce((s, r) => s + r.leads, 0);
-    await expect(confirmClients(sim.ctx, "b1", "2026-10-05", leads + 1)).rejects.toBeInstanceOf(ClientConfirmationError);
+    await expect(confirmClients(sim.ctx, "b1", "2026-10-05", leads + 1)).rejects.toThrow(`Клиентов не может быть больше, чем обращений — за эту неделю их ${leads}`);
+    await expect(confirmClients(sim.ctx, "b1", "2026-10-05", -1)).rejects.toBeInstanceOf(ClientConfirmationError);
     await confirmClients(sim.ctx, "b1", "2026-10-07", 2);
     const after = await weeklyClientCost(sim.ctx, "b1", "2026-10-05");
     expect(after).toMatchObject({ kind: "known", clients: 2 });
@@ -69,7 +70,7 @@ describe("clients", () => {
 
 describe("moderation and balance", () => {
   it("notifies about a rejected ad, queues an agent turn and warns about a low balance", async () => {
-    const sim = await world();
+    const sim = await world({ agent: new QuietPolicy() });
     await sim.runDays(7);
     const ad = (await sim.store.ads("b1"))[0];
     sim.platform.moderate(ad?.platformAdId ?? "", "rejected", "в тексте есть превосходная степень");
@@ -94,15 +95,33 @@ describe("goal is more important than spending the budget", () => {
     expect((await sim.store.getBusiness("b1")).csoSource).toEqual({ kind: "user", goal: rubles(300) });
     expect((await sim.store.directions("b1")).some((d) => d.status === "paused")).toBe(true);
   });
+
+  it("calls the automatic goal the one the service picked, not the owner's", async () => {
+    const pricey: AdTruth = { impressionsPerDay: 900, ctr: 0.06, cr: 0.06, costPerClick: rubles(30) };
+    const sim = await world({ goalRub: 300, truths: [pricey, pricey, { ...pricey, cr: 0.02 }] });
+    await sim.store.saveBusiness({ ...(await sim.store.getBusiness("b1")), csoSource: { kind: "auto", reference: rubles(300) } });
+    await sim.runDays(20);
+    await adviseOnGoal(sim.ctx, "b1");
+    const advice = (await sim.store.notifications("b1")).find((n) => n.kind === "goal_unreachable");
+    expect(advice?.message).toMatch(/^Сейчас обращение стоит около .+ — дороже цели, которую мы подобрали, \d[\d   ]* ₽\. Можно поднять цель до /);
+  });
 });
 
 describe("experiments on the simulator", () => {
   it("keeps the better variant, pauses the other and writes both numbers to the history", async () => {
-    const sim = await world({ truths: [{ ...good, cr: 0.04 }, { ...good, cr: 0.12 }, good] });
+    const sim = await world({ agent: new QuietPolicy(), truths: [{ ...good, cr: 0.04 }, { ...good, cr: 0.04 }, good] });
     await sim.store.setFlag("automation_enabled", false, null);
+    sim.queueAdTruth({ ...good, cr: 0.12 });
     await sim.executor.execute({
       businessId: "b1",
-      command: { type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", variantAdId: "b1-d1-a2", hypothesis: "Проверяем оффер" },
+      command: {
+        type: "StartExperiment",
+        directionId: "b1-d1",
+        adId: "b1-d1-a1",
+        kind: "title",
+        hypothesis: "Проверяем, привлечёт ли заголовок с городом больше обращений",
+        variant: { title: "Маникюр с городом", text: "Маникюр у метро" },
+      },
       actor: "safety_net",
       reasonCode: "SAFETY_START_EXPERIMENT",
       explanation: "Запустил проверку",
@@ -114,10 +133,30 @@ describe("experiments on the simulator", () => {
     expect(experiment?.status).toBe("finished");
     expect((await sim.store.ads("b1")).find((a) => a.id === "b1-d1-a1")?.status).toBe("paused");
     const entry = (await sim.store.changes("b1")).find((c) => c.action.type === "FinishExperiment");
-    expect(entry?.explanation).toMatch(/^Вариант «Маникюр без записи» приводил клиентов на \d+% дешевле — оставили его\. «Маникюр без записи»: \d+ обращений по .+, «Маникюр у метро»: \d+ обращений по/);
+    expect(entry?.explanation).toMatch(/^Вариант «Маникюр с городом» приводил клиентов на \d+% дешевле — оставили его\. «Маникюр с городом»: \d+ обращений по .+, «Маникюр у метро»: \d+ обращений по/);
     const queued = (await sim.store.pendingInbox("b1")).some((e) => e.trigger.kind === "experiment_finished");
     const delivered = (await sim.store.turns("b1")).some((t) => t.trigger === "experiment_finished");
     expect(queued || delivered).toBe(true);
+  });
+
+  it("ends with «Разницы не обнаружено» when Direct shows the variant too rarely to collect 100 clicks", async () => {
+    const sim = await world({ truths: [{ ...good, impressionsPerDay: 2_000 }, bad, good] });
+    await sim.store.setFlag("automation_enabled", false, null);
+    // Direct rotates ads inside a group by itself; here it hardly shows the variant.
+    sim.queueAdTruth({ ...good, impressionsPerDay: 20 });
+    await sim.executor.execute({
+      businessId: "b1",
+      command: { type: "StartExperiment", directionId: "b1-d1", adId: "b1-d1-a1", kind: "benefit", hypothesis: "Проверяем, сработает ли преимущество «Работаем до 22:00»", variant: { title: "Маникюр у метро", text: "Работаем до 22:00" } },
+      actor: "safety_net",
+      reasonCode: "SAFETY_START_EXPERIMENT",
+      explanation: "Запустил проверку",
+    });
+    for (let day = 0; day < 23 && (await evaluateExperiments(sim.ctx, "b1")) === 0; day++) {
+      await sim.runDays(1);
+    }
+    const entry = (await sim.store.changes("b1")).find((c) => c.action.type === "FinishExperiment");
+    expect(entry?.reasonCode).toBe("EXPERIMENT_NO_DIFFERENCE");
+    expect(entry?.explanation).toMatch(/^За 3 недели разница оказалась слишком маленькой, чтобы на неё полагаться\./);
   });
 
   it("picks the truly better variant in at least 80% of 50 runs when conversions differ by 50%", () => {

@@ -1,5 +1,5 @@
 import { AD_LIMITS, validateAdText } from "@impuls/core";
-import type { CreativeIssue } from "@impuls/core";
+import type { CreativeIssue, HypothesisKind } from "@impuls/core";
 import { z } from "zod";
 import type { LlmClient } from "./llm";
 
@@ -9,7 +9,7 @@ import type { LlmClient } from "./llm";
  * one for local stands and e2e (`CREATIVES=template`).
  */
 
-export const WEEK_DAYS = ["Пн–Вс", "Пн–Пт", "Пн–Сб"] as const;
+export const WEEK_DAYS = ["Пн–Вс", "Пн–Пт", "Пн–Сб", "Вт–Вс"] as const;
 
 /** Public facts about the business the texts may use; nothing outside this card may appear in an ad. */
 export interface CardFacts {
@@ -36,7 +36,7 @@ export interface Creatives {
   negativeKeywords: string[];
 }
 
-export type HypothesisKind = "offer" | "title" | "benefit";
+export type { HypothesisKind } from "@impuls/core";
 
 export interface HypothesisVariant extends AdDraft {
   hypothesis: string;
@@ -193,7 +193,9 @@ const clip = (text: string, max: number): string => {
 
 const rub = (priceRub: number): string => `${priceRub.toLocaleString("ru-RU").replace(/\s/g, " ")} ₽`;
 
-const hoursText = (facts: CardFacts): string => `${facts.days} ${facts.openFrom}–${facts.openTo}`;
+/** «Пн–Вс 10:00–20:00»; 00:00–24:00 reads «круглосуточно». */
+const hoursText = (facts: CardFacts): string =>
+  facts.openFrom === "00:00" && facts.openTo === "24:00" ? `${facts.days} круглосуточно` : `${facts.days} ${facts.openFrom}–${facts.openTo}`;
 
 /**
  * Deterministic drafts from the card only, no LLM (local stand, e2e). Keeps the facts honest but does not meet the
@@ -207,16 +209,22 @@ export class TemplateCreativeEngine implements CreativeEngine {
   }
 
   generate(facts: CardFacts, channels: { search: boolean; network: boolean }): Promise<Creatives> {
+    // Name, category and address are optional on the card (business-onboarding spec); empty parts are skipped.
     const lead = facts.advantages[0] ?? facts.category;
     const services = facts.services.filter((s) => s.name.trim() !== "");
     const search = channels.search
       ? services.slice(0, 3).map((service) => ({
           title: clip(service.priceRub === null ? service.name : `${service.name} от ${rub(service.priceRub)}`, AD_LIMITS.title),
-          text: clip([lead, facts.address, hoursText(facts)].join(". "), AD_LIMITS.text),
+          text: clip([lead, facts.address, hoursText(facts)].filter((part) => part.trim() !== "").join(". "), AD_LIMITS.text),
         }))
       : [];
     const network = channels.network
-      ? [{ title: clip(`${facts.name} — ${facts.category}`, AD_LIMITS.title), text: clip([services.map((s) => s.name).slice(0, 3).join(", "), lead].join(". "), AD_LIMITS.text) }]
+      ? [
+          {
+            title: clip([facts.name, facts.category].filter((part) => part.trim() !== "").join(" — ") || (services[0]?.name ?? ""), AD_LIMITS.title),
+            text: clip([services.map((s) => s.name).slice(0, 3).join(", "), lead].filter((part) => part.trim() !== "").join(". "), AD_LIMITS.text),
+          },
+        ]
       : [];
     const city = cleanPhrase(facts.city);
     const names = services.map((s) => cleanPhrase(s.name));
@@ -245,7 +253,7 @@ const EXTRACT_INSTRUCTIONS = [
   "Ты извлекаешь карточку малого бизнеса из текста его страниц (сайт, Яндекс Карты, ВКонтакте) и описания владельца.",
   "Бери только то, что прямо написано в тексте. Если чего-то нет — верни null или пустой список. Ничего не придумывай и не угадывай.",
   "Цены — целые рубли за услугу; если указан диапазон или «от», бери нижнюю границу. Если цены нет — priceRub: null.",
-  "days — одно из «Пн–Вс», «Пн–Пт», «Пн–Сб», если режим работы прямо следует из текста; openFrom и openTo — в формате ЧЧ:00.",
+  "days — одно из «Пн–Вс», «Пн–Пт», «Пн–Сб», «Вт–Вс», если режим работы прямо следует из текста; openFrom и openTo — в формате ЧЧ:00 (круглосуточно — 00:00 и 24:00; после полуночи — например, 22:00 и 02:00).",
   "advantages — до 3 коротких конкретных отличий из текста (например, «Работаем без выходных»), без оценочных слов вроде «лучший».",
   "address — город и адрес, например «Москва, ул. Профсоюзная, 1».",
 ].join("\n");
@@ -303,10 +311,14 @@ export class LlmCreativeEngine implements CreativeEngine {
     return { ...draft, advantages };
   }
 
+  /** Codes of the checks the last rejected ads failed, for the error log. */
+  private rejected: string[] = [];
+
   /** Keeps the ads that pass every check, asking the model to rewrite the rest with the reasons. */
   private async passing(ads: AdDraft[], facts: CardFacts): Promise<AdDraft[]> {
     let pending = ads;
     const good: AdDraft[] = [];
+    this.rejected = [];
     for (let round = 0; round <= MAX_REWRITES && pending.length > 0; round++) {
       const failed: { ad: AdDraft; issues: CreativeIssue[] }[] = [];
       for (const ad of pending) {
@@ -315,6 +327,7 @@ export class LlmCreativeEngine implements CreativeEngine {
         else failed.push({ ad, issues });
       }
       if (failed.length === 0 || round === MAX_REWRITES) {
+        this.rejected = failed.flatMap((f) => f.issues.map((i) => i.code));
         break;
       }
       const rewrite = await this.llm.generate({
@@ -335,13 +348,16 @@ export class LlmCreativeEngine implements CreativeEngine {
       input: JSON.stringify({ карточка: JSON.parse(factsInput(facts)) as unknown, каналы: { поиск: channels.search, сайты_партнёры: channels.network } }),
       schema: GenerationSchema,
     });
-    const search = channels.search ? await this.passing(raw.search.map(({ title, text }) => ({ title, text })), facts) : [];
-    const network = channels.network ? await this.passing(raw.network.map(({ title, text }) => ({ title, text })), facts) : [];
-    for (const [channel, ads] of [["поиска", search], ["сайтов-партнёров", network]] as const) {
-      if ((channel === "поиска" ? channels.search : channels.network) && ads.length < MIN_ADS) {
-        throw new CreativesError("NOT_ENOUGH_ADS", `Only ${ads.length} ads for ${channel} passed the checks`);
+    const passed: { search: AdDraft[]; network: AdDraft[] } = { search: [], network: [] };
+    for (const [channel, wanted, drafts] of [["search", channels.search, raw.search], ["network", channels.network, raw.network]] as const) {
+      if (!wanted) continue;
+      const ads = await this.passing(drafts.map(({ title, text }) => ({ title, text })), facts);
+      if (ads.length < MIN_ADS) {
+        throw new CreativesError("NOT_ENOUGH_ADS", `Only ${ads.length} ${channel} ads passed the checks; rejected: ${this.rejected.join(", ") || "none"}`);
       }
+      passed[channel] = ads;
     }
+    const { search, network } = passed;
     const keywords = channels.search ? cleanPhrases(raw.keywords) : [];
     if (channels.search && keywords.length === 0) {
       throw new CreativesError("NO_KEYWORDS", "No usable keywords were generated");

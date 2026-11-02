@@ -7,15 +7,21 @@ import {
   toLocalDate,
   weekStart,
 } from "@impuls/core";
-import type { Kopecks, LocalDate } from "@impuls/core";
-import { PlatformError } from "./contract";
+import type { Kopecks, LocalDate, Rng } from "@impuls/core";
+import { NO_DEVICE_ADJUSTMENTS, PlatformError } from "./contract";
+import { effectiveTraffic, isNeutral, segmentCells, splitTotals } from "./simulator-segments";
+import type { DeviceTruth, QueryTruth } from "./simulator-segments";
 import type {
   AdPatch,
   AdPlatform,
+  BreakdownDimension,
+  BreakdownRow,
   CampaignPatch,
   ChangeArea,
   ChangesResult,
   DailyStatRow,
+  Device,
+  DeviceAdjustments,
   LeadGoal,
   NewAd,
   NewCampaign,
@@ -23,6 +29,7 @@ import type {
   PlatformCampaign,
   PlatformCapabilities,
   Targeting,
+  TrafficSettings,
 } from "./contract";
 
 /** Hidden "true" parameters of an ad; the service never sees them. */
@@ -32,6 +39,17 @@ export interface AdTruth {
   /** Conversion click → lead. */
   cr: number;
   costPerClick: Kopecks;
+  /** Device split of the ad's traffic (add-agent-analyst-stage1); `DEFAULT_DEVICES` without it. */
+  devices?: Partial<Record<Device, DeviceTruth>>;
+  /** Search queries of the ad's traffic; the campaign's key phrases with equal shares without them. */
+  queries?: readonly QueryTruth[];
+}
+
+/** Negative phrases and bid adjustments of a campaign from some moment on: cells keep the index of theirs. */
+export interface CampaignSettingsEntry {
+  campaignId: string;
+  negativeKeywords: readonly string[];
+  deviceAdjustments: DeviceAdjustments;
 }
 
 export interface SimulatorOptions {
@@ -49,10 +67,34 @@ export interface SimulatorOptions {
   /** Daily probability that a past day gets corrected (invalid clicks written off). */
   correctionProbability?: number;
   balance?: Kopecks;
+  /** Strategy catalog and minimum limit; the simulation mode uses Direct's, so the rules work within its bounds. */
+  capabilities?: PlatformCapabilities;
 }
 
-interface StatCell extends DailyStatRow {
+/** Everything the simulator knows, as plain JSON: saved between ticks of the simulation mode (add-simulation-mode). */
+export interface SimulatorState {
+  campaigns: PlatformCampaign[];
+  settings: [string, { channel: NewCampaign["channel"]; targeting: Targeting; leadGoal: LeadGoal | null }][];
+  ads: PlatformAd[];
+  landingUrls: [string, string][];
+  truths: [string, AdTruth][];
+  cells: StatCell[];
+  changes: { campaignId: string; area: ChangeArea; at: number }[];
+  weekSpend: [string, Kopecks][];
+  rng: number;
+  nextId: number;
+  balance: Kopecks;
+  /** Absent in states saved before add-agent-analyst-stage1. */
+  settingsLog?: CampaignSettingsEntry[];
+}
+
+/** Hourly cells older than this are merged into daily ones: corrections touch only the day before yesterday. */
+const COMPACT_AFTER_DAYS = 3;
+
+export interface StatCell extends DailyStatRow {
   availableAt: number;
+  /** Index of the campaign settings in force when the cell was made (`settingsLog`). */
+  mix?: number;
 }
 
 export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
@@ -64,8 +106,6 @@ export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
   minWeeklyLimit: 30_000,
 };
 
-const needsLeadGoal = (strategyId: string): boolean =>
-  SIMULATOR_CAPABILITIES.strategies.some((s) => s.id === strategyId && s.requiresLeadGoal);
 
 /**
  * Market simulator implementing the platform contract (testing-harness spec).
@@ -79,10 +119,11 @@ export class SimulatedPlatform implements AdPlatform {
   private readonly ads = new Map<string, PlatformAd>();
   private readonly landingUrls = new Map<string, string>();
   private readonly truths = new Map<string, AdTruth>();
-  private readonly cells: StatCell[] = [];
+  private cells: StatCell[] = [];
   private readonly changes: { campaignId: string; area: ChangeArea; at: number }[] = [];
   private readonly weekSpend = new Map<string, Kopecks>();
-  private readonly rng: () => number;
+  private settingsLog: CampaignSettingsEntry[] = [];
+  private rng: Rng;
   private nextId = 1;
   private balance: Kopecks;
   private nextCreateError: PlatformError | null = null;
@@ -93,7 +134,94 @@ export class SimulatedPlatform implements AdPlatform {
   }
 
   capabilities(): PlatformCapabilities {
-    return SIMULATOR_CAPABILITIES;
+    return this.options.capabilities ?? SIMULATOR_CAPABILITIES;
+  }
+
+  private needsLeadGoal(strategyId: string): boolean {
+    return this.capabilities().strategies.some((s) => s.id === strategyId && s.requiresLeadGoal);
+  }
+
+  /** A copy of the whole state; `restore` on a simulator with the same options continues exactly from here. */
+  snapshot(): SimulatorState {
+    return structuredClone({
+      campaigns: [...this.campaigns.values()],
+      settings: [...this.settings],
+      ads: [...this.ads.values()],
+      landingUrls: [...this.landingUrls],
+      truths: [...this.truths],
+      cells: this.cells,
+      changes: this.changes,
+      weekSpend: [...this.weekSpend],
+      rng: this.rng.state(),
+      nextId: this.nextId,
+      balance: this.balance,
+      settingsLog: this.settingsLog,
+    });
+  }
+
+  restore(saved: SimulatorState): void {
+    const state = structuredClone(saved);
+    const refill = <K, V>(map: Map<K, V>, entries: [K, V][]) => {
+      map.clear();
+      for (const [key, value] of entries) map.set(key, value);
+    };
+    refill(this.campaigns, state.campaigns.map((c) => [c.id, c]));
+    refill(this.settings, state.settings);
+    refill(this.ads, state.ads.map((a) => [a.id, a]));
+    refill(this.landingUrls, state.landingUrls);
+    refill(this.truths, state.truths);
+    refill(this.weekSpend, state.weekSpend);
+    this.cells = state.cells;
+    this.changes.splice(0, this.changes.length, ...state.changes);
+    this.rng = createRng(state.rng);
+    this.nextId = state.nextId;
+    this.balance = state.balance;
+    this.settingsLog = state.settingsLog ?? [];
+  }
+
+  /** Logs the campaign's negative phrases and bid adjustments from now on; later cells refer to this entry. */
+  private logSettings(campaignId: string, patch: { negativeKeywords?: readonly string[] | undefined; deviceAdjustments?: DeviceAdjustments | undefined }): void {
+    const current = this.settingsOf(campaignId, this.settingsIndex(campaignId));
+    this.settingsLog.push({
+      campaignId,
+      negativeKeywords: [...(patch.negativeKeywords ?? current.negativeKeywords)],
+      deviceAdjustments: { ...(patch.deviceAdjustments ?? current.deviceAdjustments) },
+    });
+  }
+
+  private settingsIndex(campaignId: string): number | undefined {
+    for (let i = this.settingsLog.length - 1; i >= 0; i--) {
+      if (this.settingsLog[i]?.campaignId === campaignId) return i;
+    }
+    return undefined;
+  }
+
+  private settingsOf(campaignId: string, index: number | undefined): CampaignSettingsEntry {
+    const logged = index === undefined ? undefined : this.settingsLog[index];
+    if (logged) return logged;
+    // Campaigns of states saved before the settings log: launch negative phrases, no adjustments.
+    return { campaignId, negativeKeywords: this.settings.get(campaignId)?.targeting.negativeKeywords ?? [], deviceAdjustments: NO_DEVICE_ADJUSTMENTS };
+  }
+
+  /** Key phrases of a search campaign: its queries when the truth has none. */
+  private fallbackQueries(campaignId: string): readonly string[] {
+    const settings = this.settings.get(campaignId);
+    return settings?.channel === "search" ? settings.targeting.keywords : [];
+  }
+
+  /** The ad's demand, lead rate and click price under the campaign's settings (design decision 9). */
+  private traffic(truth: AdTruth, settings: CampaignSettingsEntry): Pick<AdTruth, "impressionsPerDay" | "ctr" | "cr" | "costPerClick"> {
+    const queries = truth.queries?.map((q) => q.text) ?? this.fallbackQueries(settings.campaignId);
+    if (isNeutral(settings.deviceAdjustments, settings.negativeKeywords, queries)) {
+      return truth;
+    }
+    const mix = effectiveTraffic(segmentCells(truth, settings.deviceAdjustments, settings.negativeKeywords, this.fallbackQueries(settings.campaignId)));
+    return { impressionsPerDay: truth.impressionsPerDay * mix.reach, ctr: truth.ctr, cr: mix.cr, costPerClick: mix.costPerClick };
+  }
+
+  /** Hidden truth of an ad; only the simulation screen reads it, never the rules. */
+  truthOf(adId: string): AdTruth | null {
+    return this.truths.get(adId) ?? null;
   }
 
   private id(prefix: string): string {
@@ -131,13 +259,14 @@ export class SimulatedPlatform implements AdPlatform {
     if (input.channel === "search" && input.targeting.keywords.length === 0) {
       return Promise.reject(new PlatformError("KEYWORDS_REQUIRED", "A search campaign needs at least one keyword", false));
     }
-    if (needsLeadGoal(input.strategyId) && !input.leadGoal) {
+    if (this.needsLeadGoal(input.strategyId) && !input.leadGoal) {
       return Promise.reject(new PlatformError("LEAD_GOAL_REQUIRED", `${input.strategyId} needs a lead goal`, false));
     }
     const { channel, targeting, leadGoal, ...params } = input;
     const campaign: PlatformCampaign = { id: this.id("c"), status: "active", ...params };
     this.campaigns.set(campaign.id, campaign);
     this.settings.set(campaign.id, { channel, targeting, leadGoal: leadGoal ?? null });
+    this.logSettings(campaign.id, { negativeKeywords: targeting.negativeKeywords, deviceAdjustments: NO_DEVICE_ADJUSTMENTS });
     return Promise.resolve({ ...campaign });
   }
 
@@ -163,16 +292,32 @@ export class SimulatedPlatform implements AdPlatform {
     return Promise.resolve(ids.map((id) => ({ ...this.campaign(id) })));
   }
 
+  getTrafficSettings(campaignIds: readonly string[]): Promise<TrafficSettings[]> {
+    return Promise.resolve(
+      campaignIds.map((id) => {
+        this.campaign(id);
+        const settings = this.settingsOf(id, this.settingsIndex(id));
+        return { campaignId: id, negativeKeywords: [...settings.negativeKeywords], deviceAdjustments: { ...settings.deviceAdjustments } };
+      }),
+    );
+  }
+
   updateCampaign(id: string, patch: CampaignPatch): Promise<PlatformCampaign> {
     const campaign = this.campaign(id);
-    const { leadGoal, ...rest } = patch;
-    if (rest.strategyId !== undefined && needsLeadGoal(rest.strategyId) && !leadGoal) {
+    const { leadGoal, city, negativeKeywords, deviceAdjustments, ...rest } = patch;
+    if (rest.strategyId !== undefined && this.needsLeadGoal(rest.strategyId) && !leadGoal) {
       return Promise.reject(new PlatformError("LEAD_GOAL_REQUIRED", `${rest.strategyId} needs a lead goal`, false));
     }
     Object.assign(campaign, rest);
     const settings = this.settings.get(id);
     if (settings && leadGoal) {
       settings.leadGoal = leadGoal;
+    }
+    if (settings && city !== undefined) {
+      settings.targeting = { ...settings.targeting, city };
+    }
+    if (negativeKeywords !== undefined || deviceAdjustments !== undefined) {
+      this.logSettings(id, { negativeKeywords, deviceAdjustments });
     }
     return Promise.resolve({ ...campaign });
   }
@@ -230,6 +375,34 @@ export class SimulatedPlatform implements AdPlatform {
     return Promise.resolve([...rows.values()]);
   }
 
+  /**
+   * Stats by search query or device: every visible cell's totals split by the segments of the hour it was made in, so
+   * the breakdown always adds up to `getStats` (testing-harness spec «Правда симулятора по устройствам и запросам»).
+   */
+  getBreakdown(campaignIds: readonly string[], from: LocalDate, to: LocalDate, dimension: BreakdownDimension): Promise<BreakdownRow[]> {
+    const now = this.options.now().getTime();
+    const rows = new Map<string, BreakdownRow>();
+    for (const cell of this.cells) {
+      if (cell.availableAt > now || cell.date < from || cell.date > to || !campaignIds.includes(cell.campaignId)) {
+        continue;
+      }
+      const truth = this.truths.get(cell.adId);
+      if (!truth) continue;
+      const settings = this.settingsOf(cell.campaignId, cell.mix);
+      const parts = splitTotals(cell, segmentCells(truth, settings.deviceAdjustments, settings.negativeKeywords, this.fallbackQueries(cell.campaignId)), dimension);
+      for (const [segment, part] of parts) {
+        const key = `${cell.campaignId}|${segment}`;
+        const row = rows.get(key) ?? { campaignId: cell.campaignId, segment, impressions: 0, clicks: 0, leads: 0, spend: 0 };
+        row.impressions += part.impressions;
+        row.clicks += part.clicks;
+        row.leads += part.leads;
+        row.spend += part.spend;
+        rows.set(key, row);
+      }
+    }
+    return Promise.resolve([...rows.values()]);
+  }
+
   getBalance(): Promise<Kopecks> {
     return Promise.resolve(this.balance);
   }
@@ -238,7 +411,11 @@ export class SimulatedPlatform implements AdPlatform {
 
   /** A change made by the user directly in the ad cabinet, bypassing the service. */
   cabinetEditCampaign(id: string, patch: CampaignPatch): void {
-    Object.assign(this.campaign(id), patch);
+    const { negativeKeywords, deviceAdjustments, ...rest } = patch;
+    Object.assign(this.campaign(id), rest);
+    if (negativeKeywords !== undefined || deviceAdjustments !== undefined) {
+      this.logSettings(id, { negativeKeywords, deviceAdjustments });
+    }
     this.record(id, "SELF");
   }
 
@@ -290,14 +467,18 @@ export class SimulatedPlatform implements AdPlatform {
       const dailyCap = (campaign.weeklyLimit / 7) * 2;
       const spentToday = this.cells.filter((c) => c.campaignId === campaign.id && c.date === date).reduce((s, c) => s + c.spend, 0);
       let dayRoom = Math.max(0, dailyCap - spentToday);
-      for (const ad of this.ads.values()) {
-        if (ad.campaignId !== campaign.id || ad.status !== "active" || ad.moderation !== "accepted") {
+      // Direct rotates the ads of a group; starting each hour from another ad keeps a new A/B variant from getting
+      // only what the older ads left of the limit.
+      const shown = [...this.ads.values()].filter((ad) => ad.campaignId === campaign.id && ad.status === "active" && ad.moderation === "accepted");
+      const first = shown.length === 0 ? 0 : Math.floor(hourEnd.getTime() / 3_600_000) % shown.length;
+      const mix = this.settingsIndex(campaign.id);
+      const settings = this.settingsOf(campaign.id, mix);
+      for (const ad of [...shown.slice(first), ...shown.slice(0, first)]) {
+        const adTruth = this.truths.get(ad.id);
+        if (!adTruth) {
           continue;
         }
-        const truth = this.truths.get(ad.id);
-        if (!truth) {
-          continue;
-        }
+        const truth = this.traffic(adTruth, settings);
         const impressions = samplePoisson(this.rng, (truth.impressionsPerDay * dayFactor) / 24);
         let clicks = sampleBinomial(this.rng, impressions, truth.ctr);
         const weekRoom = campaign.weeklyLimit - spentThisWeek;
@@ -318,12 +499,40 @@ export class SimulatedPlatform implements AdPlatform {
           leads,
           spend,
           availableAt: hourEnd.getTime() + delay * 3_600_000,
+          ...(mix !== undefined && { mix }),
         });
       }
       this.weekSpend.set(weekKey, spentThisWeek);
     }
     if (new Date(hourEnd.getTime()).getUTCHours() === 0 && this.rng() < (this.options.correctionProbability ?? 0.05)) {
       this.correctPastDay(addDays(date, -2), hourEnd);
+    }
+    this.compact(addDays(date, -COMPACT_AFTER_DAYS));
+  }
+
+  /** Merges hourly cells of days before `before` into one cell per day and ad; totals do not change. */
+  private compact(before: LocalDate): void {
+    const merged = new Map<string, StatCell>();
+    const kept: StatCell[] = [];
+    for (const cell of this.cells) {
+      if (cell.date >= before) {
+        kept.push(cell);
+        continue;
+      }
+      const key = `${cell.date}|${cell.adId}|${cell.mix ?? ""}`;
+      const into = merged.get(key);
+      if (!into) {
+        merged.set(key, { ...cell });
+        continue;
+      }
+      into.impressions += cell.impressions;
+      into.clicks += cell.clicks;
+      into.leads += cell.leads;
+      into.spend += cell.spend;
+      into.availableAt = Math.max(into.availableAt, cell.availableAt);
+    }
+    if (merged.size > 0 && merged.size < this.cells.length - kept.length) {
+      this.cells = [...merged.values(), ...kept];
     }
   }
 

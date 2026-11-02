@@ -3,25 +3,8 @@ import { schema } from "@impuls/db";
 import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
-import { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
-import type {
-  AdRecord,
-  AgentTurnRecord,
-  ApprovalRequest,
-  ClientConfirmation,
-  InboxEvent,
-  BusinessRecord,
-  ChangeEntry,
-  DirectionRecord,
-  Evaluation,
-  Experiment,
-  FlagName,
-  Incident,
-  Notification,
-  Snapshot,
-  StoredNotification,
-  Store,
-} from "./store";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
+import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
 
 const GLOBAL = "*";
 const toMap = <V>(value: unknown): Map<string, V> => new Map(Object.entries(value as Record<string, V>));
@@ -48,11 +31,10 @@ export class PgStore implements Store {
       monthlyBudgetRub: row.monthlyBudgetRub,
       launchedOn: row.launchedOn,
       csoSource,
-      autonomy: row.autonomy,
       card: row.card as BusinessRecord["card"],
       miniSite: (row.miniSite as BusinessRecord["miniSite"]) ?? null,
       leadGoalId: row.leadGoalId,
-      weeklySummaryEnabled: row.weeklySummaryEnabled,
+      mode: row.mode,
     };
   }
 
@@ -69,11 +51,10 @@ export class PgStore implements Store {
       launchedOn: b.launchedOn,
       csoMode: b.csoSource.kind,
       csoValue: b.csoSource.kind === "user" ? b.csoSource.goal : b.csoSource.reference,
-      autonomy: b.autonomy,
       card: b.card,
       miniSite: b.miniSite,
       leadGoalId: b.leadGoalId,
-      weeklySummaryEnabled: b.weeklySummaryEnabled,
+      mode: b.mode,
     };
     await this.db.insert(schema.businesses).values(values).onConflictDoUpdate({ target: schema.businesses.id, set: values });
   }
@@ -95,7 +76,11 @@ export class PgStore implements Store {
       pausedByBudget: r.pausedByBudget,
       pausedByUser: r.pausedByUser,
       schedule: r.schedule,
-      geoRadiusKm: r.geoRadiusKm,
+      city: r.city,
+      keywords: r.keywords as string[],
+      negativeKeywords: r.negativeKeywords as string[],
+      deviceAdjustments: r.deviceAdjustments as DirectionRecord["deviceAdjustments"],
+      deviceAdjustedOn: r.deviceAdjustedOn as DirectionRecord["deviceAdjustedOn"],
     }));
   }
 
@@ -152,6 +137,7 @@ export class PgStore implements Store {
       reasonCode: r.reasonCode,
       explanation: r.explanation,
       turnId: r.turnId,
+      insightId: r.insightId,
       createdAt: r.createdAt,
       error: r.error,
       revertedById: r.revertedById,
@@ -167,8 +153,32 @@ export class PgStore implements Store {
     return this.toChange(row);
   }
 
-  async updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome">>): Promise<void> {
+  async updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome" | "insightId">>): Promise<void> {
     await this.db.update(schema.changeLog).set(patch).where(eq(schema.changeLog.id, id));
+  }
+
+  async saveInsight(i: InsightRecord): Promise<void> {
+    const values = { ...i, facts: i.facts, decision: i.decision, objectRef: i.objectRef };
+    await this.db.insert(schema.insights).values(values).onConflictDoUpdate({ target: schema.insights.id, set: values });
+  }
+
+  async insights(businessId: string): Promise<InsightRecord[]> {
+    const rows = await this.db.select().from(schema.insights).where(eq(schema.insights.businessId, businessId)).orderBy(asc(schema.insights.createdAt));
+    return rows.map((r) => ({
+      ...r,
+      facts: r.facts as InsightRecord["facts"],
+      decision: r.decision as InsightRecord["decision"],
+      objectRef: (r.objectRef as InsightRecord["objectRef"]) ?? null,
+    }));
+  }
+
+  async hypotheses(businessId: string): Promise<HypothesisRecord[]> {
+    const rows = await this.db.select().from(schema.hypotheses).where(eq(schema.hypotheses.businessId, businessId)).orderBy(asc(schema.hypotheses.openedAt), asc(schema.hypotheses.id));
+    return rows.map((r) => ({ ...r, facts: r.facts as HypothesisRecord["facts"], resultFacts: r.resultFacts as HypothesisRecord["resultFacts"] }));
+  }
+
+  async saveHypothesis(h: HypothesisRecord): Promise<void> {
+    await this.db.insert(schema.hypotheses).values(h).onConflictDoUpdate({ target: schema.hypotheses.id, set: h });
   }
 
   async changes(businessId: string): Promise<ChangeEntry[]> {
@@ -292,23 +302,30 @@ export class PgStore implements Store {
 
   async turns(businessId: string): Promise<AgentTurnRecord[]> {
     const rows = await this.db.select().from(schema.agentTurns).where(eq(schema.agentTurns.businessId, businessId)).orderBy(asc(schema.agentTurns.startedAt));
-    return rows.map((r) => ({ ...r, calls: r.calls as unknown[] }));
+    return rows.map((r) => ({ ...r, calls: r.calls as unknown[], usageSource: r.usageSource ?? null }));
+  }
+
+  async turnDigests(businessId: string): Promise<TurnDigest[]> {
+    const t = schema.agentTurns;
+    return this.db
+      .select({ id: t.id, trigger: t.trigger, status: t.status, startedAt: t.startedAt, summary: t.summary, summaryValid: t.summaryValid })
+      .from(t)
+      .where(eq(t.businessId, businessId))
+      .orderBy(asc(t.startedAt));
+  }
+
+  async runningTurnStartedAt(businessId: string): Promise<Date | null> {
+    const [row] = await this.db
+      .select({ startedAt: schema.agentTurns.startedAt })
+      .from(schema.agentTurns)
+      .where(and(eq(schema.agentTurns.businessId, businessId), eq(schema.agentTurns.status, "running")))
+      .orderBy(desc(schema.agentTurns.startedAt))
+      .limit(1);
+    return row?.startedAt ?? null;
   }
 
   async purgeTurns(before: Date): Promise<number> {
     return (await this.db.delete(schema.agentTurns).where(lt(schema.agentTurns.startedAt, before)).returning({ id: schema.agentTurns.id })).length;
-  }
-
-  async notes(businessId: string): Promise<string[]> {
-    const [row] = await this.db.select().from(schema.agentNotes).where(eq(schema.agentNotes.businessId, businessId));
-    return (row?.notes as string[] | undefined) ?? [];
-  }
-
-  async saveNotes(businessId: string, notes: readonly string[]): Promise<void> {
-    await this.db
-      .insert(schema.agentNotes)
-      .values({ businessId, notes: [...notes] })
-      .onConflictDoUpdate({ target: schema.agentNotes.businessId, set: { notes: [...notes] } });
   }
 
   async addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
@@ -324,16 +341,6 @@ export class PgStore implements Store {
     if (ids.length > 0) {
       await this.db.update(schema.agentInbox).set({ consumedByTurnId: turnId }).where(inArray(schema.agentInbox.id, [...ids]));
     }
-  }
-
-  async saveApproval(r: ApprovalRequest): Promise<void> {
-    const values = { ...r, command: r.command };
-    await this.db.insert(schema.approvalRequests).values(values).onConflictDoUpdate({ target: schema.approvalRequests.id, set: values });
-  }
-
-  async approvals(businessId: string): Promise<ApprovalRequest[]> {
-    const rows = await this.db.select().from(schema.approvalRequests).where(eq(schema.approvalRequests.businessId, businessId)).orderBy(asc(schema.approvalRequests.createdAt));
-    return rows.map((r) => ({ ...r, command: r.command as ApprovalRequest["command"] }));
   }
 
   async saveClientConfirmation(c: ClientConfirmation): Promise<void> {
@@ -418,6 +425,82 @@ export class PgStore implements Store {
       throw new Error(`No owner email for ${businessId}`);
     }
     return row.email;
+  }
+
+  private toSimulation(row: typeof schema.simulations.$inferSelect): SimulationRecord {
+    return {
+      businessId: row.businessId,
+      scenario: row.scenario,
+      seed: row.seed,
+      plan: row.plan as SimulationRecord["plan"],
+      startedAt: row.startedAt,
+      simNow: row.simNow,
+      endsAt: row.endsAt,
+      lastTickAt: row.lastTickAt,
+      speed: row.speed,
+      status: row.status,
+      state: row.state as SimulationRecord["state"],
+      baseline: (row.baseline as SimulationRecord["baseline"]) ?? null,
+    };
+  }
+
+  async getSimulation(businessId: string): Promise<SimulationRecord | null> {
+    const [row] = await this.db.select().from(schema.simulations).where(eq(schema.simulations.businessId, businessId));
+    return row ? this.toSimulation(row) : null;
+  }
+
+  async saveSimulation(s: SimulationRecord): Promise<void> {
+    const values = { ...s };
+    await this.db.insert(schema.simulations).values(values).onConflictDoUpdate({ target: schema.simulations.businessId, set: values });
+  }
+
+  async deleteSimulation(businessId: string): Promise<void> {
+    await this.db.delete(schema.simulations).where(eq(schema.simulations.businessId, businessId));
+  }
+
+  async movingSimulations(): Promise<SimulationRecord[]> {
+    const rows = await this.db.select().from(schema.simulations).where(inArray(schema.simulations.status, ["running", "until_decision"]));
+    return rows.map((r) => this.toSimulation(r));
+  }
+
+  async reopenWizard(businessId: string, step: number): Promise<void> {
+    // The wizard draft lives in card.onboarding (web); only «Директ подключён» is reset there.
+    await this.db
+      .update(schema.businesses)
+      .set({
+        launchedOn: null,
+        mode: "direct",
+        onboardingStep: step,
+        card: sql`jsonb_set(${schema.businesses.card}, '{onboarding,directConnected}', 'false'::jsonb, false)`,
+      })
+      .where(eq(schema.businesses.id, businessId));
+  }
+
+  async deleteLaunchData(businessId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const campaignIds = (await tx.select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.businessId, businessId))).map((r) => r.id);
+      if (campaignIds.length > 0) {
+        await tx.delete(schema.ads).where(inArray(schema.ads.campaignId, campaignIds));
+      }
+      await tx.delete(schema.experiments).where(eq(schema.experiments.businessId, businessId));
+      await tx.delete(schema.campaigns).where(eq(schema.campaigns.businessId, businessId));
+      for (const table of [
+        schema.changeLog,
+        schema.userDecisions,
+        schema.statsDaily,
+        schema.statsIntraday,
+        schema.evaluations,
+        schema.clientConfirmations,
+        schema.notifications,
+        schema.agentInbox,
+        schema.agentTurns,
+        schema.insights,
+        schema.hypotheses,
+        schema.syncCursors,
+      ]) {
+        await tx.delete(table).where(eq(table.businessId, businessId));
+      }
+    });
   }
 
   async notifications(businessId: string): Promise<Notification[]> {

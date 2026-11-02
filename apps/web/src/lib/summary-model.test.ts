@@ -8,8 +8,13 @@ const plain = (text: string) => text.replace(/ /g, " ");
 
 describe("summary texts", () => {
   it("shows the goal line with the «дороже цели» status", () => {
-    expect(plain(goalLine({ mode: "user", cso: 30_000, current: 34_000, status: "above" }))).toBe("Цель: до 300 ₽ за обращение · Сейчас: 340 ₽ — дороже цели");
-    expect(plain(goalLine({ mode: "user", cso: 30_000, current: 25_000, status: "within" }))).toBe("Цель: до 300 ₽ за обращение · Сейчас: 250 ₽ — в цели");
+    expect(plain(goalLine({ mode: "user", cso: 30_000, learned: false, current: 34_000, status: "above" }))).toBe("Цель: до 300 ₽ за обращение · Сейчас: 340 ₽ — дороже цели");
+    expect(plain(goalLine({ mode: "user", cso: 30_000, learned: false, current: 25_000, status: "within" }))).toBe("Цель: до 300 ₽ за обращение · Сейчас: 250 ₽ — в цели");
+  });
+
+  it("shows no starting number while the automatic goal is not refined by own leads", () => {
+    expect(plain(goalLine({ mode: "auto", cso: 150_000, learned: false, current: null, status: "no_data" }))).toBe("Цену обращения подбираем сами по вашим результатам · Сейчас: обращений пока нет");
+    expect(plain(goalLine({ mode: "auto", cso: 60_000, learned: true, current: 55_000, status: "within" }))).toBe("Цель: подбираем сами, сейчас до 600 ₽ за обращение · Сейчас: 550 ₽ — в цели");
   });
 
   it("compares with the previous period", () => {

@@ -18,7 +18,12 @@ export interface ExplanationIssue {
   message: string;
 }
 
-const PERIOD_WORDS = /^\s*(дн|день|недел|месяц|час|минут|сутк|год|лет)/i;
+/** «7 дней», also in a list: the 7 of «за 7 и 14 дней», «7–14 дней». */
+const PERIOD_WORDS = /^\s*(?:(?:и|или|[-–—])\s*\d+\s*)?(дн|день|недел|месяц|час|минут|сутк|год|лет)/i;
+/** «до 22:00», «10:00–20:00»: a time of day, not a number from the data. */
+const TIME_OF_DAY = /\b\d{1,2}:\d{2}\b/g;
+/** «к 22 ноября»: a calendar date says when, it is not a number from the data. */
+const MONTHS_OF = /^\s*(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)/i;
 const NUMBER = /(\d[\d\s ]*(?:[.,]\d+)?)\s*(₽|руб|%)?/g;
 
 const parseNumber = (raw: string): number => Number(raw.replace(/[\s ]/g, "").replace(",", "."));
@@ -30,15 +35,17 @@ export const validateExplanation = (text: string, facts: readonly Fact[]): Expla
   const issues: ExplanationIssue[] = [];
   const lower = text.toLowerCase();
   for (const word of JARGON_STOP_LIST) {
-    if (lower.includes(word)) {
+    // From the start of a word: «ставка» is jargon, «доставка» is not.
+    if (new RegExp(`(?<![\\p{L}\\p{N}])${word}`, "u").test(lower)) {
       issues.push({ code: "JARGON", message: `слово «${word}» непонятно владельцу бизнеса` });
     }
   }
-  for (const match of text.matchAll(NUMBER)) {
+  const checked = text.replace(TIME_OF_DAY, " ");
+  for (const match of checked.matchAll(NUMBER)) {
     const rawNumber = (match[1] ?? "").trim();
     const unit = match[2];
-    const rest = text.slice((match.index ?? 0) + match[0].length);
-    if (unit === undefined && PERIOD_WORDS.test(rest)) {
+    const rest = checked.slice((match.index ?? 0) + match[0].length);
+    if (unit === undefined && (PERIOD_WORDS.test(rest) || MONTHS_OF.test(rest))) {
       continue;
     }
     const value = parseNumber(rawNumber);

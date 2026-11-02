@@ -24,6 +24,10 @@ export const probabilityVariantBetter = (
   variant: PerformanceStats,
   experimentId: string,
 ): number => {
+  // Without clicks on either side there is nothing to compare: no reason to call one of them clearly worse.
+  if (control.clicks === 0 || variant.clicks === 0) {
+    return 0.5;
+  }
   const rng = createRng(seedFromString(experimentId));
   const cpcControl = control.clicks === 0 ? 0 : control.spend / control.clicks;
   const cpcVariant = variant.clicks === 0 ? 0 : variant.spend / variant.clicks;

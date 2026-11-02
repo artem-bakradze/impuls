@@ -14,6 +14,33 @@ export interface PlatformCapabilities {
   minWeeklyLimit: Kopecks;
 }
 
+/** Devices of a breakdown (add-agent-analyst-stage1). */
+export type Device = "mobile" | "desktop" | "tablet";
+
+/**
+ * Bid adjustments of a campaign in percent (0 — none): for phones and for computers. In Direct the computer adjustment
+ * covers every device but smartphones, so tablets follow computers (design decision 4).
+ */
+export interface DeviceAdjustments {
+  mobile: number;
+  desktop: number;
+}
+
+export const NO_DEVICE_ADJUSTMENTS: DeviceAdjustments = { mobile: 0, desktop: 0 };
+
+export type BreakdownDimension = "query" | "device";
+
+/** Stats of one segment (a search query or a device) of a campaign over a period, with VAT, like `DailyStatRow`. */
+export interface BreakdownRow {
+  campaignId: string;
+  /** The search query text, or a `Device`. */
+  segment: string;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  spend: Kopecks;
+}
+
 export interface PlatformCampaign {
   id: string;
   name: string;
@@ -23,7 +50,13 @@ export interface PlatformCampaign {
   siteMonitoring: boolean;
   /** Display schedule, e.g. "Пн–Вс 10:00–22:00"; optional until every adapter supports it. */
   schedule?: string;
-  geoRadiusKm?: number;
+}
+
+/** Campaign-level negative phrases and bid adjustments: what the analyst levers change (add-agent-analyst-stage1). */
+export interface TrafficSettings {
+  campaignId: string;
+  negativeKeywords: readonly string[];
+  deviceAdjustments: DeviceAdjustments;
 }
 
 export type ModerationStatus = "accepted" | "pending" | "rejected";
@@ -82,7 +115,11 @@ export interface CampaignPatch {
   leadGoal?: LeadGoal;
   siteMonitoring?: boolean;
   schedule?: string;
-  geoRadiusKm?: number;
+  /** New city of the campaign's ad group; the adapter maps it to its regions. */
+  city?: string;
+  /** The whole list of the campaign's negative phrases. */
+  negativeKeywords?: readonly string[];
+  deviceAdjustments?: DeviceAdjustments;
 }
 
 export interface AdPatch {
@@ -121,6 +158,10 @@ export interface AdPlatform {
   checkChanges(campaignIds: readonly string[], since: Date): Promise<ChangesResult>;
   /** Stats with VAT, by day and ad, as the platform currently reports them. */
   getStats(campaignIds: readonly string[], from: LocalDate, to: LocalDate): Promise<DailyStatRow[]>;
+  /** Current negative phrases and bid adjustments, for the expected-state check and reconciliation. */
+  getTrafficSettings(campaignIds: readonly string[]): Promise<TrafficSettings[]>;
+  /** Stats of the period by search query or by device, counted like `getStats` (platform-integration spec). */
+  getBreakdown(campaignIds: readonly string[], from: LocalDate, to: LocalDate, dimension: BreakdownDimension): Promise<BreakdownRow[]>;
   getBalance(): Promise<Kopecks>;
 }
 

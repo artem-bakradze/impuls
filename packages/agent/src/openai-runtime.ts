@@ -1,9 +1,9 @@
 import OpenAI, { ConflictError } from "openai";
-import type { AgentSessionEvent } from "openai/resources/beta/agents/agents";
+import type { AgentSessionEvent, TokenUsage } from "openai/resources/beta/agents/agents";
 import { ProxyAgent } from "undici";
-import { AGENT_INSTRUCTIONS, AGENT_INSTRUCTIONS_VERSION } from "./instructions";
-import type { AgentRuntime, AgentToolbox, ToolCallRecord, TurnResult, TurnSnapshot, TurnTrigger } from "./runtime";
-import { isActionTool, parseActionCall, toolDefinitions } from "./tools";
+import { AGENT_INSTRUCTIONS_VERSION, instructionsFor } from "./instructions";
+import type { AgentRuntime, AgentToolbox, ToolCallRecord, TurnResult, TurnSnapshot, TurnTrigger, TurnUsage } from "./runtime";
+import { isActionTool, parseActionCall, parseHypothesisCall, parseObservationCall, toolDefinitions } from "./tools";
 
 export interface OpenAiAgentRuntimeOptions {
   apiKey: string;
@@ -17,12 +17,22 @@ export interface OpenAiAgentRuntimeOptions {
   onEvent?: (event: AgentSessionEvent) => void;
 }
 
-/** Tools this runtime offers: everything the worker's toolbox can serve (no history or note deletion yet). */
-const OFFERED_TOOLS = new Set(["get_snapshot", "get_notes", "save_note"]);
+/** Read, observation and journal tools this runtime offers: everything the worker's toolbox can serve (no history yet). */
+const OFFERED_TOOLS = new Set(["get_snapshot", "get_recent_insights", "report_insight", "get_breakdown", "get_hypotheses", "save_hypothesis"]);
+
+/**
+ * Characters per token for the estimate when the Agents API has no usage for a turn: Russian text with JSON is
+ * about 2.5–3 characters per token, so 2 counts more tokens than were used (a margin, add-agent-insights decision 7).
+ */
+const CHARS_PER_TOKEN = 2;
+
+const fromApi = (usage: TokenUsage | null | undefined): TurnUsage | null =>
+  usage && Number.isFinite(usage.input_tokens) && Number.isFinite(usage.output_tokens) ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, source: "api" } : null;
 
 const TRIGGER_TEXT: Record<TurnTrigger["kind"], string> = {
   launch: "Реклама только что запущена. Проверь, что всё настроено разумно; результатов ещё нет.",
   daily_review: "Ежедневная оценка рекламы.",
+  weekly_review: "Понедельник: разбор недели.",
   moderation_rejected: "Директ отклонил объявления.",
   experiment_finished: "Закончились A/B-проверки.",
   settings_changed: "Владелец изменил цель, бюджет или настройки.",
@@ -50,6 +60,7 @@ const isCancellationConflict = (error: unknown): boolean => error instanceof Con
 export class OpenAiAgentRuntime implements AgentRuntime {
   readonly name: string;
   readonly instructionsVersion = AGENT_INSTRUCTIONS_VERSION;
+  readonly decides = true;
   private readonly client: OpenAI;
 
   constructor(private readonly options: OpenAiAgentRuntimeOptions) {
@@ -71,16 +82,36 @@ export class OpenAiAgentRuntime implements AgentRuntime {
     const { trigger, snapshot, tools, signal } = input;
     const calls: ToolCallRecord[] = [];
     const definitions = toolDefinitions().filter((tool) => isActionTool(tool.name) || OFFERED_TOOLS.has(tool.name));
+    const instructions = instructionsFor(trigger);
+    // The usage estimate when the API has none (docs/research/agents-api.md): every model step reads the conversation
+    // so far — instructions, tools, the trigger, the calls, their answers and the texts — and writes its call or text.
+    let context = instructions.text.length + JSON.stringify(definitions).length + triggerInput(trigger).length;
+    let readChars = context;
+    let writtenChars = 0;
+    let toolCalls = 0;
+    const toolUse: Record<string, number> = {};
+    const answer = (result: object): object => {
+      context += JSON.stringify(result).length;
+      return result;
+    };
     const handlers: Record<string, (args: Record<string, unknown>) => Promise<object>> = {
-      get_snapshot: () => Promise.resolve(snapshot),
-      get_notes: () => Promise.resolve({ notes: snapshot.notes }),
-      save_note: async (args) => {
-        const text = typeof args.text === "string" ? args.text : "";
-        if (text.trim() === "") {
-          return { status: "rejected", message: "пустая заметка" };
+      get_snapshot: () => Promise.resolve(answer(snapshot)),
+      get_recent_insights: async () => answer({ insights: await tools.recentInsights() }),
+      get_breakdown: async (args) =>
+        answer(await tools.breakdown(typeof args.directionId === "string" ? args.directionId : "", args.dimension === "device" ? "device" : "query")),
+      get_hypotheses: async () => answer({ hypotheses: await tools.hypotheses() }),
+      save_hypothesis: async (args) => {
+        const parsed = parseHypothesisCall(args);
+        return answer(parsed.ok ? await tools.saveHypothesis(parsed.draft) : { status: "rejected", code: "INVALID_ARGUMENTS", message: parsed.message });
+      },
+      report_insight: async (args) => {
+        const parsed = parseObservationCall(args);
+        if (!parsed.ok) {
+          return answer({ status: "rejected", code: "INVALID_ARGUMENTS", message: parsed.message });
         }
-        await tools.saveNote(text);
-        return { status: "saved" };
+        const result = await tools.observe(parsed.insight);
+        calls.push({ command: null, insight: parsed.insight, result });
+        return answer(result);
       },
     };
     for (const tool of definitions.filter((t) => isActionTool(t.name))) {
@@ -88,16 +119,36 @@ export class OpenAiAgentRuntime implements AgentRuntime {
         const parsed = parseActionCall(tool.name, args);
         if (!parsed.ok) {
           // Refusals are results, not thrown errors: a thrown handler reaches the model only as «Tool handler failed».
-          return { status: "rejected", code: "INVALID_ARGUMENTS", message: parsed.message };
+          return answer({ status: "rejected", code: "INVALID_ARGUMENTS", message: parsed.message });
         }
-        const result = await tools.act(parsed.command, parsed.justification);
-        calls.push({ command: parsed.command, justification: parsed.justification, result });
-        return result;
+        const result = await tools.act(parsed.command, parsed.insight);
+        calls.push({ command: parsed.command, insight: parsed.insight, result });
+        return answer(result);
       };
     }
 
+    const counted = Object.fromEntries(
+      Object.entries(handlers).map(([name, handler]) => [
+        name,
+        async (args: Record<string, unknown>) => {
+          toolCalls++;
+          toolUse[name] = (toolUse[name] ?? 0) + 1;
+          writtenChars += JSON.stringify(args).length;
+          context += JSON.stringify(args).length;
+          const result = await handler(args);
+          // The next model step reads the conversation with this answer.
+          readChars += context;
+          return result;
+        },
+      ]),
+    );
+
     let sessionId: string | null = null;
+    let turnId: string | null = null;
+    let usage: TurnUsage | null = null;
+    // The day review is the message after the last tool call; what the model said before it (its plan) is not.
     let summary = "";
+    let callsAtText = toolCalls;
     let cancelled = false;
     const cancel = async (): Promise<void> => {
       cancelled = true;
@@ -114,14 +165,14 @@ export class OpenAiAgentRuntime implements AgentRuntime {
       const stream = await this.client.beta.agents.sessions.create({
         agent: {
           model: this.options.model,
-          instructions: AGENT_INSTRUCTIONS,
+          instructions: instructions.text,
           tools: definitions.map((tool) => ({ type: "function" as const, name: tool.name, description: tool.description, parameters: parameters(tool.parameters) })),
         },
         environment: { type: "none" },
         input: triggerInput(trigger),
-        metadata: { purpose: "impuls-turn", instructions: AGENT_INSTRUCTIONS_VERSION },
+        metadata: { purpose: "impuls-turn", instructions: instructions.version },
         stream: true,
-        toolHandlers: handlers,
+        toolHandlers: counted,
       });
       try {
         for await (const event of stream as AsyncIterable<AgentSessionEvent>) {
@@ -131,7 +182,14 @@ export class OpenAiAgentRuntime implements AgentRuntime {
             if (signal.aborted) await cancel();
           }
           if (event.type === "agent.session.turn.output_text.done") {
-            summary = summary === "" ? event.text : `${summary}\n${event.text}`;
+            writtenChars += event.text.length;
+            context += event.text.length;
+            summary = summary === "" || toolCalls > callsAtText ? event.text : `${summary}\n${event.text}`;
+            callsAtText = toolCalls;
+          }
+          if (event.type === "agent.session.turn.completed" || event.type === "agent.session.turn.cancelled") {
+            turnId = event.turn_id;
+            usage = fromApi(event.usage) ?? usage;
           }
           if (event.type === "agent.session.turn.failed" || event.type === "agent.session.failed") {
             throw new Error(`Agents API turn failed: ${JSON.stringify(event).slice(0, 500)}`);
@@ -144,7 +202,16 @@ export class OpenAiAgentRuntime implements AgentRuntime {
         // After our own cancel the SDK may still try to answer a pending tool call: 409, the turn simply ended.
         if (!(cancelled && isCancellationConflict(error))) throw error;
       }
-      return { summary: cancelled && summary === "" ? "Ход отменён" : summary, calls };
+      if (usage === null && sessionId !== null && turnId !== null) {
+        // The completed event often comes without usage; the turn itself may have it (docs/research/agents-api.md).
+        usage = fromApi((await this.client.beta.agents.sessions.turns.retrieve(turnId, { session_id: sessionId })).usage);
+      }
+      usage ??= {
+        inputTokens: Math.ceil(readChars / CHARS_PER_TOKEN),
+        outputTokens: Math.ceil(writtenChars / CHARS_PER_TOKEN),
+        source: "estimate",
+      };
+      return { summary: cancelled && summary === "" ? "Ход отменён" : summary, calls, usage, toolUse };
     } finally {
       signal.removeEventListener("abort", onAbort);
       if (sessionId !== null) {

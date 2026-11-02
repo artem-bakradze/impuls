@@ -18,7 +18,7 @@
 | **Core** | `packages/core` | Pure functions only (classification, guard, safety-net, budget-guard, experiments): no I/O, no randomness except seeded, time via injected `Clock` |
 | **Platforms** | `packages/platforms` | `AdPlatform` contract; adapters `yandex-direct` (production API) and `simulator` |
 | **Data** | PostgreSQL 16, Drizzle ORM + drizzle-kit migrations | All schema changes via generated migrations |
-| **Agent** | `packages/agent`: `AgentRuntime` port (OpenAI Agents API, test policies, replay) and `LlmClient` | Runs inside worker; one Agents API session per turn, deleted after the journal is saved; outbound traffic via optional `OPENAI_PROXY_URL` |
+| **Agent** | `packages/agent`: `AgentRuntime` port (OpenAI Agents API, test policies, replay) and `LlmClient` | On by default (`agent_enabled` is true globally after migrations) and always on in the simulation mode; every action and observation comes with an insight checked against the turn's fact catalog. The deterministic rules are the safety net: they act on what the agent left and decide alone when it is off, unavailable or out of its cost limit. Runs inside worker; one Agents API session per turn, deleted after the journal is saved; model spend is counted per turn and limited per business and per simulation run; outbound traffic via optional `OPENAI_PROXY_URL` |
 | **Mini-sites** | Static HTML published to S3-compatible storage | Served from a separate registrable domain without app cookies, never by `apps/web` |
 | **Testing** | Vitest, vitest-cucumber (BDD), Playwright | BDD for business behavior, Vitest for core/scenarios, Playwright for e2e |
 | **Search & Recon** | `rg` (ripgrep) | Targeted full reads for edits |
@@ -58,7 +58,7 @@ pnpm -r lint
 ### 1. No-Fallbacks Policy (Strict Fail-Fast)
 * Missing required configuration (env vars and secrets) MUST fail fast at startup or before the operation that needs it. Validate required auth tokens, DB fields, and request parameters at their relevant boundaries and return explicit errors.
 * **FORBIDDEN**: Inventing fallback values for required system parameters or masking missing config behind defaults (e.g., `process.env.KEY ?? "fallback"` is forbidden for required parameters).
-* **ALLOWED**: Documented defaults for optional configuration; presentation-only fallbacks in UI for optional labels/placeholders/empty states; degraded modes that the spec defines explicitly (A/B-segment fallback in `ab-testing`, work without the agent in `ad-agent`, forecast placeholder text in `business-onboarding`). Do not use defaults to bypass required validation or authentication.
+* **ALLOWED**: Documented defaults for optional configuration; presentation-only fallbacks in UI for optional labels/placeholders/empty states; degraded modes that the spec defines explicitly (work without the agent in `ad-agent`, forecast placeholder text in `business-onboarding`). Do not use defaults to bypass required validation or authentication.
 * No hidden retries. Retries are allowed only when explicitly required, idempotent, bounded, and logged (e.g., Direct API transient errors per `platform-integration`).
 
 ### 2. Money & Automation Invariants

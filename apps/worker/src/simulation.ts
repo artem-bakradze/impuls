@@ -11,7 +11,7 @@ import { CommandExecutor } from "./executor";
 import { InMemoryMiniSiteStore } from "@impuls/minisite";
 import { MemoryLockManager } from "./locks";
 import type { LockManager } from "./locks";
-import { MemoryStore } from "./store";
+import { MemoryStore, NO_TRAFFIC_SETTINGS } from "./store";
 import type { BusinessRecord, Store } from "./store";
 
 export interface SimulationOptions {
@@ -25,12 +25,19 @@ export interface SimulationOptions {
   /** Defaults to in-memory implementations; integration tests pass PostgreSQL ones. */
   store?: Store;
   locks?: LockManager;
+  /**
+   * Whether the agent is switched on. A deployment starts with it off (simplify-mvp-scope); scenarios that test the
+   * agent path or test policies keep the default `true`, scenarios of the rules without the agent pass `false`.
+   */
+  agentEnabled?: boolean;
 }
 
 export interface SimulatedDirection {
   name: string;
   weeklyLimitRub: number;
   ads: { title: string; truth: AdTruth }[];
+  /** Key phrases of the campaign; the direction's name in lowercase without them. */
+  keywords?: string[];
 }
 
 /**
@@ -47,12 +54,14 @@ export class SimulationDriver {
   readonly ctx: JobContext;
   private readonly pendingTruths: AdTruth[] = [];
   readonly timeZone: string;
+  private readonly agentEnabled: boolean;
 
   constructor(options: SimulationOptions) {
     this.clock = new ManualClock(options.start);
     this.store = options.store ?? new MemoryStore();
     this.locks = options.locks ?? new MemoryLockManager();
     this.timeZone = options.timeZone ?? "Europe/Moscow";
+    this.agentEnabled = options.agentEnabled ?? true;
     const fallback: AdTruth = options.defaultTruth ?? { impressionsPerDay: 400, ctr: 0.05, cr: 0.05, costPerClick: rubles(25) };
     this.platform = new SimulatedPlatform({
       seed: options.seed,
@@ -94,22 +103,35 @@ export class SimulationDriver {
       monthlyBudgetRub: input.monthlyBudgetRub,
       launchedOn: input.launchedOn,
       csoSource: input.csoSource,
-      autonomy: "auto",
       miniSite: null,
       leadGoalId: "sim-goal-lead",
-      weeklySummaryEnabled: true,
-      card: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "м. Профсоюзная", hours: "10:00–22:00", advantages: ["Работаем до 22:00"] },
+      mode: "direct",
+      card: {
+        category: "Маникюрный салон",
+        services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }],
+        area: "м. Профсоюзная",
+        hours: "10:00–22:00",
+        advantages: ["Работаем до 22:00"],
+        name: "Ноготок",
+        address: "Москва, ул. Профсоюзная, 1",
+        city: "Москва",
+        siteUrl: "https://example.com/",
+      },
     };
+    if (!this.agentEnabled) {
+      await this.store.setFlag("agent_enabled", false, null);
+    }
     await this.store.saveBusiness(business);
     let n = 1;
     for (const direction of input.directions) {
+      const keywords = direction.keywords ?? [direction.name.toLowerCase()];
       const campaign = await this.platform.createCampaign({
         name: `[Импульс] ${direction.name}`,
         channel: "search",
         weeklyLimit: rubles(direction.weeklyLimitRub),
         strategyId: "WB_MAXIMUM_CLICKS",
         siteMonitoring: true,
-        targeting: { city: "Москва", keywords: [direction.name.toLowerCase()], negativeKeywords: [] },
+        targeting: { city: "Москва", keywords, negativeKeywords: [] },
         schedule: "Пн–Вс 10:00–22:00",
       });
       const directionId = `${input.id}-d${n++}`;
@@ -128,7 +150,9 @@ export class SimulationDriver {
         pausedByBudget: false,
         pausedByUser: false,
         schedule: "Пн–Вс 10:00–22:00",
-        geoRadiusKm: 3,
+        city: "Москва",
+        keywords,
+        ...NO_TRAFFIC_SETTINGS,
       });
       let m = 1;
       for (const ad of direction.ads) {
@@ -147,6 +171,11 @@ export class SimulationDriver {
       }
     }
     return business;
+  }
+
+  /** «True» parameters of the next ad the service creates, e.g. an experiment variant. */
+  queueAdTruth(truth: AdTruth): void {
+    this.pendingTruths.push(truth);
   }
 
   /** Advances the virtual clock hour by hour; `workerDown` skips job handlers to model outages. */

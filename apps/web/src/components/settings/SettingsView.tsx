@@ -3,25 +3,27 @@
 import {
   ClockCircleOutlined,
   CodeOutlined,
+  DeleteOutlined,
   EditOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
   NotificationOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
-  RobotOutlined,
+  PlusOutlined,
   ShopOutlined,
+  UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Collapse, Input, InputNumber, Radio, Select, Slider } from "antd";
+import { Alert, Button, Collapse, Input, InputNumber, Select } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { callApi, PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
+import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult, JobOutcome } from "@/lib/client-api";
-import { formatDateTime, formatRub, sentence } from "@/lib/format";
+import { formatRub, sentence } from "@/lib/format";
 import { AD_TEXT_MAX, AD_TITLE_MAX, DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } from "@/lib/onboarding";
-import { APPROVAL_WORDS, MODERATION_WORDS } from "@/lib/settings-model";
+import { MODERATION_WORDS } from "@/lib/settings-model";
 import type { SettingsModel } from "@/lib/settings-model";
 import { channelLabel } from "@/lib/summary-model";
 import { Chip, Note, PageHead } from "../ui/primitives";
@@ -61,13 +63,79 @@ function SectionFeedback({ feedback, section, onConfirmBudget }: { feedback: Fee
   );
 }
 
+type CardDraft = SettingsModel["card"];
+
+const tidyCard = (card: CardDraft): CardDraft => ({
+  category: card.category.trim(),
+  services: card.services.filter((s) => s.name.trim() !== "").map((s) => ({ name: s.name.trim(), priceRub: s.priceRub })),
+  advantages: card.advantages.map((a) => a.trim()).filter((a) => a !== ""),
+});
+
+/** «Что рекламируем» in edit mode: the facts new ad variants are written from (campaign-settings spec). */
+function CardEditor({ card, onChange }: { card: CardDraft; onChange: (card: CardDraft) => void }) {
+  const setService = (index: number, patch: Partial<CardDraft["services"][number]>) =>
+    onChange({ ...card, services: card.services.map((s, i) => (i === index ? { ...s, ...patch } : s)) });
+  return (
+    <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
+      <div className="field">
+        <div className="field-label">Чем вы занимаетесь</div>
+        <Input value={card.category} maxLength={100} onChange={(e) => onChange({ ...card, category: e.target.value })} aria-label="Чем вы занимаетесь" style={{ maxWidth: 420 }} />
+      </div>
+      <div className="field">
+        <div className="field-label">Услуги и цены</div>
+        {card.services.map((service, index) => (
+          <div key={index} className="row" style={{ "--gap": "8px", flexWrap: "nowrap" } as React.CSSProperties}>
+            <Input style={{ flex: 1, minWidth: 0 }} value={service.name} maxLength={100} onChange={(e) => setService(index, { name: e.target.value })} aria-label={`Услуга ${index + 1}`} placeholder="Услуга" />
+            <InputNumber
+              style={{ width: 132, flex: "none" }}
+              min={1}
+              value={service.priceRub}
+              onChange={(value) => setService(index, { priceRub: typeof value === "number" ? Math.round(value) : null })}
+              placeholder="Цена"
+              suffix="₽"
+              aria-label={`Цена услуги ${index + 1}`}
+            />
+            {card.services.length > 1 ? (
+              <Button type="text" icon={<DeleteOutlined aria-hidden="true" />} onClick={() => onChange({ ...card, services: card.services.filter((_, i) => i !== index) })} aria-label={`Убрать услугу ${index + 1}`} />
+            ) : null}
+          </div>
+        ))}
+        {card.services.length < 20 ? (
+          <Button type="dashed" icon={<PlusOutlined aria-hidden="true" />} onClick={() => onChange({ ...card, services: [...card.services, { name: "", priceRub: null }] })} style={{ alignSelf: "flex-start" }}>
+            Добавить услугу
+          </Button>
+        ) : null}
+      </div>
+      <div className="field">
+        <div className="field-label">Чем вы лучше других</div>
+        {card.advantages.map((advantage, index) => (
+          <Input
+            key={index}
+            value={advantage}
+            maxLength={100}
+            onChange={(e) => onChange({ ...card, advantages: card.advantages.map((a, i) => (i === index ? e.target.value : a)) })}
+            aria-label={`Преимущество ${index + 1}`}
+            placeholder="Например: работаем без выходных"
+          />
+        ))}
+        {card.advantages.length < 3 ? (
+          <Button type="dashed" icon={<PlusOutlined aria-hidden="true" />} onClick={() => onChange({ ...card, advantages: [...card.advantages, ""] })} style={{ alignSelf: "flex-start" }}>
+            Добавить пункт
+          </Button>
+        ) : null}
+        <div className="field-help">1–3 коротких факта. Без «лучший» — такие слова запрещены законом о рекламе.</div>
+      </div>
+    </div>
+  );
+}
+
 const SECTIONS = [
   { id: "business", label: "Что рекламируем", icon: <ShopOutlined /> },
   { id: "where", label: "Где и когда", icon: <EnvironmentOutlined /> },
   { id: "budget", label: "Бюджет и цель", icon: <WalletOutlined /> },
   { id: "ads", label: "Объявления", icon: <NotificationOutlined /> },
   { id: "site", label: "Сайт", icon: <GlobalOutlined /> },
-  { id: "autopilot", label: "Автопилот", icon: <RobotOutlined /> },
+  { id: "account", label: "Аккаунт", icon: <UserOutlined /> },
 ];
 
 function Section({ id, title, lead, children, testId }: { id: string; title: string; lead?: ReactNode; children: ReactNode; testId?: string }) {
@@ -92,18 +160,20 @@ const adState = (ad: SettingsModel["ads"][number]): { tone: Tone; text: string }
   return { tone: "success", text: "Показывается" };
 };
 
-export function SettingsView({ model }: { model: SettingsModel }) {
+export function SettingsView({ model, simulated = false }: { model: SettingsModel; simulated?: boolean }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [radius, setRadius] = useState(model.radiusKm);
+  const [city, setCity] = useState(model.city);
   const [days, setDays] = useState(model.schedule.days ?? DAY_OPTIONS[0]);
   const [from, setFrom] = useState(model.schedule.from ?? "10:00");
   const [to, setTo] = useState(model.schedule.to ?? "20:00");
   const [budget, setBudget] = useState<number | null>(model.monthlyBudgetRub);
   const [adEdits, setAdEdits] = useState<Record<string, { title: string; text: string }>>({});
   const [editing, setEditing] = useState<string | null>(null);
-  const [autonomy, setAutonomy] = useState(model.autonomy);
+  const [goalMode, setGoalMode] = useState(model.goal.mode);
+  const [goalRub, setGoalRub] = useState<number | null>(model.goal.mode === "user" ? model.goal.rub : null);
+  const [cardEdit, setCardEdit] = useState<CardDraft | null>(null);
 
   const done = (next: NonNullable<Feedback>) => {
     setFeedback(next);
@@ -127,31 +197,30 @@ export function SettingsView({ model }: { model: SettingsModel }) {
     done({ section: "budget", type: "success", text: `Бюджет изменён. ${outcome.output.message}` });
   };
 
-  const saveAutonomy = async (value: "auto" | "ask") => {
-    setAutonomy(value);
-    const result = await callApi("/api/settings/autonomy", "PUT", { autonomy: value });
-    setFeedback(result.kind === "ok" ? { section: "autonomy", type: "success", text: "Сохранено" } : { section: "autonomy", type: "error", text: result.message });
-  };
-
-  const decide = async (approvalId: string, approve: boolean) => {
-    setBusy(approvalId);
-    const outcome = await runWebJob("/api/approvals", { approvalId, approve });
-    done(
-      outcome.kind === "done"
-        ? { section: "approvals", type: "success", text: approve ? "Готово — применяем изменение" : "Хорошо, не будем этого делать" }
-        : outcome.kind === "pending"
-          ? { section: "approvals", type: "info", text: PENDING_TEXT }
-          : { section: "approvals", type: "error", text: outcome.message },
-    );
+  const saveCard = async (card: CardDraft) => {
+    setBusy("card");
+    const next = commandsFeedback("card", await runWebJobs<CommandResult>("/api/commands", { action: "card", card }), "Описание сохранено. Работающие объявления сами не меняются — проверьте их тексты в разделе «Объявления».");
+    if (next.type === "success") setCardEdit(null);
+    done(next);
   };
 
   const schedule = `${days} ${from}–${to}`;
+  // Save buttons appear only after a change in their section (campaign-settings spec).
+  const cityChanged = city.trim() !== model.city;
+  const budgetChanged = budget !== model.monthlyBudgetRub;
+  const goalChanged = goalMode !== model.goal.mode || (goalMode === "user" && goalRub !== model.goal.rub);
+  const cardTidy = cardEdit === null ? null : tidyCard(cardEdit);
+  const cardChanged = cardTidy !== null && JSON.stringify(cardTidy) !== JSON.stringify(tidyCard(model.card));
 
   return (
     <div className="page">
       <PageHead
         title="Настройки"
-        lead="Меняйте простым языком — сервис сам перенесёт изменения в Яндекс Директ за несколько минут."
+        lead={
+          simulated
+            ? "Меняйте простым языком — изменения сразу применятся в симуляции, в той же истории и с тем же откатом."
+            : "Меняйте простым языком — сервис сам перенесёт изменения в Яндекс Директ за несколько минут."
+        }
         extra={
           model.paused ? (
             <Button type="primary" size="large" icon={<PlayCircleOutlined aria-hidden="true" />} onClick={() => void commands("pause", { action: "resumeAll" }, "Реклама снова работает")} loading={busy === "pause"}>
@@ -184,31 +253,65 @@ export function SettingsView({ model }: { model: SettingsModel }) {
         </nav>
 
         <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
-          <Section id="business" title="Что рекламируем" lead="Из карточки, которую вы подтвердили при запуске">
-            <dl className="kv">
-              <dt>Чем занимаетесь</dt>
-              <dd>{model.card.category}</dd>
-              <dt>Услуги</dt>
-              <dd>{model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`)).join("; ")}</dd>
-              <dt>Преимущества</dt>
-              <dd>{model.card.advantages.join("; ") || "не указаны"}</dd>
-            </dl>
+          <Section id="business" title="Что рекламируем" lead="По этим фактам мы пишем новые варианты объявлений" testId="card-section">
+            {cardEdit === null ? (
+              <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
+                <dl className="kv">
+                  <dt>Чем занимаетесь</dt>
+                  <dd>{model.card.category || "не указано"}</dd>
+                  <dt>Услуги</dt>
+                  <dd>{model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`)).join("; ")}</dd>
+                  <dt>Преимущества</dt>
+                  <dd>{model.card.advantages.join("; ") || "не указаны"}</dd>
+                </dl>
+                <Button
+                  icon={<EditOutlined aria-hidden="true" />}
+                  onClick={() => setCardEdit({ ...model.card, services: model.card.services.length > 0 ? model.card.services : [{ name: "", priceRub: null }], advantages: model.card.advantages.length > 0 ? model.card.advantages : [""] })}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  Изменить описание
+                </Button>
+              </div>
+            ) : (
+              <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+                <CardEditor card={cardEdit} onChange={setCardEdit} />
+                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                  {cardChanged && cardTidy ? (
+                    <Button type="primary" disabled={cardTidy.services.length === 0} loading={busy === "card"} onClick={() => void saveCard(cardTidy)}>
+                      Сохранить описание
+                    </Button>
+                  ) : null}
+                  <Button onClick={() => setCardEdit(null)} disabled={busy === "card"}>
+                    Отмена
+                  </Button>
+                </div>
+                {cardTidy && cardTidy.services.length === 0 ? <span className="field-error">Оставьте хотя бы одну услугу — о ней будут объявления</span> : null}
+              </div>
+            )}
+            <SectionFeedback feedback={feedback} section="card" />
           </Section>
 
-          <Section id="where" title="Где и когда" lead="Показ в Яндексе настраивается по городу; радиус помогает писать объявления про ваш район">
+          <Section id="where" title="Где и когда" lead="Реклама показывается людям в вашем городе">
             <div className="stack" style={{ "--gap": "22px" } as React.CSSProperties}>
               <div className="field">
                 <div className="field-label">
                   <EnvironmentOutlined />
-                  Откуда к вам приходят: до {radius} км
+                  Город
                 </div>
-                <Slider min={1} max={30} value={radius} onChange={setRadius} marks={{ 1: "1", 3: "3", 10: "10", 30: "30" }} tooltip={{ formatter: (v) => `${v ?? 0} км` }} aria-label="Радиус показа в километрах" />
-                {radius !== model.radiusKm ? (
-                  <Button type="primary" loading={busy === "geo"} onClick={() => void commands("geo", { action: "geo", radiusKm: radius }, "Зона показа обновлена")} style={{ alignSelf: "flex-start" }}>
-                    Сохранить зону
-                  </Button>
-                ) : null}
-                <SectionFeedback feedback={feedback} section="geo" />
+                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                  <Input value={city} maxLength={100} onChange={(e) => setCity(e.target.value)} aria-label="Город показа" style={{ width: 240 }} />
+                  {cityChanged ? (
+                    <Button
+                      type="primary"
+                      disabled={city.trim() === ""}
+                      loading={busy === "city"}
+                      onClick={() => void commands("city", { action: "city", city: city.trim() }, "Город показа обновлён во всех кампаниях")}
+                    >
+                      Сохранить город
+                    </Button>
+                  ) : null}
+                </div>
+                <SectionFeedback feedback={feedback} section="city" />
               </div>
               <hr className="divider" />
               <div className="field" data-testid="schedule-section">
@@ -221,14 +324,16 @@ export function SettingsView({ model }: { model: SettingsModel }) {
                   <Select value={days} onChange={setDays} options={DAY_OPTIONS.map((d) => ({ value: d, label: d }))} style={{ width: 120 }} aria-label="Дни показа" />
                   <Select value={from} onChange={setFrom} options={HOUR_OPTIONS.slice(0, 24).map((h) => ({ value: h, label: `с ${h}` }))} style={{ width: 112 }} aria-label="Показывать с" virtual={false} />
                   <Select value={to} onChange={setTo} options={HOUR_OPTIONS.slice(1).map((h) => ({ value: h, label: `до ${h}` }))} style={{ width: 112 }} aria-label="Показывать до" virtual={false} />
-                  <Button
-                    type="primary"
-                    disabled={schedule === model.schedule.raw || from >= to}
-                    loading={busy === "schedule"}
-                    onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание показов обновлено во всех кампаниях")}
-                  >
-                    Сохранить время
-                  </Button>
+                  {schedule !== model.schedule.raw ? (
+                    <Button
+                      type="primary"
+                      disabled={from === to}
+                      loading={busy === "schedule"}
+                      onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание показов обновлено во всех кампаниях")}
+                    >
+                      Сохранить время
+                    </Button>
+                  ) : null}
                 </div>
                 <SectionFeedback feedback={feedback} section="schedule" />
               </div>
@@ -251,18 +356,62 @@ export function SettingsView({ model }: { model: SettingsModel }) {
                     aria-label="Бюджет в месяц"
                     style={{ width: 200 }}
                   />
-                  <Button type="primary" disabled={budget === null || budget < MIN_BUDGET_RUB || budget === model.monthlyBudgetRub} loading={busy === "budget"} onClick={() => budget !== null && void saveBudget(budget, false)}>
-                    Сохранить бюджет
-                  </Button>
+                  {budgetChanged ? (
+                    <Button type="primary" disabled={budget === null || budget < MIN_BUDGET_RUB} loading={busy === "budget"} onClick={() => budget !== null && void saveBudget(budget, false)}>
+                      Сохранить бюджет
+                    </Button>
+                  ) : null}
                 </div>
-              </div>
-              <div className="note">
-                <span>
-                  Цель: {model.goal.mode === "user" ? `до ${formatRub(model.goal.rub * 100)} за обращение` : `подбирать автоматически (сейчас до ${formatRub(model.goal.rub * 100)} за обращение)`}
-                </span>
               </div>
             </div>
             <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
+            <hr className="divider" style={{ margin: "18px 0" }} />
+            <div className="field" data-testid="goal-section">
+              <div className="field-label">Сколько готовы платить за одно обращение</div>
+              <span className="t-small">
+                Сейчас: {model.goal.mode === "user" ? `до ${formatRub(model.goal.rub * 100)} за обращение` : "подбираем сами по результатам рекламы"}
+              </span>
+              <div className="presets" role="radiogroup" aria-label="Цена обращения">
+                {(
+                  [
+                    { value: "auto", label: "Подбирайте сами" },
+                    { value: "user", label: "Укажу сумму" },
+                  ] as const
+                ).map((option) => (
+                  <button key={option.value} type="button" role="radio" aria-checked={goalMode === option.value} aria-pressed={goalMode === option.value} className="preset" onClick={() => setGoalMode(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+                {goalMode === "user" ? (
+                  <InputNumber<number>
+                    min={1}
+                    step={50}
+                    value={goalRub}
+                    onChange={(v) => setGoalRub(typeof v === "number" && v > 0 ? Math.round(v) : null)}
+                    formatter={rubFormatter}
+                    parser={rubParser}
+                    suffix="₽"
+                    aria-label="Цена одного обращения"
+                    style={{ width: 200 }}
+                  />
+                ) : null}
+                {goalChanged ? (
+                  <Button
+                    type="primary"
+                    disabled={goalMode === "user" && goalRub === null}
+                    loading={busy === "goal"}
+                    onClick={() =>
+                      void commands("goal", { action: "goal", goal: goalMode === "user" ? { mode: "user", rub: goalRub } : { mode: "auto" } }, goalMode === "user" ? "Цель сохранена" : "Теперь цену подбираем сами")
+                    }
+                  >
+                    Сохранить цель
+                  </Button>
+                ) : null}
+              </div>
+              <SectionFeedback feedback={feedback} section="goal" />
+            </div>
           </Section>
 
           <Section id="ads" title="Объявления" lead="Новый текст Яндекс проверит заново — обычно за несколько часов">
@@ -313,58 +462,27 @@ export function SettingsView({ model }: { model: SettingsModel }) {
 
           <Section id="site" title="Сайт">
             {model.siteUrl ? (
-              <span className="t-body">
-                Объявления ведут на ваш сайт:{" "}
-                <a href={model.siteUrl} target="_blank" rel="noreferrer">
-                  {model.siteUrl}
-                </a>
-              </span>
+              <div className="stack" style={{ "--gap": "6px" } as React.CSSProperties}>
+                <span className="t-body">
+                  Объявления ведут на ваш сайт:{" "}
+                  <a href={model.siteUrl} target="_blank" rel="noreferrer">
+                    {model.siteUrl}
+                  </a>
+                </span>
+                <span className="t-small" data-testid="site-change">
+                  Сменили сайт? Напишите нам на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a> — заменим ссылку во всех объявлениях. Яндекс проверит их заново.
+                </span>
+              </div>
             ) : (
               // Launch requires the owner's site; the mini-site form is out of the MVP (replace-direct-sandbox decision 7).
               <span className="t-small">Адрес сайта не указан</span>
             )}
           </Section>
 
-          <Section id="autopilot" title="Автопилот" lead="Насколько самостоятельно действовать">
-            <Radio.Group
-              style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              value={autonomy}
-              onChange={(e) => void saveAutonomy(e.target.value as "auto" | "ask")}
-              options={[
-                { value: "auto", label: "Действовать самостоятельно — все улучшения применяются сразу" },
-                { value: "ask", label: "Спрашивать перед крупными изменениями — перенос больше 30% бюджета, остановка направления, запуск проверки" },
-              ]}
-            />
-            <p className="t-small" style={{ marginTop: 12 }}>
-              Защита бюджета работает всегда и без вопросов: мы никогда не потратим больше, чем вы указали. Запрос без ответа истекает через 48 часов.
-            </p>
-            <SectionFeedback feedback={feedback} section="autonomy" />
-            <hr className="divider" style={{ margin: "18px 0" }} />
-            <div className="field-label" style={{ marginBottom: 6 }}>
-              Запросы на подтверждение
-            </div>
-            {model.approvals.length === 0 ? <span className="t-small">Запросов пока не было.</span> : null}
-            {model.approvals.map((a) => (
-              <div key={a.id} className="list-row">
-                <div className="stack" style={{ "--gap": "4px", flex: 1 } as React.CSSProperties}>
-                  <span className="t-body">{a.explanation}</span>
-                  <span className="t-small">
-                    {APPROVAL_WORDS[a.status]} · {formatDateTime(a.at, model.timeZone)}
-                  </span>
-                </div>
-                {a.status === "pending" ? (
-                  <div className="row" style={{ "--gap": "6px" } as React.CSSProperties}>
-                    <Button type="primary" size="small" loading={busy === a.id} onClick={() => void decide(a.id, true)}>
-                      Согласен
-                    </Button>
-                    <Button size="small" disabled={busy === a.id} onClick={() => void decide(a.id, false)}>
-                      Не надо
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            <SectionFeedback feedback={feedback} section="approvals" />
+          <Section id="account" title="Аккаунт">
+            <span className="t-body" data-testid="account-deletion">
+              Чтобы удалить аккаунт, напишите нам на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a> — мы остановим рекламу и удалим ваши данные в течение 30 дней.
+            </span>
           </Section>
 
           <Collapse
@@ -394,8 +512,8 @@ export function SettingsView({ model }: { model: SettingsModel }) {
                           <dd>{formatRub(d.weeklyLimit)}</dd>
                           <dt>Расписание</dt>
                           <dd>{d.schedule || "—"}</dd>
-                          <dt>Радиус</dt>
-                          <dd>{d.radiusKm} км</dd>
+                          <dt>Город</dt>
+                          <dd>{d.city || "—"}</dd>
                         </dl>
                       </div>
                     ))}

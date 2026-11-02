@@ -21,7 +21,7 @@ const PROMISES = [
 
 /**
  * In the simulator there is no real Direct account to connect. In production the owner grants access on the
- * Yandex page; the account is stored by the OAuth callback, and «Продолжить» moves on once it is connected.
+ * Yandex page; the account is stored by the OAuth callback. Once connected, the launch summary appears below.
  */
 export function DirectStep({ directApiMode, connected, outcome, onConnect }: Props) {
   if (directApiMode === "simulator") {
@@ -32,18 +32,15 @@ export function DirectStep({ directApiMode, connected, outcome, onConnect }: Pro
             <ExperimentOutlined />
           </span>
           <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
-            <h2 className="t-h3">Тестовый режим — реклама не показывается</h2>
-            <p className="t-body t-muted">Подключать Яндекс Директ не нужно: объявления создаются в тестовой копии, деньги не тратятся.</p>
+            <h2 className="t-h3">На этом стенде Яндекс Директ не подключён</h2>
+            <p className="t-body t-muted">Объявления создаются в тестовой копии Директа в реальном времени, деньги не тратятся. На настоящем сервисе здесь кнопка «Подключить Яндекс Директ».</p>
           </div>
         </div>
-        {connected ? (
-          <Note tone="success" icon={<CheckCircleFilled />}>
-            Тестовый режим включён.
-          </Note>
-        ) : null}
-        <Button type="primary" size="large" onClick={onConnect} style={{ alignSelf: "flex-start" }}>
-          Продолжить в тестовом режиме
-        </Button>
+        {connected ? null : (
+          <Button type="primary" size="large" onClick={onConnect} style={{ alignSelf: "flex-start" }}>
+            Продолжить в тестовом режиме
+          </Button>
+        )}
       </div>
     );
   }
@@ -59,14 +56,9 @@ export function DirectStep({ directApiMode, connected, outcome, onConnect }: Pro
       </ul>
       {outcome === "denied" || outcome === "failed" ? <Note tone="warning">{DIRECT_OAUTH_MESSAGES[outcome]}</Note> : null}
       {connected ? (
-        <>
-          <Note tone="success" icon={<CheckCircleFilled />}>
-            Яндекс Директ подключён
-          </Note>
-          <Button type="primary" size="large" onClick={onConnect} style={{ alignSelf: "flex-start" }}>
-            Продолжить
-          </Button>
-        </>
+        <Note tone="success" icon={<CheckCircleFilled />}>
+          Яндекс Директ подключён
+        </Note>
       ) : (
         <Button type="primary" size="large" href="/api/direct/oauth/start" style={{ alignSelf: "flex-start" }}>
           {outcome === "denied" || outcome === "failed" ? "Подключить ещё раз" : "Подключить Яндекс Директ"}

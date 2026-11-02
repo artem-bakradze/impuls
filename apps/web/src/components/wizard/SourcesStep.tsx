@@ -2,48 +2,66 @@
 
 import { EnvironmentOutlined, GlobalOutlined, TeamOutlined } from "@ant-design/icons";
 import { Input } from "antd";
-import { ABOUT_MAX_LENGTH } from "@/lib/onboarding";
+import { ABOUT_MAX_LENGTH, normalizeLink } from "@/lib/onboarding";
+import type { LinkKind } from "@/lib/onboarding";
 import { Field } from "./Field";
 import type { StepProps } from "./Wizard";
 
-export function SourcesStep({ draft, onChange }: StepProps) {
+type SourceField = "siteUrl" | "mapsUrl" | "vkUrl";
+
+export function SourcesStep({ draft, onChange, errors = {} }: StepProps) {
   const set = (patch: Partial<StepProps["draft"]["sources"]>) => onChange({ ...draft, sources: { ...draft.sources, ...patch } });
+  /** «nogotok.ru» becomes «https://nogotok.ru» when the owner leaves the field; text that is not a link stays as typed. */
+  const tidy = (field: SourceField, kind: LinkKind) => {
+    const link = normalizeLink(kind, draft.sources[field]);
+    if (link !== null && link !== draft.sources[field]) set({ [field]: link });
+  };
   return (
     <div className="form-section">
-      <Field label="Ваш сайт" help="На эту страницу будут вести объявления. Мы прочитаем её и сами заполним карточку бизнеса.">
+      <Field id="siteUrl" label="Ваш сайт" error={errors.siteUrl} help="Можно без https:// — например, nogotok.ru. На эту страницу будут вести объявления, а карточку бизнеса мы заполним по ней сами.">
         <Input
           size="large"
           prefix={<GlobalOutlined style={{ color: "var(--text-3)" }} />}
           value={draft.sources.siteUrl}
-          onChange={(e) => set({ siteUrl: e.target.value.trim() })}
-          placeholder="https://ваш-сайт.ru"
+          onChange={(e) => set({ siteUrl: e.target.value })}
+          onBlur={() => tidy("siteUrl", "site")}
+          placeholder="nogotok.ru"
           aria-label="Ваш сайт"
           inputMode="url"
+          autoComplete="url"
+          autoCapitalize="none"
+          spellCheck={false}
           autoFocus
         />
       </Field>
       <div className="row" style={{ "--gap": "16px", alignItems: "flex-start" } as React.CSSProperties}>
         <div style={{ flex: "1 1 240px" }}>
-          <Field label="Яндекс Карты">
+          <Field id="mapsUrl" label="Яндекс Карты" error={errors.mapsUrl} help="Необязательно">
             <Input
               prefix={<EnvironmentOutlined style={{ color: "var(--text-3)" }} />}
               value={draft.sources.mapsUrl}
-              onChange={(e) => set({ mapsUrl: e.target.value.trim() })}
-              placeholder="https://yandex.ru/maps/org/…"
+              onChange={(e) => set({ mapsUrl: e.target.value })}
+              onBlur={() => tidy("mapsUrl", "maps")}
+              placeholder="yandex.ru/maps/org/…"
               aria-label="Организация в Яндекс Картах"
               inputMode="url"
+              autoCapitalize="none"
+              spellCheck={false}
             />
           </Field>
         </div>
         <div style={{ flex: "1 1 240px" }}>
-          <Field label="ВКонтакте">
+          <Field id="vkUrl" label="ВКонтакте" error={errors.vkUrl} help="Необязательно. Подойдёт и просто @название">
             <Input
               prefix={<TeamOutlined style={{ color: "var(--text-3)" }} />}
               value={draft.sources.vkUrl}
-              onChange={(e) => set({ vkUrl: e.target.value.trim() })}
-              placeholder="https://vk.com/…"
+              onChange={(e) => set({ vkUrl: e.target.value })}
+              onBlur={() => tidy("vkUrl", "vk")}
+              placeholder="vk.com/nogotok"
               aria-label="Сообщество ВКонтакте"
               inputMode="url"
+              autoCapitalize="none"
+              spellCheck={false}
             />
           </Field>
         </div>

@@ -1,23 +1,12 @@
 "use client";
 
-import {
-  AimOutlined,
-  ClockCircleOutlined,
-  EnvironmentOutlined,
-  NotificationOutlined,
-  PhoneOutlined,
-  RocketOutlined,
-  SafetyCertificateOutlined,
-  ShopOutlined,
-  WalletOutlined,
-} from "@ant-design/icons";
+import { ClockCircleOutlined, PhoneOutlined, RocketOutlined, SafetyCertificateOutlined, ShopOutlined, WalletOutlined, WarningOutlined } from "@ant-design/icons";
 import { Alert, Button } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
-import { formatRub } from "@/lib/format";
-import { budgetCeilingText, buildLaunchPlan, cityOf, GOAL_OPTIONS, interimAutoGoalRub, scheduleText } from "@/lib/onboarding";
+import { advertisedText, budgetCeilingText, COUNTER_MISSING_WARNING, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
 
@@ -45,19 +34,21 @@ export function AdvertiserDataNotice({ onDone }: { onDone: () => void }) {
 interface Props {
   draft: OnboardingDraft;
   today: string;
-  minWeeklyLimitRub: number;
+  /** Opens the wizard step where this line of the summary is changed. */
+  onEdit: (step: number) => void;
+  /** «Запустить в симуляции» with this scenario instead of Direct. */
+  simulation?: { scenario: string };
 }
 
-export function LaunchStep({ draft, today, minWeeklyLimitRub }: Props) {
+export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
   const router = useRouter();
   const [state, setState] = useState<{ kind: "idle" | "running" | "pending" | "advertiser_data" } | { kind: "error"; message: string }>({ kind: "idle" });
-  const plan = buildLaunchPlan(draft, today, minWeeklyLimitRub);
   const budget = draft.budget.monthlyBudgetRub ?? 0;
-  const goal = draft.budget.goalMode === "user" ? `до ${formatRub((draft.budget.goalRub ?? 0) * 100)} за обращение` : `подбираем сами, начнём с ${formatRub(interimAutoGoalRub(budget) * 100)}`;
+  const counter = counterOf(draft);
 
   const launch = async () => {
     setState({ kind: "running" });
-    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", {});
+    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", simulation ? { simulation } : {});
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });
     } else if (outcome.kind === "done") {
@@ -70,18 +61,12 @@ export function LaunchStep({ draft, today, minWeeklyLimitRub }: Props) {
     }
   };
 
-  const items: { icon: ReactNode; title: string; text: string }[] = [
-    { icon: <ShopOutlined />, title: "Что рекламируем", text: `${draft.card.category}: ${draft.card.services.map((s) => s.name).filter(Boolean).join(", ")}` },
-    { icon: <EnvironmentOutlined />, title: "Где показываем", text: `Город «${cityOf(draft.card.address) || draft.card.address}», адрес «${draft.card.address}»` },
-    { icon: <ClockCircleOutlined />, title: "Когда показываем", text: scheduleText(draft.card) },
-    { icon: <WalletOutlined />, title: "Бюджет", text: budgetCeilingText(budget, today) },
-    { icon: <AimOutlined />, title: "Цена обращения", text: goal },
-    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", ") },
-    {
-      icon: <NotificationOutlined />,
-      title: "Объявления",
-      text: plan.directions.map((d) => `${d.channel === "search" ? "в поиске" : "на сайтах-партнёрах"}: ${d.ads.length}, до ${formatRub(d.weeklyLimitRub * 100)} в неделю`).join("; "),
-    },
+  // Four lines, each changed on its own step; technical details stay in the settings (business-onboarding spec).
+  const items: { icon: ReactNode; title: string; text: string; step: number }[] = [
+    { icon: <ShopOutlined />, title: "Что рекламируем", text: advertisedText(draft.card), step: 2 },
+    { icon: <ClockCircleOutlined />, title: "Где и когда", text: `Город «${draft.card.city}», ${hoursWords(draft.card)}`, step: 2 },
+    { icon: <WalletOutlined />, title: "Бюджет", text: budgetCeilingText(budget, today), step: 4 },
+    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", "), step: 3 },
   ];
 
   return (
@@ -94,9 +79,17 @@ export function LaunchStep({ draft, today, minWeeklyLimitRub }: Props) {
               <span className="t-small">{item.title}</span>
               <span className="t-body">{item.text}</span>
             </div>
+            <button type="button" className="link-button" onClick={() => onEdit(item.step)} aria-label={`${item.title}: изменить`}>
+              изменить
+            </button>
           </li>
         ))}
       </ul>
+      {hasOwnSite(draft) && counter?.status !== "found" && !simulation ? (
+        <Note tone="warning" icon={<WarningOutlined aria-hidden="true" />} data-testid="launch-counter-warning">
+          <strong>Счётчика Метрики на сайте пока нет.</strong> {COUNTER_MISSING_WARNING}
+        </Note>
+      ) : null}
       <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис будет менять, вы увидите в истории простыми словами и сможете вернуть одной кнопкой.</Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
@@ -111,7 +104,7 @@ export function LaunchStep({ draft, today, minWeeklyLimitRub }: Props) {
         disabled={state.kind === "pending"}
         style={{ height: 54, fontSize: 16 }}
       >
-        Запустить
+        {simulation ? "Запустить симуляцию" : "Запустить"}
       </Button>
     </div>
   );

@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { asc, eq, schema } from "@impuls/db";
-import { agentCard, emptyDraft, interimAutoGoalRub, OnboardingDraftSchema } from "../onboarding";
+import { agentCard, emptyDraft, interimAutoGoalRub, OnboardingDraftSchema, withCity } from "../onboarding";
 import type { OnboardingDraft } from "../onboarding";
 import { db } from "./runtime";
 
@@ -23,14 +23,12 @@ export const readDraft = (row: BusinessRow | null): OnboardingDraft => {
   if (stored === undefined) {
     return emptyDraft();
   }
-  return OnboardingDraftSchema.parse(stored);
+  return withCity(OnboardingDraftSchema.parse(stored));
 };
 
-const goalKopecks = (draft: OnboardingDraft): { csoMode: "user" | "auto"; csoValue: number } => {
+/** The wizard does not ask for a goal: it starts in automatic selection (business-onboarding spec). */
+const goalKopecks = (draft: OnboardingDraft): { csoMode: "auto"; csoValue: number } => {
   const budget = draft.budget.monthlyBudgetRub;
-  if (draft.budget.goalMode === "user") {
-    return { csoMode: "user", csoValue: (draft.budget.goalRub ?? 0) * 100 };
-  }
   return { csoMode: "auto", csoValue: budget === null ? 0 : interimAutoGoalRub(budget) * 100 };
 };
 
@@ -64,6 +62,3 @@ export const saveOnboarding = async (userId: string, step: number, draft: Onboar
   return row;
 };
 
-export const setAutonomy = async (businessId: string, autonomy: "auto" | "ask"): Promise<void> => {
-  await db().update(schema.businesses).set({ autonomy }).where(eq(schema.businesses.id, businessId));
-};

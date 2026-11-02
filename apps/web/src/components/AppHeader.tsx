@@ -10,13 +10,16 @@ import { Logo } from "./ui/Logo";
 const LINKS: { href: string; label: string; icon: ReactNode }[] = [
   { href: "/summary", label: "Сводка", icon: <LineChartOutlined /> },
   { href: "/history", label: "История", icon: <HistoryOutlined /> },
-  { href: "/experiments", label: "Эксперименты", icon: <ExperimentOutlined /> },
   { href: "/settings", label: "Настройки", icon: <SettingOutlined /> },
 ];
 
 /** Top bar on desktop; on phones the same links become a bottom tab bar (globals.css), so the header never wraps. */
-export function AppHeader({ launched, signOutAction }: { launched: boolean; signOutAction: () => Promise<void> }) {
+/** Only a simulated business has the screen that explains its decisions (simulation-mode spec). */
+const SIMULATION_LINK = { href: "/simulation", label: "Как решает сервис", icon: <ExperimentOutlined /> };
+
+export function AppHeader({ launched, simulated = false, signOutAction }: { launched: boolean; simulated?: boolean; signOutAction: () => Promise<void> }) {
   const pathname = usePathname();
+  const links = simulated ? [...LINKS.slice(0, 2), SIMULATION_LINK, ...LINKS.slice(2)] : LINKS;
   return (
     <header className="app-header">
       <div className="app-header-inner">
@@ -25,7 +28,7 @@ export function AppHeader({ launched, signOutAction }: { launched: boolean; sign
         </Link>
         {launched ? (
           <nav className="app-nav" aria-label="Разделы">
-            {LINKS.map((link) => (
+            {links.map((link) => (
               <Link key={link.href} href={link.href} aria-current={pathname.startsWith(link.href) ? "page" : undefined}>
                 <span className="nav-icon" aria-hidden="true">
                   {link.icon}

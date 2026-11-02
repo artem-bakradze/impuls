@@ -4,5 +4,5 @@ import { requireLaunchedBusiness } from "@/lib/server/session";
 
 export default async function SettingsPage() {
   const { business } = await requireLaunchedBusiness();
-  return <SettingsView model={await buildSettings(business)} />;
+  return <SettingsView model={await buildSettings(business)} simulated={business.mode === "simulation"} />;
 }

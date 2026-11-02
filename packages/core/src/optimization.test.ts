@@ -79,6 +79,8 @@ describe("ЦСО", () => {
       suggestedGoal: rubles(450),
     });
     expect(goalAdvice([rubles(280), rubles(480)], rubles(300))).toEqual({ kind: "reachable" });
+    // «Поднять цель до 150 ₽» at a goal of 161 ₽ would be a cut: the suggestion goes up to the next 50 ₽.
+    expect(goalAdvice([rubles(169), rubles(175)], rubles(161))).toMatchObject({ kind: "unreachable", suggestedGoal: rubles(200) });
   });
 });
 
@@ -111,10 +113,25 @@ describe("guard", () => {
   });
 
   it("clamps by remaining budget for every actor", () => {
-    const state = baseState({ spentMonth: rubles(20_000) });
+    const state = baseState({ spentMonth: rubles(20_000), directions: [direction({ weeklyLimit: rubles(1_500) })] });
     const verdict = guard(state, { type: "SetSpendLimit", directionId: "d1", weeklyLimit: rubles(3_360) }, "user");
     // allowed total = (27 000 − 20 000) / 3 weeks left = 2 333 ₽
     expect(verdict).toMatchObject({ kind: "clamp", reason: { code: "BUDGET_CLAMP" } });
+  });
+
+  it("refuses a raise the remaining budget would cut to the current limit, so no empty change is logged", () => {
+    const state = baseState({ spentMonth: rubles(20_000) });
+    const verdict = guard(state, { type: "SetSpendLimit", directionId: "d1", weeklyLimit: rubles(3_360) }, "safety_net");
+    // allowed 2 333 ₽ is below the current 2 800 ₽: there is nothing to add.
+    expect(verdict).toMatchObject({ kind: "reject", reason: { code: "BUDGET_LIMIT_EXCEEDED" } });
+  });
+
+  it("makes no automated raise of a few rubles, but keeps the owner's clamped raise", () => {
+    // allowed total = (27 000 − 20 000) / 3 weeks left = 2 333 ₽; the limit is 2 300 ₽: only 33 ₽ (1,4%) would be added.
+    const state = baseState({ spentMonth: rubles(20_000), directions: [direction({ weeklyLimit: rubles(2_300) })] });
+    const raise = { type: "SetSpendLimit", directionId: "d1", weeklyLimit: rubles(2_760) } as const;
+    expect(guard(state, raise, "safety_net")).toMatchObject({ kind: "reject", reason: { code: "BUDGET_LIMIT_EXCEEDED" } });
+    expect(guard(state, raise, "user")).toMatchObject({ kind: "clamp", reason: { code: "BUDGET_CLAMP" } });
   });
 
   it("rejects strategies outside the platform catalog and too frequent changes", () => {
@@ -181,6 +198,7 @@ describe("safety net", () => {
       leads14: new Map(),
       borderlineSince: new Map(),
       adsInExperiments: new Set(),
+      agentActed: true,
     });
     expect(actions).toContainEqual({ kind: "command", command: { type: "PauseAd", adId: "a1" }, reasonCode: "SAFETY_PAUSE_AD" });
   });
@@ -194,6 +212,7 @@ describe("safety net", () => {
       leads14: new Map([["d1", 10]]),
       borderlineSince: new Map(),
       adsInExperiments: new Set(),
+      agentActed: true,
     });
     expect(actions).toContainEqual({
       kind: "command",
@@ -211,8 +230,53 @@ describe("safety net", () => {
       leads14: new Map(),
       borderlineSince: new Map([["a1", "2026-10-05"]]),
       adsInExperiments: new Set(),
+      agentActed: true,
     });
     expect(actions.some((a) => a.kind === "command" && a.command.type === "StartExperiment")).toBe(true);
+  });
+
+  it("waits 7 days for an agent that acted, but starts an experiment the same day when no turn took place", () => {
+    const input = (agentActed: boolean) => ({
+      state: baseState({ adClasses: new Map([["a1", "borderline"], ["a2", "effective"]]) }),
+      directionClasses: new Map([["d1", "borderline"]] as const),
+      touchedByAgent: new Set<string>(),
+      spendLast7Days: new Map<string, number>(),
+      leads14: new Map<string, number>(),
+      borderlineSince: new Map([["a1", baseState().today]]),
+      adsInExperiments: new Set<string>(),
+      agentActed,
+    });
+    const started = (agentActed: boolean) => safetyNet(input(agentActed)).filter((a) => a.kind === "command" && a.command.type === "StartExperiment");
+    expect(started(true)).toEqual([]);
+    expect(started(false)).toHaveLength(1);
+  });
+
+  it("starts no experiment in advertising that is paused: a check without traffic proves nothing", () => {
+    const actions = safetyNet({
+      state: baseState({ directions: [{ ...direction(), status: "paused" }], adClasses: new Map([["a1", "borderline"], ["a2", "effective"]]) }),
+      directionClasses: new Map([["d1", "borderline"]]),
+      touchedByAgent: new Set(),
+      spendLast7Days: new Map(),
+      leads14: new Map(),
+      borderlineSince: new Map([["a1", "2026-10-01"]]),
+      adsInExperiments: new Set(),
+      agentActed: false,
+    });
+    expect(actions.filter((a) => a.kind === "command" && a.command.type === "StartExperiment")).toEqual([]);
+  });
+
+  it("starts no experiment while one is running", () => {
+    const actions = safetyNet({
+      state: baseState({ adClasses: new Map([["a1", "borderline"], ["a2", "borderline"]]), activeExperiments: 1 }),
+      directionClasses: new Map([["d1", "borderline"]]),
+      touchedByAgent: new Set(),
+      spendLast7Days: new Map(),
+      leads14: new Map(),
+      borderlineSince: new Map([["a1", "2026-10-01"], ["a2", "2026-10-01"]]),
+      adsInExperiments: new Set(),
+      agentActed: false,
+    });
+    expect(actions.filter((a) => a.kind === "command" && a.command.type === "StartExperiment")).toEqual([]);
   });
 });
 
@@ -229,6 +293,10 @@ describe("A/B verdict", () => {
   it("stops early when the variant is clearly worse", () => {
     const outcome = evaluateExperiment({ ...base, today: "2026-10-08", control: stats(6_000, 15, 150), variant: stats(6_000, 2, 150) });
     expect(outcome.status).toBe("control_wins_early");
+  });
+  it("does not call a variant without clicks clearly worse", () => {
+    expect(evaluateExperiment({ ...base, today: "2026-10-08", control: stats(0, 0, 0), variant: stats(0, 0, 0) }).status).toBe("running");
+    expect(evaluateExperiment({ ...base, today: "2026-10-08", control: stats(3_000, 4, 80), variant: stats(0, 0, 0) }).status).toBe("running");
   });
   it("is deterministic for the same experiment", () => {
     const input = { ...base, today: "2026-10-13", control: stats(5_000, 6, 120), variant: stats(5_000, 9, 120) };
@@ -253,5 +321,9 @@ describe("explanation validator", () => {
   });
   it("rejects jargon", () => {
     expect(validateExplanation("снизили ставку из-за низкого CTR", facts).map((i) => i.code)).toEqual(["JARGON", "JARGON"]);
+    expect(validateExplanation("Ставки на телефоны снижены", facts).map((i) => i.code)).toEqual(["JARGON"]);
+  });
+  it("finds jargon only from the start of a word: «доставка» is a plain word", () => {
+    expect(validateExplanation("Запрос «букет с доставкой» приводит клиентов, доставка цветов тоже", facts)).toEqual([]);
   });
 });

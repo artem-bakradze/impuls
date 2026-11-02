@@ -13,8 +13,7 @@ pnpm db:migrate
 pnpm lint && pnpm type-check
 pnpm test            # unit
 pnpm test:bdd        # Russian BDD scenarios
-docker run -d --rm --name impuls-s3 -p 9000:9090 adobe/s3mock   # S3-compatible store for photo tests
-MAILPIT_SMTP_URL=smtp://localhost:1025 MAILPIT_API_URL=http://localhost:8025 S3_TEST_ENDPOINT=http://localhost:9000 pnpm test:integration
+MAILPIT_SMTP_URL=smtp://localhost:1025 MAILPIT_API_URL=http://localhost:8025 pnpm test:integration
 ```
 
 ## Running the worker locally (simulator)
@@ -26,6 +25,8 @@ SMTP_URL=smtp://localhost:1025 MAIL_FROM="Импульс <noreply@impuls.test>" 
 pnpm --filter @impuls/worker start
 ```
 
+`AGENT_RUNTIME=heuristic` runs the deterministic test agent (insights and day reviews without model calls);
+`openai` also needs `OPENAI_API_KEY`, `OPENAI_AGENT_MODEL`, the prices and the spend limits (`docs/deployment.md`).
 Missing variables stop the worker with a list of problems. There are two modes: `simulator` (local, CI, staging) and
 `production` (real Direct with each business's own OAuth token, needs `TOKEN_ENCRYPTION_KEY`). Yandex shut the Direct
 sandbox down on 2026-07-15; `DIRECT_API_MODE=sandbox` is refused at startup.
@@ -36,7 +37,7 @@ The worker must run too: web only reads PostgreSQL and enqueues jobs (`web-job` 
 
 ```bash
 DATABASE_URL=postgres://impuls:impuls@localhost:54329/impuls \
-DIRECT_API_MODE=simulator \
+DIRECT_API_MODE=simulator SUPPORT_EMAIL=support@impuls.test \
 AUTH_SECRET=$(openssl rand -base64 32) AUTH_URL=http://localhost:3000 \
 AUTH_GOOGLE_ID=<Google OAuth client id> AUTH_GOOGLE_SECRET=<Google OAuth client secret> \
 pnpm --filter @impuls/web dev
@@ -47,7 +48,8 @@ pnpm --filter @impuls/web dev
 | `DATABASE_URL` | yes | PostgreSQL |
 | `AUTH_SECRET` | yes, ≥ 32 chars | Signs session cookies (Auth.js) |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | yes | Google OAuth client; redirect URI `<AUTH_URL>/api/auth/callback/google` |
-| `DIRECT_API_MODE` | yes | `simulator` or `production`; `simulator` shows the «Тестовый режим» banner |
+| `DIRECT_API_MODE` | yes | `simulator` or `production`; `simulator` shows the «Тестовый стенд — Яндекс Директ не подключён» banner (the simulation pult replaces it on a simulated business's screens) |
+| `SUPPORT_EMAIL` | yes | Support address shown in the settings; owners write there to delete the account (see `docs/deployment.md`) |
 | `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | in `production` | Yandex OAuth app «для авторизации пользователей» (not the debug app); redirect URI `<APP_URL>/api/direct/oauth/callback` |
 | `TOKEN_ENCRYPTION_KEY` | in `production` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts Direct OAuth tokens, same value in worker and web |
 | `APP_URL` | in `production` | Public URL of the app; the OAuth redirect URI is built from it |
@@ -56,7 +58,7 @@ pnpm --filter @impuls/web dev
 
 A missing or invalid required variable stops the server at startup with the list of problems. Sessions are signed
 JWT cookies valid for 30 days since the last visit (HttpOnly, SameSite=Lax, Secure in production builds).
-In `DIRECT_API_MODE=simulator` the wizard's «Подключите Яндекс Директ» step skips OAuth. In `production` it sends the
+In `DIRECT_API_MODE=simulator` the wizard's «Подключите Яндекс Директ и запустите» step skips OAuth. In `production` it sends the
 owner to Yandex (`/api/direct/oauth/start`) and stores the encrypted tokens in the callback.
 
 ### Direct contract tests (`pnpm test:contract`)
@@ -105,6 +107,7 @@ Web unit and component tests (Vitest + Testing Library, jsdom): `pnpm --filter @
 ```bash
 pnpm --filter @impuls/worker cli flags set agent_enabled off --business <id>
 pnpm --filter @impuls/worker cli flags set automation_enabled off   # global
+pnpm --filter @impuls/worker cli agent costs --month               # model spend of the agent per business
 ```
 
 ## Schema changes

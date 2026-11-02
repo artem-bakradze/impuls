@@ -25,12 +25,20 @@ services:
     environment:
       DATABASE_URL: postgres://impuls:impuls@postgres:5432/impuls
       DIRECT_API_MODE: simulator
-      # Free by default; `AGENT_RUNTIME=openai CREATIVES=openai` with OPENAI_* from the shell use the real models.
+      # Free by default; `AGENT_RUNTIME=openai CREATIVES=openai` with OPENAI_* from the shell use the real models,
+      # and the agent also needs its prices and spend limits (docs/deployment.md). `heuristic` is the free test agent.
       AGENT_RUNTIME: ${AGENT_RUNTIME:-idle}
       CREATIVES: ${CREATIVES:-template}
       OPENAI_API_KEY:
       OPENAI_TEXT_MODEL:
       OPENAI_AGENT_MODEL:
+      AGENT_PRICE_INPUT_RUB_PER_MTOK:
+      AGENT_PRICE_OUTPUT_RUB_PER_MTOK:
+      AGENT_MONTHLY_LIMIT_RUB:
+      AGENT_SIMULATION_RUN_LIMIT_RUB:
+      OPENAI_STRATEGY_MODEL:
+      AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK:
+      AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK:
       SMTP_URL: smtp://mailpit:1025
       MAIL_FROM: "Импульс <noreply@impuls.test>"
       APP_URL: http://localhost:3000
@@ -53,7 +61,9 @@ services:
     environment:
       - DATABASE_URL=postgres://impuls:impuls@postgres:5432/impuls
       - DIRECT_API_MODE=simulator
-      - AUTH_URL=http://localhost:3000
+      - SUPPORT_EMAIL=support@impuls.test
+      # Override when another local app holds localhost:3000, e.g. AUTH_URL=http://127.0.0.1:3000.
+      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
       - AUTH_TRUST_HOST=true
       - AUTH_SECRET
       - AUTH_GOOGLE_ID

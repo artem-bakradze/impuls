@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 export * as schema from "./schema";
 /** Query operators re-exported so every package uses the same drizzle-orm instance. */
-export { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+export { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 
 /** Requires DATABASE_URL; fails fast when it is missing (No-Fallbacks policy). */
 export const databaseUrl = (): string => {
@@ -15,7 +15,7 @@ export const databaseUrl = (): string => {
   return url;
 };
 
-export const createPool = (url: string = databaseUrl()): pg.Pool => new pg.Pool({ connectionString: url });
+export const createPool = (url: string = databaseUrl(), max?: number): pg.Pool => new pg.Pool({ connectionString: url, ...(max !== undefined && { max }) });
 
 export const createDb = (pool: pg.Pool) => drizzle(pool, { schema });
 export type Db = ReturnType<typeof createDb>;

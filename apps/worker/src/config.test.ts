@@ -14,6 +14,17 @@ const complete = {
   MINISITE_DIR: "/tmp/minisites",
 };
 
+/** The Agents API runtime with its prices and limits (ad-agent spec «Лимиты агента»). */
+const openai = {
+  AGENT_RUNTIME: "openai",
+  OPENAI_API_KEY: "k",
+  OPENAI_AGENT_MODEL: "gpt-6-luna",
+  AGENT_PRICE_INPUT_RUB_PER_MTOK: "250",
+  AGENT_PRICE_OUTPUT_RUB_PER_MTOK: "1000",
+  AGENT_MONTHLY_LIMIT_RUB: "300",
+  AGENT_SIMULATION_RUN_LIMIT_RUB: "100",
+};
+
 describe("loadConfig", () => {
   it("fails fast when a required variable is missing", () => {
     expect(() => loadConfig({ DIRECT_API_MODE: "simulator", AGENT_RUNTIME: "idle" })).toThrow(ConfigError);
@@ -43,14 +54,16 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...complete, CREATIVES: undefined })).toThrow(/CREATIVES/);
   });
 
-  it("requires the OpenAI key and agent model for the Agents API runtime", () => {
-    expect(() => loadConfig({ ...complete, AGENT_RUNTIME: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_AGENT_MODEL/);
-    expect(loadConfig({ ...complete, AGENT_RUNTIME: "openai", OPENAI_API_KEY: "k", OPENAI_AGENT_MODEL: "gpt-6.1-sol" })).toMatchObject({ AGENT_RUNTIME: "openai" });
+  it("requires the OpenAI key, the agent model, its prices and the spend limits for the Agents API runtime", () => {
+    expect(() => loadConfig({ ...complete, AGENT_RUNTIME: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_AGENT_MODEL.*AGENT_PRICE_INPUT_RUB_PER_MTOK.*AGENT_MONTHLY_LIMIT_RUB.*AGENT_SIMULATION_RUN_LIMIT_RUB/);
+    expect(loadConfig({ ...complete, ...openai })).toMatchObject({ AGENT_RUNTIME: "openai", AGENT_MONTHLY_LIMIT_RUB: 300 });
+    expect(loadConfig({ ...complete, AGENT_RUNTIME: "heuristic" })).toMatchObject({ AGENT_RUNTIME: "heuristic" });
   });
 
-  it("requires the token encryption key in production", () => {
+  it("requires the token encryption key and the agent on the model in production", () => {
     expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production" })).toThrow(/TOKEN_ENCRYPTION_KEY/);
-    expect(loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toMatchObject({ DIRECT_API_MODE: "production" });
+    expect(() => loadConfig({ ...complete, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toThrow(/AGENT_RUNTIME: must be openai/);
+    expect(loadConfig({ ...complete, ...openai, DIRECT_API_MODE: "production", TOKEN_ENCRYPTION_KEY: "k" })).toMatchObject({ DIRECT_API_MODE: "production" });
   });
 });
 

@@ -57,6 +57,34 @@
       "when": 1793265109734,
       "tag": "0007_direct_production",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793275050515,
+      "tag": "0008_simplify_mvp_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793347172505,
+      "tag": "0009_simulation_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793368167332,
+      "tag": "0010_agent_insights",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793393804486,
+      "tag": "0011_agent_analyst",
+      "breakpoints": true
     }
   ]
 }

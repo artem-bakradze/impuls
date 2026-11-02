@@ -1,23 +1,40 @@
 import { randomUUID } from "node:crypto";
-import { toRub } from "@impuls/agent";
-import type { AgentToolbox, Justification, ToolCallRecord, ToolResult, TurnSnapshot, TurnTrigger } from "@impuls/agent";
-import { emptyStats, toLocalDate, validateExplanation } from "@impuls/core";
-import type { Command, Fact } from "@impuls/core";
-import type { JobContext } from "./context";
+import { toRub, turnInstructionsVersion } from "@impuls/agent";
+import type {
+  AgentToolbox,
+  BreakdownAnswer,
+  HypothesisDraft,
+  HypothesisResult,
+  HypothesisView,
+  ObservationDraft,
+  ToolCallRecord,
+  ToolResult,
+  TurnSnapshot,
+  TurnTrigger,
+  TurnUsage,
+} from "@impuls/agent";
+import { addDays, catalogFacts, emptyStats, monthKey, toLocalDate, validateExplanation, validateInsight } from "@impuls/core";
+import type { Command, Fact, InsightDraft, InsightFact } from "@impuls/core";
+import { breakdownForAgent, breakdownPeriod } from "./analyst";
+import type { AgentCosts, JobContext } from "./context";
+import { RULES_DAY_CODE } from "./change-kinds";
+import { budgetFigures, directionLabel, factCatalog, saveAgentInsight } from "./insights";
 import { turnLockKey } from "./locks";
 import { loadBusinessView } from "./state";
 import type { BusinessView } from "./state";
-import type { ApprovalRequest, InboxEvent } from "./store";
+import { prepareExperiment } from "./experiments";
+import type { AgentTurnRecord, HypothesisRecord, InboxEvent } from "./store";
 
 export const MAX_ACTIONS_PER_DAY = 20;
 export const MAX_CALLS_PER_TURN = 30;
-export const MAX_NOTES = 50;
-export const MAX_NOTE_LENGTH = 500;
 export const EVENT_TURN_MIN_INTERVAL_MS = 3_600_000;
 export const AGENT_UNAVAILABLE_INCIDENT_MS = 24 * 3_600_000;
-export const APPROVAL_TTL_MS = 48 * 3_600_000;
-export const APPROVAL_REPEAT_DELAY_MS = 3 * 24 * 3_600_000;
 const TURN_TIMEOUT_MS = 10 * 60_000;
+/** Insights the agent reads back so as not to repeat itself (ad-agent spec). */
+const RECENT_INSIGHT_DAYS = 14;
+/** Open hypotheses a business may have at once, and how long closed ones are read back (ad-agent spec «Журнал гипотез»). */
+export const MAX_OPEN_HYPOTHESES = 10;
+const RECENT_HYPOTHESIS_DAYS = 14;
 
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const PHONE = /(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
@@ -31,7 +48,13 @@ const activeTurns = new Map<string, AbortController>();
 /** Builds the agent snapshot strictly from allowlisted fields (ad-agent spec, data minimization). */
 export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promise<TurnSnapshot> => {
   const card = view.business.card;
-  const decisions = await ctx.store.userDecisions(view.business.id);
+  const [decisions, experiments, rows14] = await Promise.all([
+    ctx.store.userDecisions(view.business.id),
+    ctx.store.experiments(view.business.id),
+    ctx.store.stats(view.business.id, addDays(view.today, -13), view.today),
+  ]);
+  const running = experiments.find((e) => e.status === "running");
+  const budget = budgetFigures(view);
   return {
     today: view.today,
     business: {
@@ -42,7 +65,7 @@ export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promis
       advantages: card.advantages.map(redactPersonalData),
     },
     goal: { costPerLeadRub: toRub(view.cso), mode: view.business.csoSource.kind },
-    budget: { monthRub: toRub(view.monthBudget), spentRub: toRub(view.spentMonth) },
+    budget: { monthRub: budget.monthRub, spentRub: budget.spentRub, leftRub: budget.leftRub, evenPaceRub: budget.evenPaceRub },
     strategyCatalog: ctx.platformFor(view.business.id).capabilities().strategies.map((s) => ({ id: s.id, title: s.title })),
     directions: view.directions.map((d) => {
       const stats = view.directionStats14.get(d.id) ?? emptyStats();
@@ -71,17 +94,19 @@ export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promis
         leads14: stats.leads,
       };
     }),
+    experiment: running ? { adId: running.adId, variantAdId: running.variantAdId, hypothesis: running.hypothesis, startedOn: running.startedOn } : null,
     userDecisions: decisions.map((d) => ({ objectId: d.objectId, action: d.commandType, on: d.on })),
-    notes: (await ctx.store.notes(view.business.id)).map(redactPersonalData),
+    facts: factCatalog(view, rows14),
   };
 };
 
-/** Every number the agent may cite: values from the turn snapshot (decision facts). */
+/** Every number the agent may cite besides the catalog: values the decision facts allow (e.g. a limit +20%). */
 export const snapshotFacts = (snapshot: TurnSnapshot): Fact[] => {
   const facts: Fact[] = [
     { kind: "rub", value: snapshot.goal.costPerLeadRub },
     { kind: "rub", value: snapshot.budget.monthRub },
     { kind: "rub", value: snapshot.budget.spentRub },
+    ...catalogFacts(snapshot.facts),
   ];
   for (const item of [...snapshot.directions, ...snapshot.ads]) {
     facts.push({ kind: "rub", value: item.spend14Rub }, { kind: "count", value: item.leads14 });
@@ -98,37 +123,55 @@ export const snapshotFacts = (snapshot: TurnSnapshot): Fact[] => {
 const toolResult = (status: ToolResult["status"], message: string, code = ""): ToolResult =>
   status === "rejected" ? { status, code, message } : { status, message };
 
-const objectIdOf = (command: Command): string =>
-  "adId" in command ? command.adId : "directionId" in command ? command.directionId : "business";
+export type TurnOutcome =
+  | { status: "completed" | "failed" | "cancelled"; turnId: string }
+  | { status: "skipped"; reason: "disabled" | "busy" | "cost_limit" | "no_events" | "too_soon" };
 
-/** Major actions that need the owner's approval in the «Спрашивать» mode (campaign-settings spec). */
-const isMajorAction = (command: Command, view: BusinessView): boolean => {
-  if (command.type === "PauseDirection" || command.type === "StartExperiment") {
-    return true;
+/** Model spend of a turn in kopecks, rounded up so the limit is never undercounted (ad-agent spec «Лимиты агента»). */
+const turnCost = (usage: TurnUsage | null, costs: AgentCosts | undefined): number =>
+  usage === null || costs === undefined ? 0 : Math.ceil((usage.inputTokens * costs.inputKopecksPerMTok + usage.outputTokens * costs.outputKopecksPerMTok) / 1_000_000);
+
+/**
+ * Whether the business has spent its model budget: this month's turns, or for a simulation the turns of the run
+ * (a restart deletes them together with the rest of the simulation's data).
+ */
+export const agentBudgetSpent = async (ctx: JobContext, businessId: string): Promise<boolean> => {
+  const costs = ctx.agentCosts;
+  if (costs === undefined) return false;
+  const business = await ctx.store.getBusiness(businessId);
+  const turns = await ctx.store.turns(businessId);
+  if (business.mode === "simulation") {
+    return turns.reduce((sum, t) => sum + t.costKopecks, 0) >= costs.simulationRunLimitKopecks;
   }
-  if (command.type === "SetSpendLimit") {
-    const direction = view.directions.find((d) => d.id === command.directionId);
-    const total = view.directions.filter((d) => d.status === "active").reduce((sum, d) => sum + d.weeklyLimit, 0);
-    return direction !== undefined && total > 0 && Math.abs(command.weeklyLimit - direction.weeklyLimit) > total * 0.3;
-  }
-  return false;
+  const month = monthKey(toLocalDate(ctx.clock.now(), business.timeZone));
+  const spent = turns.filter((t) => monthKey(toLocalDate(t.startedAt, business.timeZone)) === month).reduce((sum, t) => sum + t.costKopecks, 0);
+  return spent >= costs.monthlyLimitKopecks;
 };
-
-export type TurnOutcome = { status: "completed" | "failed" | "cancelled"; turnId: string } | { status: "skipped" };
 
 /**
  * Runs one agent turn: at most one per business at a time, a fresh session per turn,
- * tools bound to the business on the server side.
+ * tools bound to the business on the server side. Every action and observation comes with an insight that is
+ * checked against the snapshot before anything is executed (insights spec).
  */
 export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger: TurnTrigger): Promise<TurnOutcome> => {
   if (!(await ctx.store.getFlag("agent_enabled", businessId))) {
-    return { status: "skipped" };
+    return { status: "skipped", reason: "disabled" };
   }
+  if (await agentBudgetSpent(ctx, businessId)) {
+    return { status: "skipped", reason: "cost_limit" };
+  }
+  // The weekly review runs on the strategy model when one is configured (add-agent-analyst-stage1 decision 7).
+  const weekly = trigger.kind === "weekly_review" ? ctx.strategist : undefined;
+  const agent = weekly?.runtime ?? ctx.agent;
+  const costs = weekly?.costs ?? ctx.agentCosts;
   const outcome = await ctx.locks.tryWithLock(turnLockKey(businessId), async (): Promise<TurnOutcome> => {
     const platform = ctx.platformFor(businessId);
     const view = await loadBusinessView(ctx.store, businessId, ctx.clock, platform.capabilities());
     const snapshot = await buildSnapshot(ctx, view);
     const facts = snapshotFacts(snapshot);
+    // The turn's fact catalog grows with the breakdowns the agent asks for (add-agent-analyst-stage1 decision 2).
+    const catalog: InsightFact[] = [...snapshot.facts];
+    const breakdowns = new Map<string, BreakdownAnswer>();
     const turnId = `turn-${randomUUID()}`;
     const controller = new AbortController();
     activeTurns.set(businessId, controller);
@@ -140,103 +183,196 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       return (await ctx.store.changes(businessId)).filter((c) => c.actor === "agent" && c.status === "applied" && c.createdAt.getTime() >= dayAgo).length;
     };
 
-    const requestApproval = async (command: Command, justification: Justification): Promise<ToolResult> => {
-      const objectId = objectIdOf(command);
-      const recentExpired = (await ctx.store.approvals(businessId)).some(
-        (a) =>
-          a.objectId === objectId &&
-          a.command.type === command.type &&
-          (a.status === "pending" || (a.status === "expired" && ctx.clock.now().getTime() - (a.decidedAt?.getTime() ?? 0) < APPROVAL_REPEAT_DELAY_MS)),
-      );
-      if (recentExpired) {
-        return toolResult("rejected", "это предложение уже ждёт ответа или истекло меньше 3 дней назад", "APPROVAL_PENDING");
+    /** Refusals that come before the insight check: a stopped turn or exhausted limits. */
+    const precheck = async (counted: boolean): Promise<ToolResult | null> => {
+      callsThisTurn++;
+      if (!(await ctx.store.getFlag("agent_enabled", businessId))) {
+        controller.abort("agent_disabled");
       }
-      await ctx.store.saveApproval({
-        id: `apr-${randomUUID()}`,
-        businessId,
-        command,
-        objectId,
-        reasonCode: justification.reasonCode,
-        explanation: justification.text,
-        turnId,
-        createdAt: ctx.clock.now(),
-        status: "pending",
-        decidedAt: null,
-      });
-      await ctx.store.notify({
-        businessId,
-        kind: "approval_request",
-        message: `Я предлагаю изменение и жду вашего решения: ${justification.text} Ответьте в разделе «Нужно ваше участие» — без ответа предложение отменится через 48 часов.`,
-        at: ctx.clock.now(),
-      });
-      return toolResult("queued", "отправлено владельцу на подтверждение");
+      if (controller.signal.aborted) return toolResult("rejected", "ход прерван: изменились настройки", "TURN_CANCELLED");
+      if (callsThisTurn > MAX_CALLS_PER_TURN) return toolResult("rejected", "лимит вызовов за ход исчерпан", "TURN_CALL_LIMIT");
+      if (counted && (await actionsToday()) >= MAX_ACTIONS_PER_DAY) return toolResult("rejected", "лимит действий на сегодня исчерпан", "DAILY_ACTION_LIMIT");
+      return null;
     };
+    const insightIssues = (insight: InsightDraft, extra: readonly Fact[] = []): Extract<ToolResult, { status: "rejected" }> | null => {
+      const issues = validateInsight(insight, catalog, [...facts, ...extra]);
+      return issues.length === 0 ? null : { status: "rejected", code: "INSIGHT_INVALID", message: issues.map((i) => i.message).join("; ") };
+    };
+    /** Percents an adjustment's insight may cite: the new value, the current one (it may change within the turn) and the step. */
+    const commandFacts = async (command: Command): Promise<Fact[]> => {
+      if (command.type !== "SetDeviceAdjustment") return [];
+      const current = (await ctx.store.directions(businessId)).find((d) => d.id === command.directionId)?.deviceAdjustments[command.device] ?? 0;
+      return [Math.abs(command.percent), Math.abs(current), Math.abs(command.percent - current)].map((value) => ({ kind: "percent", value }));
+    };
+    const rejected = (code: string, message: string) => ({ status: "rejected" as const, code, message });
+    const hypothesisView = (h: HypothesisRecord): HypothesisView => ({
+      id: h.id,
+      statement: h.statement,
+      check: h.check,
+      checkOn: h.checkOn,
+      status: h.status,
+      result: h.result,
+      openedOn: toLocalDate(h.openedAt, view.business.timeZone),
+      closedOn: h.closedAt === null ? null : toLocalDate(h.closedAt, view.business.timeZone),
+      facts: [...h.facts, ...h.resultFacts].map((f) => ({ object: f.object, metric: f.metric, period: f.period, value: f.value })),
+    });
+
+    /** Opens, updates or closes a hypothesis of the journal, its texts checked like an insight's (ad-agent spec «Журнал гипотез»). */
+    const writeHypothesis = async (draft: HypothesisDraft): Promise<HypothesisResult> => {
+      const stop = await precheck(false);
+      if (stop?.status === "rejected") return stop;
+      if (draft.checkOn < view.today) return rejected("CHECK_DAY_PASSED", "день проверки уже прошёл");
+      const closing = draft.status !== "checking";
+      if (closing && draft.result === undefined) return rejected("RESULT_REQUIRED", "чтобы закрыть гипотезу, нужен результат: что выяснили");
+      const issues = insightIssues({ reasonCode: "HYPOTHESIS", observation: closing ? (draft.result ?? "") : draft.statement, factKeys: draft.factKeys, next: draft.check });
+      if (issues) return issues;
+      const journal = await ctx.store.hypotheses(businessId);
+      const resolved = draft.factKeys.map((k) => catalog.find((f) => f.key === k)).filter((f): f is InsightFact => f !== undefined);
+      const now = ctx.clock.now();
+      if (draft.id === undefined) {
+        if (closing) return rejected("NEW_IS_OPEN", "новая гипотеза записывается в статусе «проверяем»");
+        if (journal.filter((h) => h.status === "checking").length >= MAX_OPEN_HYPOTHESES) {
+          return rejected("HYPOTHESIS_LIMIT", "сначала закройте одну из открытых гипотез");
+        }
+        const id = `h-${randomUUID().slice(0, 12)}`;
+        await ctx.store.saveHypothesis({
+          id,
+          businessId,
+          openedTurnId: turnId,
+          closedTurnId: null,
+          statement: draft.statement,
+          facts: resolved,
+          check: draft.check,
+          checkOn: draft.checkOn,
+          status: "checking",
+          result: null,
+          resultFacts: [],
+          openedAt: now,
+          closedAt: null,
+        });
+        return { status: "applied", message: "гипотеза записана", id };
+      }
+      const existing = journal.find((h) => h.id === draft.id);
+      if (!existing) return rejected("OBJECT_NOT_FOUND", "такой гипотезы нет");
+      if (existing.status !== "checking") return rejected("ALREADY_CLOSED", "эта гипотеза уже закрыта");
+      await ctx.store.saveHypothesis(
+        closing
+          ? { ...existing, status: draft.status, result: draft.result ?? null, resultFacts: resolved, closedTurnId: turnId, closedAt: now }
+          : { ...existing, statement: draft.statement, facts: resolved, check: draft.check, checkOn: draft.checkOn },
+      );
+      return { status: "applied", message: closing ? "гипотеза закрыта" : "гипотеза обновлена", id: existing.id };
+    };
+    /** Every attempt with its answer, for the turn journal and the eval's share of checks passed at once. */
+    const hypothesisCalls: { draft: HypothesisDraft; result: HypothesisResult }[] = [];
 
     const tools: AgentToolbox = {
-      act: async (command: Command, justification: Justification): Promise<ToolResult> => {
-        callsThisTurn++;
-        let result: ToolResult;
-        if (!(await ctx.store.getFlag("agent_enabled", businessId))) {
-          controller.abort("agent_disabled");
-        }
-        if (controller.signal.aborted) {
-          result = toolResult("rejected", "ход прерван: изменились настройки", "TURN_CANCELLED");
-        } else if (callsThisTurn > MAX_CALLS_PER_TURN) {
-          result = toolResult("rejected", "лимит вызовов за ход исчерпан", "TURN_CALL_LIMIT");
-        } else if ((await actionsToday()) >= MAX_ACTIONS_PER_DAY) {
-          result = toolResult("rejected", "лимит действий на сегодня исчерпан", "DAILY_ACTION_LIMIT");
-        } else if (justification.reasonCode.trim() === "" || justification.text.trim() === "") {
-          result = toolResult("rejected", "нужно обоснование: код причины и текст для владельца бизнеса", "JUSTIFICATION_REQUIRED");
-        } else {
-          const issues = validateExplanation(justification.text, facts);
-          if (issues.length > 0) {
-            result = toolResult("rejected", issues.map((i) => i.message).join("; "), "EXPLANATION_INVALID");
-          } else if (view.business.autonomy === "ask" && isMajorAction(command, view)) {
-            result = await requestApproval(command, justification);
+      act: async (command: Command, insight: InsightDraft): Promise<ToolResult> => {
+        let result = (await precheck(true)) ?? insightIssues(insight, await commandFacts(command));
+        if (result === null) {
+          const prepared = await prepareExperiment(ctx, businessId, command);
+          if (!prepared.ok) {
+            result = toolResult("rejected", prepared.message, prepared.code);
           } else {
-            const execution = await ctx.executor.execute({
-              businessId,
-              command,
-              actor: "agent",
-              reasonCode: justification.reasonCode,
-              explanation: justification.text,
-              turnId,
-            });
-            if (execution.status === "applied" || execution.status === "clamped") {
-              result = toolResult(execution.status, execution.message);
-            } else {
-              result = toolResult("rejected", execution.message, execution.code);
-            }
+            const execution = await ctx.executor.execute({ businessId, command: prepared.command, actor: "agent", reasonCode: insight.reasonCode, explanation: insight.observation, turnId });
+            // The insight shows the decision whatever the guard answered (insights spec «Что решили»).
+            await saveAgentInsight(ctx, { view, catalog, turnId, draft: insight, command: prepared.command, result: execution });
+            result =
+              execution.status === "applied" || execution.status === "clamped" ? toolResult(execution.status, execution.message) : toolResult("rejected", execution.message, execution.code);
           }
         }
-        calls.push({ command, justification, result });
+        calls.push({ command, insight, result });
         return result;
       },
-      saveNote: async (text: string): Promise<void> => {
-        const notes = [...(await ctx.store.notes(businessId)), redactPersonalData(text).slice(0, MAX_NOTE_LENGTH)];
-        await ctx.store.saveNotes(businessId, notes.slice(-MAX_NOTES));
+      observe: async (insight: ObservationDraft): Promise<ToolResult> => {
+        const result = (await precheck(false)) ?? insightIssues(insight) ?? toolResult("applied", "инсайт сохранён");
+        if (result.status === "applied") {
+          await saveAgentInsight(ctx, { view, catalog, turnId, draft: insight, command: null, result: null });
+        }
+        calls.push({ command: null, insight, result });
+        return result;
+      },
+      recentInsights: async () => {
+        const since = ctx.clock.now().getTime() - RECENT_INSIGHT_DAYS * 86_400_000;
+        return (await ctx.store.insights(businessId))
+          .filter((i) => i.createdAt.getTime() >= since && i.reasonCode !== RULES_DAY_CODE)
+          .map((i) => ({ at: i.createdAt.toISOString(), observation: i.observation, decision: i.decision.text, facts: i.facts.map((f) => ({ object: f.object, metric: f.metric, period: f.period, value: f.value })) }));
+      },
+      breakdown: async (directionId, dimension) => {
+        const key = `${directionId}|${dimension}`;
+        const cached = breakdowns.get(key);
+        if (cached) return cached;
+        const stop = await precheck(false);
+        if (stop?.status === "rejected") return stop;
+        const direction = view.directions.find((d) => d.id === directionId);
+        if (!direction) return rejected("OBJECT_NOT_FOUND", "объект не найден");
+        if (dimension === "query" && direction.channel !== "search") {
+          return rejected("NO_QUERIES", "у рекламы на сайтах-партнёрах нет поисковых запросов");
+        }
+        const { from, to } = breakdownPeriod(view.today);
+        const rows = (await platform.getBreakdown([direction.platformCampaignId], from, to, dimension)).filter((r) => r.campaignId === direction.platformCampaignId);
+        // The direction as it is now: an action earlier in the turn may have changed its phrases or adjustments.
+        const current = (await ctx.store.directions(businessId)).find((d) => d.id === directionId) ?? direction;
+        const built = breakdownForAgent({ direction: current, label: directionLabel(view, directionId), dimension, rows, goal: view.cso });
+        catalog.push(...built.facts);
+        facts.push(...catalogFacts(built.facts), ...built.numbers);
+        breakdowns.set(key, built.answer);
+        return built.answer;
+      },
+      hypotheses: async () => {
+        const since = ctx.clock.now().getTime() - RECENT_HYPOTHESIS_DAYS * 86_400_000;
+        return (await ctx.store.hypotheses(businessId)).filter((h) => h.status === "checking" || (h.closedAt?.getTime() ?? 0) >= since).map(hypothesisView);
+      },
+      saveHypothesis: async (draft: HypothesisDraft): Promise<HypothesisResult> => {
+        const result = await writeHypothesis(draft);
+        hypothesisCalls.push({ draft, result });
+        return result;
       },
     };
 
-    const record = {
+    const record: AgentTurnRecord = {
       id: turnId,
       businessId,
       trigger: trigger.kind,
-      runtime: ctx.agent.name,
-      instructionsVersion: ctx.agent.instructionsVersion,
+      runtime: agent.name,
+      instructionsVersion: turnInstructionsVersion(agent, trigger),
       startedAt: ctx.clock.now(),
       finishedAt: null,
-      status: "running" as const,
+      status: "running",
       context: { trigger, snapshot },
-      calls: [] as unknown[],
+      calls: [],
       summary: null,
+      summaryValid: false,
+      inputTokens: null,
+      outputTokens: null,
+      usageSource: null,
+      costKopecks: 0,
     };
     await ctx.store.saveTurn(record);
     const timer = setTimeout(() => controller.abort("timeout"), TURN_TIMEOUT_MS);
     try {
-      const result = await ctx.agent.runTurn({ trigger, snapshot, tools, signal: controller.signal });
+      const result = await agent.runTurn({ trigger, snapshot, tools, signal: controller.signal });
       const status = controller.signal.aborted ? "cancelled" : "completed";
-      await ctx.store.saveTurn({ ...record, status, finishedAt: ctx.clock.now(), calls, summary: result.summary });
+      // «Разбор дня» is shown only when it is plain and every number in it is in the data (insights spec).
+      const summaryValid = result.summary.trim() !== "" && validateExplanation(result.summary, facts).length === 0;
+      await ctx.store.saveTurn({
+        ...record,
+        // The tools the agent used, reads included, and the breakdowns it read, for «Для специалистов» in the turn journal.
+        context: {
+          ...(record.context as object),
+          ...(result.toolUse !== undefined && { toolUse: result.toolUse }),
+          ...(breakdowns.size > 0 && { breakdowns: [...breakdowns.values()] }),
+          ...(hypothesisCalls.length > 0 && { hypotheses: hypothesisCalls }),
+        },
+        status,
+        finishedAt: ctx.clock.now(),
+        calls,
+        summary: result.summary,
+        summaryValid,
+        inputTokens: result.usage?.inputTokens ?? null,
+        outputTokens: result.usage?.outputTokens ?? null,
+        usageSource: result.usage?.source ?? null,
+        costKopecks: turnCost(result.usage, costs),
+      });
       return { status, turnId };
     } catch (error) {
       const status = controller.signal.aborted ? "cancelled" : "failed";
@@ -250,7 +386,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       activeTurns.delete(businessId);
     }
   });
-  return outcome ?? { status: "skipped" };
+  return outcome ?? { status: "skipped", reason: "busy" };
 };
 
 /** Opens an incident when no turn of this business has completed for 24 hours (ad-agent spec). */
@@ -267,6 +403,10 @@ const reportUnavailability = async (ctx: JobContext, businessId: string): Promis
 
 /** Queues an event for the next turn; a settings change interrupts the running turn (ad-agent spec). */
 export const enqueueAgentEvent = async (ctx: JobContext, businessId: string, trigger: TurnTrigger): Promise<void> => {
+  if (!ctx.agent.decides || !(await ctx.store.getFlag("agent_enabled", businessId))) {
+    // Without the agent nobody reads the inbox; it would only grow.
+    return;
+  }
   await ctx.store.addInboxEvent({ businessId, trigger: { ...trigger }, createdAt: ctx.clock.now() });
   if (trigger.kind === "settings_changed") {
     activeTurns.get(businessId)?.abort("settings_changed");
@@ -287,14 +427,14 @@ const mergeEvents = (events: readonly InboxEvent[]): TurnTrigger => {
 export const processAgentInbox = async (ctx: JobContext, businessId: string): Promise<TurnOutcome> => {
   const events = await ctx.store.pendingInbox(businessId);
   if (events.length === 0) {
-    return { status: "skipped" };
+    return { status: "skipped", reason: "no_events" };
   }
   const trigger = mergeEvents(events);
   const urgent = trigger.kind === "settings_changed" || trigger.kind === "launch";
   if (!urgent) {
     const lastEventTurn = Math.max(0, ...(await ctx.store.turns(businessId)).filter((t) => t.trigger === "moderation_rejected" || t.trigger === "experiment_finished").map((t) => t.startedAt.getTime()));
     if (ctx.clock.now().getTime() - lastEventTurn < EVENT_TURN_MIN_INTERVAL_MS) {
-      return { status: "skipped" };
+      return { status: "skipped", reason: "too_soon" };
     }
   }
   const outcome = await runAgentTurn(ctx, businessId, trigger);
@@ -304,31 +444,3 @@ export const processAgentInbox = async (ctx: JobContext, businessId: string): Pr
   return outcome;
 };
 
-/** Owner's answer to an approval request; a decline is respected for 14 days. */
-export const decideApproval = async (ctx: JobContext, businessId: string, approvalId: string, approve: boolean): Promise<ApprovalRequest> => {
-  const request = (await ctx.store.approvals(businessId)).find((a) => a.id === approvalId);
-  if (!request || request.status !== "pending") {
-    throw new Error(`Approval ${approvalId} is not pending`);
-  }
-  const decided: ApprovalRequest = { ...request, status: approve ? "approved" : "declined", decidedAt: ctx.clock.now() };
-  await ctx.store.saveApproval(decided);
-  if (approve) {
-    await ctx.executor.execute({ businessId, command: request.command, actor: "agent", reasonCode: request.reasonCode, explanation: request.explanation, turnId: request.turnId });
-  } else {
-    const business = await ctx.store.getBusiness(businessId);
-    await ctx.store.addUserDecision(businessId, { objectId: request.objectId, commandType: request.command.type, on: toLocalDate(ctx.clock.now(), business.timeZone) });
-  }
-  return decided;
-};
-
-/** Pending approvals expire after 48 hours without being applied. */
-export const expireApprovals = async (ctx: JobContext, businessId: string): Promise<number> => {
-  let expired = 0;
-  for (const request of await ctx.store.approvals(businessId)) {
-    if (request.status === "pending" && ctx.clock.now().getTime() - request.createdAt.getTime() >= APPROVAL_TTL_MS) {
-      await ctx.store.saveApproval({ ...request, status: "expired", decidedAt: ctx.clock.now() });
-      expired++;
-    }
-  }
-  return expired;
-};

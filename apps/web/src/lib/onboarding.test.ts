@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALL_DAY,
   budgetCeilingText,
+  budgetPlan,
   budgetTooLowMessage,
   buildLaunchPlan,
   cardFactsOf,
   cityOf,
   emptyDraft,
   firstIncompleteStep,
-  leadsEstimateText,
+  hoursWords,
   mergeExtractedCard,
+  normalizeLink,
   startingWeeklyLimits,
+  stepIssues,
   stepProblems,
+  timeZoneOf,
+  withCity,
+  withNormalizedLinks,
 } from "./onboarding";
 import type { OnboardingDraft } from "./onboarding";
 
@@ -41,10 +48,11 @@ const completeDraft = (): OnboardingDraft => {
       { name: "Педикюр", priceRub: null },
     ],
     address: "Москва, ул. Профсоюзная, 1",
+    city: "Москва",
     advantages: ["Работаем без выходных"],
   };
   draft.goals = ["call"];
-  draft.budget = { monthlyBudgetRub: 15_000, goalMode: "user", goalRub: 300 };
+  draft.budget = { monthlyBudgetRub: 15_000 };
   draft.ads = {
     search: [{ title: "Маникюр с покрытием за 1 800 ₽", text: "У м. Профсоюзная, работаем без выходных" }],
     network: [{ title: "Ноготок — маникюр у метро", text: "Маникюр с покрытием и педикюр" }],
@@ -61,6 +69,7 @@ describe("card extraction", () => {
     expect(merged.card).toMatchObject({
       name: "Ноготок",
       address: "Москва, ул. Профсоюзная, 1",
+      city: "Москва",
       openTo: "22:00",
       phone: "",
       services: [{ name: "Маникюр с покрытием", priceRub: null }],
@@ -81,20 +90,48 @@ describe("card extraction", () => {
 });
 
 describe("wizard steps", () => {
-  it("keeps «Дальше» disabled without the owner's site, even with a Maps link and a description", () => {
-    expect(stepProblems(1, emptyDraft())).toEqual(["Укажите адрес вашего сайта — на него будет вести реклама"]);
+  it("needs the owner's site, even with a Maps link and a description, and points at the field", () => {
+    expect(stepIssues(1, emptyDraft())).toEqual([{ field: "siteUrl", message: "Укажите адрес вашего сайта — на него будет вести реклама" }]);
     const mapsOnly = emptyDraft();
     mapsOnly.sources.mapsUrl = "https://yandex.ru/maps/org/123";
     mapsOnly.sources.about = "Делаем маникюр у метро";
     expect(stepProblems(1, mapsOnly)).toEqual(["Укажите адрес вашего сайта — на него будет вести реклама"]);
-    mapsOnly.sources.siteUrl = "https://nogotok.example/";
+    mapsOnly.sources.siteUrl = "nogotok.ru";
     expect(stepProblems(1, mapsOnly)).toEqual([]);
   });
 
-  it("rejects a link without https", () => {
+  it("takes links the way owners type them", () => {
+    expect(normalizeLink("site", "nogotok.ru")).toBe("https://nogotok.ru");
+    expect(normalizeLink("site", " www.nogotok.ru ")).toBe("https://www.nogotok.ru");
+    expect(normalizeLink("site", "ноготок.рф")).toBe("https://ноготок.рф");
+    expect(normalizeLink("site", "http://nogotok.ru/price")).toBe("http://nogotok.ru/price");
+    expect(normalizeLink("site", "taplink.cc/nogotok")).toBe("https://taplink.cc/nogotok");
+    expect(normalizeLink("vk", "@nogotok")).toBe("https://vk.com/nogotok");
+    expect(normalizeLink("vk", "nogotok")).toBe("https://vk.com/nogotok");
+    expect(normalizeLink("vk", "vk.com/nogotok")).toBe("https://vk.com/nogotok");
+    expect(normalizeLink("maps", "yandex.ru/maps/org/nogotok/123")).toBe("https://yandex.ru/maps/org/nogotok/123");
+    expect(normalizeLink("maps", "https://yandex.ru/maps/-/CDabc")).toBe("https://yandex.ru/maps/-/CDabc");
+    expect(normalizeLink("site", "")).toBe("");
+  });
+
+  it("refuses what is not a link of its kind, with a plain hint at the field", () => {
+    expect(normalizeLink("site", "nogotok")).toBeNull();
+    expect(normalizeLink("site", "https://nogotok")).toBeNull();
+    expect(normalizeLink("maps", "https://2gis.ru/firm/123")).toBeNull();
+    expect(normalizeLink("vk", "https://instagram.com/nogotok")).toBeNull();
     const draft = emptyDraft();
-    draft.sources.siteUrl = "example.ru";
-    expect(stepProblems(1, draft).join()).toMatch(/https/);
+    draft.sources.siteUrl = "nogotok";
+    draft.sources.mapsUrl = "2gis.ru/firm/123";
+    expect(stepIssues(1, draft)).toEqual([
+      { field: "siteUrl", message: "Не похоже на адрес сайта — например, nogotok.ru" },
+      { field: "mapsUrl", message: "Это не ссылка на Яндекс Карты — скопируйте её из адресной строки карточки организации" },
+    ]);
+  });
+
+  it("saves links in their full form", () => {
+    const draft = emptyDraft();
+    draft.sources = { siteUrl: "nogotok.ru", mapsUrl: "", vkUrl: "@nogotok", about: "" };
+    expect(withNormalizedLinks(draft).sources).toMatchObject({ siteUrl: "https://nogotok.ru", vkUrl: "https://vk.com/nogotok" });
   });
 
   it("does not let the budget go below 3 000 ₽ but accepts 5 000 ₽", () => {
@@ -105,17 +142,79 @@ describe("wizard steps", () => {
     expect(stepProblems(4, draft)).toEqual([]);
   });
 
-  it("accepts «Не знаю — подберите сами» without a goal amount", () => {
+  it("asks only for the budget: there is no cost-per-lead question", () => {
     const draft = completeDraft();
-    draft.budget = { monthlyBudgetRub: 10_000, goalMode: "auto", goalRub: null };
+    draft.budget = { monthlyBudgetRub: 10_000 };
     expect(stepProblems(4, draft)).toEqual([]);
+  });
+
+  it("needs a city on the card step", () => {
+    const draft = completeDraft();
+    draft.card.city = "";
+    expect(stepProblems(2, draft)).toEqual(["Укажите город — в нём будет показываться реклама"]);
+  });
+
+  it("asks on the card step only for a service and the city: name, category and address are optional", () => {
+    const draft = completeDraft();
+    draft.card = { ...draft.card, name: "", category: "", address: "", city: "Казань" };
+    expect(stepIssues(2, draft)).toEqual([]);
+    draft.card.services = [{ name: " ", priceRub: null }];
+    expect(stepIssues(2, draft)).toEqual([{ field: "services", message: "Добавьте хотя бы одну услугу — о ней будут объявления" }]);
+  });
+
+  it("accepts hours past midnight and round the clock, but not equal hours", () => {
+    const draft = completeDraft();
+    draft.card = { ...draft.card, openFrom: "22:00", openTo: "02:00" };
+    expect(stepIssues(2, draft)).toEqual([]);
+    expect(hoursWords(draft.card)).toBe("Пн–Вс 22:00–02:00 (через полночь)");
+    draft.card = { ...draft.card, ...ALL_DAY, days: "Вт–Вс" };
+    expect(hoursWords(draft.card)).toBe("Вт–Вс, круглосуточно");
+    draft.card = { ...draft.card, openFrom: "10:00", openTo: "10:00" };
+    expect(stepIssues(2, draft)[0]?.field).toBe("hours");
+  });
+
+  it("picks the time zone by the city", () => {
+    expect(timeZoneOf("Екатеринбург")).toBe("Asia/Yekaterinburg");
+    expect(timeZoneOf(" новосибирск ")).toBe("Asia/Novosibirsk");
+    expect(timeZoneOf("Тверь")).toBe("Europe/Moscow");
+  });
+
+  it("names directions by the first service when the category is empty", () => {
+    const draft = completeDraft();
+    draft.card.category = "";
+    expect(buildLaunchPlan(draft, "2026-11-02", 300).directions[0]?.name).toBe("Маникюр с покрытием — Поиск");
+  });
+
+  it("gives a draft saved before the city field the city from its address", () => {
+    const draft = completeDraft();
+    draft.card.city = "";
+    expect(withCity(draft).card.city).toBe("Москва");
+    draft.card.city = "Химки";
+    expect(withCity(draft).card.city).toBe("Химки");
   });
 
   it("reports the first incomplete step so progress cannot skip ahead", () => {
     const draft = completeDraft();
-    expect(firstIncompleteStep(draft)).toBe(7);
+    expect(firstIncompleteStep(draft)).toBe(6);
     draft.goals = [];
     expect(firstIncompleteStep(draft)).toBe(3);
+  });
+});
+
+describe("budget plan", () => {
+  const plain = (text: string | null) => (text ?? "").replace(/[\u00a0\u202f]/g, " ");
+
+  it("says the full sum when the ads start on the 1st", () => {
+    const plan = budgetPlan(15_000, "2026-11-01");
+    expect(plain(plan.headline)).toBe("Не больше 15 000 ₽ в месяц");
+    expect(plan.detail).toBeNull();
+  });
+
+  it("says why the first month is smaller and when the full sum starts", () => {
+    const plan = budgetPlan(15_000, "2026-10-31");
+    expect(plain(plan.headline)).toBe("В октябре — не больше 483 ₽");
+    expect(plain(plan.detail)).toBe("До конца месяца остался 1 день, поэтому тратим только часть суммы. С 1 ноября — не больше 15 000 ₽ в месяц.");
+    expect(plain(budgetPlan(15_000, "2026-12-10").detail)).toMatch(/осталось 22 дня.*С 1 января/);
   });
 });
 
@@ -126,9 +225,6 @@ describe("budget texts", () => {
     expect(plain(budgetCeilingText(15_000, "2026-11-01"))).toBe("Больше 15 000 ₽ за месяц мы не потратим");
   });
 
-  it("estimates leads from the budget and the goal", () => {
-    expect(plain(leadsEstimateText(15_000, 300))).toContain("до 50 обращений в месяц, если удастся уложиться в цену");
-  });
 });
 
 describe("ad drafts and the launch plan", () => {
@@ -158,8 +254,10 @@ describe("ad drafts and the launch plan", () => {
   });
 
   it("gives the search direction the generated phrases and leads every ad to the owner's site", () => {
-    const plan = buildLaunchPlan(completeDraft(), "2026-11-02", 300);
-    expect(plan).toMatchObject({ landingUrl: "https://nogotok.example/", city: "Москва" });
+    const draft = completeDraft();
+    draft.card.city = "Химки";
+    const plan = buildLaunchPlan(draft, "2026-11-02", 300);
+    expect(plan).toMatchObject({ landingUrl: "https://nogotok.example/", city: "Химки" });
     expect(plan.directions[0]).toMatchObject({ keywords: ["маникюр с покрытием", "маникюр москва"], negativeKeywords: ["обучение", "курсы маникюра"] });
     expect(plan.directions[1]).toMatchObject({ channel: "network", keywords: [] });
   });

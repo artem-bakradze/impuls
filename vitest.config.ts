@@ -21,6 +21,8 @@ export default defineConfig({
           name: "integration",
           include: ["**/src/**/*.integration.test.ts"],
           exclude: ["**/node_modules/**"],
+          // The files share one PostgreSQL database: the simulation ticker of one file must not see another's rows.
+          fileParallelism: false,
         },
       },
       {

@@ -17,6 +17,7 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   dictionaries: ["get"],
   changes: ["checkCampaigns"],
   reports: ["get"],
+  bidmodifiers: ["get"],
   campaigns: ["get", "add", "update", "suspend", "resume", "delete"],
   adgroups: ["get", "add"],
   keywords: ["get", "add"],
