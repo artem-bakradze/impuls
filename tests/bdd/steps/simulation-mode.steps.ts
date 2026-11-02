@@ -114,7 +114,7 @@ const pult = async (w: World) => {
     simulation,
     timeZone: "Europe/Moscow",
     changes: (await w.store.changes("b1")).length,
-    runningTurnStartedAt: await w.store.runningTurnStartedAt("b1"),
+    runningTurn: await w.store.runningTurn("b1"),
     turns: await w.store.turnDigests("b1"),
   });
 };
@@ -448,11 +448,14 @@ describeFeature(feature, ({ Scenario }) => {
       expect(status.status).toBe("stepping");
       expect(status.step).toEqual({ kind: "week", week: 1 });
       expect(status.agentTurn).not.toBeNull();
-      expect(agentTurnText(status.agentTurn ?? { day: 0 })).toBe(`Сервис разбирает ${status.agentTurn?.day ?? 0}-й день…`);
+      // A Monday's review says so; any other turn names its day.
+      expect(agentTurnText(status.agentTurn ?? { day: 0 })).toBe(
+        status.agentTurn?.weekly ? "Сервис разбирает неделю — обычно до 2–3 минут" : `Сервис разбирает ${status.agentTurn?.day ?? 0}-й день…`,
+      );
       expect(stepText({ step: status.step, day: status.day })).toBe(`Неделя 1: идёт ${status.day}-й день`);
     });
     And("после хода неделя идёт дальше до конца, а в ленте появляется разбор этого дня", async () => {
-      const turnDay = toLocalDate((await w.store.runningTurnStartedAt("b1")) ?? new Date(), "Europe/Moscow");
+      const turnDay = toLocalDate((await w.store.runningTurn("b1"))?.startedAt ?? new Date(), "Europe/Moscow");
       agent.finish();
       await step;
       const record = await w.store.getSimulation("b1");

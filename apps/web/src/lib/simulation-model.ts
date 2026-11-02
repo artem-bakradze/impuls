@@ -21,8 +21,11 @@ export interface SimulationStatus {
   ended: boolean;
   /** How many history entries there are: the pult refreshes the page when it grows. */
   changes: number;
-  /** The service is reviewing this virtual day; the step waits meanwhile (add-agent-insights decision 8). */
-  agentTurn: { day: number } | null;
+  /**
+   * The service is reviewing this virtual day, or the week on a Monday; the step waits meanwhile (add-agent-insights
+   * decision 8). A week's review on a model takes minutes, so the pult says so and counts the time.
+   */
+  agentTurn: { day: number; weekly: boolean } | null;
   /** «Повторить этот прогон» (simulation-mode spec «Повтор прогона»). */
   replay: {
     /** The run had a turn on a model, so it can be repeated without one. */
@@ -34,8 +37,12 @@ export interface SimulationStatus {
   };
 }
 
-/** «Сервис разбирает 8-й день…» */
-export const agentTurnText = (turn: { day: number }): string => `Сервис разбирает ${turn.day}-й день…`;
+/** «Сервис разбирает 8-й день…», or the week's review, which takes longer. */
+export const agentTurnText = (turn: { day: number; weekly?: boolean }): string =>
+  turn.weekly ? "Сервис разбирает неделю — обычно до 2–3 минут" : `Сервис разбирает ${turn.day}-й день…`;
+
+/** «0:42», «2:05»: how long the service has been reviewing, counted on the owner's screen. */
+export const elapsedText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
 /** «Неделя 2: идёт 10-й день» while a week runs, «Идёт 10-й день» for «+1 день». */
 export const stepText = (status: Pick<SimulationStatus, "step" | "day">): string | null =>
@@ -54,7 +61,7 @@ export const simulationStatusOf = (input: {
   simulation: SimulationRecord;
   timeZone: string;
   changes: number;
-  runningTurnStartedAt: Date | null;
+  runningTurn: { startedAt: Date; trigger: string } | null;
   turns: readonly Pick<TurnDigest, "status" | "usageSource">[];
 }): SimulationStatus => {
   const { simulation } = input;
@@ -73,7 +80,7 @@ export const simulationStatusOf = (input: {
     daysLeft: Math.max(0, Math.ceil((simulation.endsAt.getTime() - simulation.simNow.getTime()) / DAY_MS)),
     ended: simulation.simNow.getTime() + 3_600_000 > simulation.endsAt.getTime(),
     changes: input.changes,
-    agentTurn: input.runningTurnStartedAt ? { day: dayOf(input.runningTurnStartedAt) } : null,
+    agentTurn: input.runningTurn ? { day: dayOf(input.runningTurn.startedAt), weekly: input.runningTurn.trigger === "weekly_review" } : null,
     replay: {
       available: input.turns.some((t) => t.status === "completed" && t.usageSource !== null),
       repeating: simulation.replay !== null,

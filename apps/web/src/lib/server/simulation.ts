@@ -10,6 +10,6 @@ export const buildSimulationStatus = async (businessId: string): Promise<Simulat
   if (simulation === null) {
     return null;
   }
-  const [business, changes, runningTurnStartedAt, turns] = await Promise.all([s.getBusiness(businessId), s.changes(businessId), s.runningTurnStartedAt(businessId), s.turnDigests(businessId)]);
-  return simulationStatusOf({ simulation, timeZone: business.timeZone, changes: changes.length, runningTurnStartedAt, turns });
+  const [business, changes, runningTurn, turns] = await Promise.all([s.getBusiness(businessId), s.changes(businessId), s.runningTurn(businessId), s.turnDigests(businessId)]);
+  return simulationStatusOf({ simulation, timeZone: business.timeZone, changes: changes.length, runningTurn, turns });
 };

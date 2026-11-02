@@ -350,8 +350,8 @@ export interface Store {
   turns(businessId: string): Promise<AgentTurnRecord[]>;
   /** The turns without their context and calls, oldest first. */
   turnDigests(businessId: string): Promise<TurnDigest[]>;
-  /** When the business's running agent turn started, for the pult; null when no turn runs. */
-  runningTurnStartedAt(businessId: string): Promise<Date | null>;
+  /** The business's running agent turn — when it started and what for — for the pult; null when no turn runs. */
+  runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null>;
   /** Agent journal retention: deletes turns started before `before`; returns how many. */
   purgeTurns(before: Date): Promise<number>;
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void>;
@@ -561,9 +561,9 @@ export class MemoryStore implements Store {
         .map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: new Date(t.startedAt.getTime()), summary: t.summary, summaryValid: t.summaryValid, usageSource: t.usageSource })),
     );
   }
-  runningTurnStartedAt(businessId: string): Promise<Date | null> {
+  runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null> {
     const running = this.turnList.filter((t) => t.businessId === businessId && t.status === "running").at(-1);
-    return Promise.resolve(running ? new Date(running.startedAt.getTime()) : null);
+    return Promise.resolve(running ? { startedAt: new Date(running.startedAt.getTime()), trigger: running.trigger } : null);
   }
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
     this.inbox.push({ ...structuredClone(event), id: `inbox-${this.seq++}`, consumedByTurnId: null });

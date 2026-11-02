@@ -6,7 +6,7 @@ import type { MenuProps } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { callApi, runWebJob } from "@/lib/client-api";
-import { agentTurnText, DIVERGED_TEXT, stepText, stepWeekLabel } from "@/lib/simulation-model";
+import { agentTurnText, DIVERGED_TEXT, elapsedText, stepText, stepWeekLabel } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 
 const POLL_MS = 1_000;
@@ -39,9 +39,13 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
   const [error, setError] = useState<string | null>(null);
   const [restartOpen, setRestartOpen] = useState(false);
   const seen = useRef({ changes: initial.changes, day: initial.day, status: initial.status, thinking: initial.agentTurn !== null, week: initial.step?.week ?? null });
+  /** When the running review was first seen, on the owner's clock, and the clock now: the pult counts the time it takes. */
+  const [turnSeenAt, setTurnSeenAt] = useState<number | null>(initial.agentTurn ? Date.now() : null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const timer = setInterval(() => {
+      setNow(Date.now());
       void callApi<SimulationStatus>("/api/simulation", "GET").then((result) => {
         if (result.kind !== "ok") return;
         const next = result.body;
@@ -50,10 +54,13 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
         if (before.status === "stepping" && next.status === "paused" && before.week !== null) {
           router.push(`/simulation?week=${before.week}`);
         }
-        // A finished agent turn brings its insights even when it changed nothing.
-        if (next.changes !== before.changes || next.day !== before.day || (before.thinking && next.agentTurn === null) || before.status !== next.status) {
+        // The page is refreshed when a step ends or something changed between steps, never in the middle of a step:
+        // the pult shows the step's progress, and a screen jumping every virtual day looks broken.
+        const changed = next.changes !== before.changes || next.day !== before.day || (before.thinking && next.agentTurn === null) || before.status !== next.status;
+        if (next.status === "paused" && changed) {
           router.refresh();
         }
+        setTurnSeenAt((seenAt) => (next.agentTurn === null ? null : before.thinking && seenAt !== null ? seenAt : Date.now()));
         seen.current = { changes: next.changes, day: next.day, status: next.status, thinking: next.agentTurn !== null, week: next.step?.week ?? null };
         setStatus(next);
       });
@@ -112,7 +119,9 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
     },
   };
 
-  const progress = status.agentTurn ? agentTurnText(status.agentTurn) : stepText(status);
+  // The time the review has been going: a minute-long review without it looks stuck.
+  const elapsed = status.agentTurn && turnSeenAt !== null ? ` · ${elapsedText(Math.max(0, Math.round((now - turnSeenAt) / 1_000)))}` : "";
+  const progress = status.agentTurn ? `${agentTurnText(status.agentTurn)}${elapsed}` : stepText(status);
   return (
     <div className="sim-bar" data-testid="simulation-bar">
       {modalHolder}

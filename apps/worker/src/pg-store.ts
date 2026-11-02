@@ -328,14 +328,14 @@ export class PgStore implements Store {
       .orderBy(asc(t.startedAt));
   }
 
-  async runningTurnStartedAt(businessId: string): Promise<Date | null> {
+  async runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null> {
     const [row] = await this.db
-      .select({ startedAt: schema.agentTurns.startedAt })
+      .select({ startedAt: schema.agentTurns.startedAt, trigger: schema.agentTurns.trigger })
       .from(schema.agentTurns)
       .where(and(eq(schema.agentTurns.businessId, businessId), eq(schema.agentTurns.status, "running")))
       .orderBy(desc(schema.agentTurns.startedAt))
       .limit(1);
-    return row?.startedAt ?? null;
+    return row ?? null;
   }
 
   async purgeTurns(before: Date): Promise<number> {

@@ -11,7 +11,7 @@ import { emptyDraft } from "@/lib/onboarding";
 import { feedDays } from "@/lib/insights-model";
 import { buildDecisionScreen, scenarioTruth } from "@/lib/simulation-screen";
 import { buildWeekStory } from "@/lib/week-story";
-import { isCurrentAction, SimulationControlBody } from "@/lib/simulation-model";
+import { elapsedText, isCurrentAction, SimulationControlBody } from "@/lib/simulation-model";
 import type { SimulationStatus } from "@/lib/simulation-model";
 import { DecisionsView } from "./simulation/DecisionsView";
 import { WeekStory } from "./simulation/WeekStory";
@@ -300,8 +300,13 @@ describe("simulation pult", () => {
     const { unmount } = render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, day: 10 }} />);
     expect(screen.getByTestId("simulation-progress").textContent).toBe("Неделя 2: идёт 10-й день");
     unmount();
-    render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, agentTurn: { day: 10 } }} />);
-    expect(screen.getByTestId("simulation-progress").textContent).toBe("Сервис разбирает 10-й день…");
+    const { unmount: unmountDay } = render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, agentTurn: { day: 10, weekly: false } }} />);
+    expect(screen.getByTestId("simulation-progress").textContent).toBe("Сервис разбирает 10-й день… · 0:00");
+    unmountDay();
+    // A week's review on a model takes minutes: the pult says so and counts the time, so it does not look stuck.
+    render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, agentTurn: { day: 9, weekly: true } }} />);
+    expect(screen.getByTestId("simulation-progress").textContent).toBe("Сервис разбирает неделю — обычно до 2–3 минут · 0:00");
+    expect(elapsedText(125)).toBe("2:05");
   });
 
   it("names the days left at the end of the scenario", () => {
