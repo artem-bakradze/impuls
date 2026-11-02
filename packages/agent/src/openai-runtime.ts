@@ -2,7 +2,7 @@ import OpenAI, { ConflictError } from "openai";
 import type { AgentSessionEvent, TokenUsage } from "openai/resources/beta/agents/agents";
 import { ProxyAgent } from "undici";
 import { AGENT_INSTRUCTIONS_VERSION, instructionsFor } from "./instructions";
-import type { AgentRuntime, AgentToolbox, ToolCallRecord, TurnResult, TurnSnapshot, TurnTrigger, TurnUsage } from "./runtime";
+import type { AgentRuntime, AgentToolbox, ToolCallRecord, TurnReasonView, TurnResult, TurnSnapshot, TurnTrigger, TurnUsage } from "./runtime";
 import { isActionTool, parseActionCall, parseHypothesisCall, parseObservationCall, toolDefinitions } from "./tools";
 
 export interface OpenAiAgentRuntimeOptions {
@@ -31,15 +31,36 @@ const fromApi = (usage: TokenUsage | null | undefined): TurnUsage | null =>
 
 const TRIGGER_TEXT: Record<TurnTrigger["kind"], string> = {
   launch: "Реклама только что запущена. Проверь, что всё настроено разумно; результатов ещё нет.",
-  daily_review: "Ежедневная оценка рекламы.",
+  daily_review: "Утренняя оценка рекламы нашла поводы для решения.",
   weekly_review: "Понедельник: разбор недели.",
   moderation_rejected: "Директ отклонил объявления.",
   experiment_finished: "Закончились A/B-проверки.",
   settings_changed: "Владелец изменил цель, бюджет или настройки.",
 };
 
+/** The reasons of a daily turn in words: the agent starts with them (ad-agent spec «Поводы для хода агента»). */
+const REASON_TEXT: Record<TurnReasonView["kind"], string> = {
+  became_ineffective: "стало неэффективным",
+  no_longer_ineffective: "перестало быть неэффективным",
+  classified: "вышло из «собираем данные»",
+  scale: "упирается в лимит, и его можно поднять",
+  borderline: "пограничное: завтра проверку запустит страховочное правило",
+  swing: "резко изменилось к прошлой неделе",
+  hypothesis_due: "сегодня день проверки гипотезы",
+};
+
+const reasonsText = (reasons: readonly TurnReasonView[]): string =>
+  reasons.length === 0 ? "" : ` Поводы: ${reasons.map((r) => `${r.objectKind} ${r.objectId} — ${REASON_TEXT[r.kind]}`).join("; ")}.`;
+
 const triggerInput = (trigger: TurnTrigger): string => {
-  const details = "adIds" in trigger ? ` Объявления: ${trigger.adIds.join(", ")}.` : "experimentIds" in trigger ? ` Проверки: ${trigger.experimentIds.join(", ")}.` : "";
+  const details =
+    "adIds" in trigger
+      ? ` Объявления: ${trigger.adIds.join(", ")}.`
+      : "experimentIds" in trigger
+        ? ` Проверки: ${trigger.experimentIds.join(", ")}.`
+        : trigger.kind === "daily_review"
+          ? reasonsText(trigger.reasons ?? [])
+          : "";
   return `${TRIGGER_TEXT[trigger.kind]}${details} Действуй по инструкции.`;
 };
 

@@ -28,23 +28,28 @@ test("an owner runs the simulation, sees the service decide and goes on to a rea
 
   const bar = page.getByTestId("simulation-bar");
   await expect(bar).toContainText("Симуляция — реклама не показывается");
+  await expect(bar).not.toContainText("1 день = ");
   // One mark about ads that are not real: the pult, without the stand banner.
   await expect(page.getByTestId("test-mode-banner")).toHaveCount(0);
-  await bar.getByRole("button", { name: "Пауза" }).click();
-  await expect(bar.getByRole("button", { name: "Продолжить" })).toBeVisible();
   const dayNow = async () => Number(/День (\d+)/.exec((await page.getByTestId("simulation-day").textContent()) ?? "")?.[1]);
-  for (let step = 0; step < 2; step++) {
-    const button = bar.getByRole("button", { name: "+1 день" });
-    // The pult may show the new day before the previous request has returned; a busy button ignores clicks.
-    await expect(button).not.toHaveClass(/ant-btn-loading/);
-    const before = await dayNow();
-    await button.click();
-    await expect(page.getByTestId("simulation-day")).toContainText(`День ${before + 1} из 30`);
-  }
-  // No need to wait a week: the simulation runs to the service's first decision about the ads and explains it.
-  await page.getByRole("button", { name: /Перемотать до первого решения/ }).click();
-  await expect(bar.getByTestId("simulation-decision")).toBeVisible({ timeout: 150_000 });
-  expect(await dayNow()).toBeGreaterThan(3);
+  // The time stands until the owner steps it: one day from the menu, then a week from the main button.
+  expect(await dayNow()).toBe(1);
+  await bar.getByRole("button", { name: /Ещё/ }).click();
+  await page.getByRole("menuitem", { name: "+1 день" }).click();
+  await expect(page.getByTestId("simulation-day")).toContainText("День 2 из 30", { timeout: 60_000 });
+  const step = bar.getByTestId("simulation-step-week");
+  await expect(step).not.toHaveClass(/ant-btn-loading/);
+  await step.click();
+  // The week's story opens on «Как сервис принимает решения».
+  await page.waitForURL("**/simulation?week=1", { timeout: 150_000 });
+  await expect(page.getByTestId("simulation-day")).toContainText("День 9 из 30");
+  const story = page.getByTestId("week-story");
+  await expect(story).toContainText("Неделя 1");
+  await story.getByRole("button", { name: /Показать сразу/ }).click();
+  await expect(story.getByTestId("week-scene-decision")).toBeVisible();
+  await expect(story.getByTestId("week-rows")).toContainText("На самом деле");
+  await page.getByRole("link", { name: "Сводка" }).click();
+  await page.waitForURL("**/summary");
   // The summary has no charts: three numbers and the insight feed with the day reviews.
   await expect(page.getByTestId("summary-feed")).toContainText("Разбор", { timeout: 20_000 });
   const firstInsight = page.getByTestId("summary-feed").getByTestId("insight").first();
@@ -57,6 +62,7 @@ test("an owner runs the simulation, sees the service decide and goes on to a rea
 
   await page.getByRole("link", { name: "Как решает сервис" }).click();
   await page.waitForURL("**/simulation");
+  await expect(page.getByTestId("week-story")).toContainText("Неделя 1");
   await expect(page.getByTestId("sim-comparison")).toContainText("Если бы сервис ничего не делал");
   const checklist = page.getByTestId("sim-checklist");
   await expect(checklist).toContainText("Откатите любое изменение в истории");

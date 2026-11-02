@@ -36,7 +36,8 @@ Rollback (`history.ts`) builds inverse commands and runs them through the same p
 pg-boss runs one hourly `dispatch-hour` job (singleton queue, no retries). The dispatcher, per business:
 reconciliation → stats sync → budget guard → moderation/balance → agent inbox;
 at 06:00 local time: spend verification, experiments, evaluation and safety net (same day without the agent; with
-the agent: safety net for yesterday's evaluation, then the agent turn), goal advice, outcomes;
+the agent: safety net for yesterday's evaluation, then the evaluation's findings and — only when they give reasons —
+the agent turn), goal advice, outcomes;
 on Mondays: stats reconciliation, and at 07:00 local time the agent's weekly review. Tests drive the same handlers
 with `SimulationDriver` instead of pg-boss.
 The per-business part is `runBusinessHour`; the hourly dispatcher runs it only for businesses in the Direct mode.
@@ -46,29 +47,36 @@ The per-business part is `runBusinessHour`; the hourly dispatcher runs it only f
 A business works in one of two modes, set at launch (`businesses.mode`): `direct` or `simulation`. A simulated
 business runs the same handlers, executor, guards and history on its own virtual clock and market:
 
-- `simulations` keeps the scenario, seed, launch plan, virtual `sim_now`, speed, status and the serialized
-  `SimulatedPlatform` state (`snapshot`/`restore`, hourly cells older than 3 days merged into daily ones).
+- `simulations` keeps the scenario, seed, launch plan, virtual `sim_now`, status (`paused` or `stepping`), the
+  windows of the steps (`steps`), the recorded run for «Повторить этот прогон» (`replay`) and the serialized
+  `SimulatedPlatform` state (`snapshot`/`restore`, hourly cells older than 3 days merged into daily ones). The old
+  `speed` and `last_tick_at` columns are no longer used.
 - `withSimulation(base, businessId, fn)` loads that world under the lock `sim:<businessId>` and gives `fn` a job
   context with a `ManualClock`, the restored simulator (Direct's strategy catalog and minimum limit), the
   deployment's agent (timed on the real clock) with its cost limit per run, and template A/B variants.
   `handleWebJob` routes every job of a simulated business through it; launch with a scenario goes through
   `launchSimulation`. The agent's snapshot is built from the service's records only; the scenario's truth stays in
   the simulated market.
-- The ticker (`startSimulationTicker`, every second in the worker) ticks each running simulation on its own
-  (`tickSimulation`; a simulation's tick is not started again while the previous one runs, so a slow agent turn
-  delays no other simulation), by real elapsed time × speed, hour by hour: scenario events → `advanceHour` →
-  `runBusinessHour` → save. After an hour with a turn of a deciding agent the tick returns, and the real time the
-  agent thought is added to `lastTickAt`, so virtual time stands while it thinks (the pult shows «Агент разбирает
-  N-й день…» from `runningTurnStartedAt`). At most 6 virtual hours per tick and 3 simulations at once per worker
-  (a tick holds up to three lock connections; locks have their own pool in the worker); «До следующего решения»
-  stops on the first decision about the ads and is not paced by the real clock (6 virtual hours every tick); «+1 день» (`stepDay`) moves the day in parts that end after each agent
-  turn, with the simulation `stepping` meanwhile, so a pause pressed during a turn applies right after it. The worker
-  runs up to 5 web jobs at once (`WEB_JOB_CONCURRENCY`), so a long step does not hold up other owners' jobs
-  (`isAdDecision` in `change-kinds.ts`: safety net, agent, A/B verdict, cabinet edit; budget-guard limit cuts do not
-  count); the end of the 30 days pauses.
+- The virtual time moves only by steps on the pult (weekly-simulation-triggered-agent): «Прожить неделю»
+  (`step_week`, 7 days or what is left of the scenario) and «+1 день» from the menu (`step_day`). There is no ticker.
+  A step records its window in `steps` first, then moves hour by hour — scenario events → `advanceHour` →
+  `runBusinessHour` → save — in parts that end after each agent turn, with the simulation `stepping` meanwhile, so
+  the pult follows it («Неделя 2: идёт 10-й день», «Сервис разбирает 10-й день…» from `runningTurnStartedAt`). A
+  step runs as a web job to its end even if the tab is closed; the worker runs up to 5 web jobs at once
+  (`WEB_JOB_CONCURRENCY`), so a long step does not hold up other owners' jobs. A decision of the service does not
+  stop a step (`isAdDecision` in `change-kinds.ts` now only marks decisions on the screens); the end of the 30 days
+  stops with an offer to continue.
+- «Как сервис принимает решения» starts with the story of a lived week (`buildWeekStory` in `apps/web`): the ads'
+  numbers of the week with the rules' classes and the scenario's truth, the day reviews of the week, the decisions
+  without budget-guard cuts and the comparison at the week's end. It is read from saved records only, so a past week
+  opens the same; `WeekStory` plays it as three scenes, at once on «Показать сразу» or with less motion.
+- «Начать заново» → «Повторить этот прогон» copies the run's completed turns, owner actions and object ids (by the
+  simulator's platform ids, which repeat for the seed) into `replay`; `simulationWorld` then gives both runtimes a
+  replay runtime (`simulation-replay.ts`) that plays the recorded calls through the same tools and guards with the
+  recorded summaries and no model spend. A turn at another time or for another trigger, a different owner action or
+  a refused recorded call sets `replay.diverged`, and the live agent decides from there.
 - A scenario starts at 09:00 on the 1st of the next month (`scenarioStartDate`; «Конец месяца» 4 days before a
-  month ends), and the launch route builds the plan's weekly limits for that date. The default speed is
-  «1 день = 10 секунд».
+  month ends), and the launch route builds the plan's weekly limits for that date.
 - The control run (`baselineRun`) is computed at launch, restart and extend for the whole horizon and stored by day
   in `simulations.baseline.daily`: the same plan and market without decisions about the ads, with the same
   budget-guard limit cuts, so the screen compares the effect of the decisions day by day.
@@ -86,6 +94,13 @@ run and the rules act at once. The deterministic rules are the safety net (`safe
 completed turn of a deciding agent they wait 24 hours and do what it left; without such a turn (agent off,
 unavailable, out of its cost limit) they act on the evaluation the same day, and the day is marked with the reason
 (`RULES_DAY` in `insights`).
+
+The daily turn runs on reasons (weekly-simulation-triggered-agent): `evaluationFindings` in `packages/core` turns the
+morning evaluation into findings with stable keys (an ineffective object, one that left «Собираем данные», room for a
+raise, a borderline ad a day before the safety net's check, a sharp week-on-week change, a hypothesis's check day),
+stored with the evaluation; `turnReasons` keeps those the last completed turn did not see (its findings are in the
+turn's context) or that came back. No reasons → no model call and a `QUIET_DAY` mark, and the rules wait for the agent
+as after a turn. The weekly review runs every Monday regardless.
 
 Each turn is a new session behind `AgentRuntime`; what it knows of the past comes from our DB (history,
 experiments, its recent insights via `get_recent_insights`). Tools resolve the business from the turn binding;

@@ -4,6 +4,7 @@ import { rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "./config";
 import type { AgentCosts } from "./context";
+import { QUIET_DAY_CODE } from "./change-kinds";
 import { SimulationDriver } from "./simulation";
 
 /** Decides nothing but says it decides, and reports a fixed usage so the turn has a price. */
@@ -41,16 +42,18 @@ const world = async (agent: AgentRuntime) => {
 const weeklyTurns = async (sim: SimulationDriver) => (await sim.store.turns("b1")).filter((t) => t.trigger === "weekly_review");
 
 describe("weekly review (ad-agent spec «Еженедельный стратегический разбор»)", () => {
-  it("runs on virtual Mondays at 07:00 business time, after the day's review, with its own instructions version", async () => {
+  it("runs on virtual Mondays at 07:00 business time, with its own instructions version, even on a quiet day", async () => {
     const agent = new CountingPolicy("policy:daily");
     const sim = await world(agent);
     await sim.runDays(14);
     const turns = await weeklyTurns(sim);
     expect(turns.map((t) => t.startedAt.toISOString())).toEqual(["2026-10-05T04:00:00.000Z", "2026-10-12T04:00:00.000Z"]);
     expect(turns[0]).toMatchObject({ runtime: "policy:daily", instructionsVersion: `test+weekly.${WEEKLY_REVIEW_INSTRUCTIONS_VERSION}`, status: "completed" });
-    // The daily review of that Monday came an hour earlier.
+    // That Monday's morning evaluation had no reasons: a quiet day without a model call, an hour before the review.
     const daily = (await sim.store.turns("b1")).filter((t) => t.trigger === "daily_review" && t.startedAt.toISOString().startsWith("2026-10-05"));
-    expect(daily.map((t) => t.startedAt.toISOString())).toEqual(["2026-10-05T03:00:00.000Z"]);
+    expect(daily).toEqual([]);
+    const quiet = (await sim.store.insights("b1")).filter((i) => i.reasonCode === QUIET_DAY_CODE && i.createdAt.toISOString().startsWith("2026-10-05"));
+    expect(quiet.map((i) => i.createdAt.toISOString())).toEqual(["2026-10-05T03:00:00.000Z"]);
   });
 
   it("runs on the strategy model with its prices, within the same limits", async () => {
@@ -59,7 +62,8 @@ describe("weekly review (ad-agent spec «Еженедельный стратег
     const sim = await world(daily);
     sim.ctx.agentCosts = costs(10, 50);
     sim.ctx.strategist = { runtime: strategist, costs: costs(1_000, 4_000) };
-    await sim.runDays(5);
+    // Up to the first reasons of the daily model: the ad leaves «собираем данные» in the second week.
+    await sim.runDays(9);
     const [weekly] = await weeklyTurns(sim);
     expect(weekly).toMatchObject({ runtime: "policy:strategist", costKopecks: 14_000 });
     expect(strategist.triggers).toEqual(["weekly_review"]);
@@ -69,9 +73,9 @@ describe("weekly review (ad-agent spec «Еженедельный стратег
 
   it("does not start when the month's model spend is used up", async () => {
     const sim = await world(new CountingPolicy("policy:daily"));
-    // The daily turns cost 1.5 ₽ each: a limit of 3 ₽ is used up before Monday.
-    sim.ctx.agentCosts = costs(10, 50, 3);
-    sim.ctx.strategist = { runtime: new CountingPolicy("policy:strategist"), costs: costs(1_000, 4_000, 3) };
+    // Without reasons there are no daily turns before Monday, so a limit of zero is what is used up.
+    sim.ctx.agentCosts = costs(10, 50, 0);
+    sim.ctx.strategist = { runtime: new CountingPolicy("policy:strategist"), costs: costs(1_000, 4_000, 0) };
     await sim.runDays(5);
     expect(await weeklyTurns(sim)).toEqual([]);
   });

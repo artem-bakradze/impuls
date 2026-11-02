@@ -51,6 +51,7 @@ const pauseCard: InsightCardModel = {
   next: "Через 7 дней сравним цену обращения рекламы в поиске с прежней.",
   rollback: rollbackItem,
   truth: null,
+  objectIds: ["a2"],
 };
 
 const feed = (overrides: Partial<InsightFeedModel> = {}): InsightFeedModel => ({
@@ -156,10 +157,10 @@ describe("SummaryView", () => {
     expect(text).not.toContain("в прошлом периоде");
   });
 
-  it("keeps offering to skip to the first decision in a simulation until the service has decided something", () => {
+  it("keeps offering to live a week in a simulation until the service has decided something", () => {
     const quiet = feed({ days: [{ date: "2026-11-02", from: null, summary: "Данных пока мало.", quiet: true, rulesReason: null, insights: [], weekly: null }] });
-    render(<SummaryView model={summary({ simulation: { secondsPerDay: 10 }, launchedDays: 3, compare: false, decided: false, feed: quiet, attention: { notifications: [], clientsQuestion: null } })} />);
-    expect(screen.getByRole("button", { name: /Перемотать до первого решения/ })).toBeTruthy();
+    render(<SummaryView model={summary({ simulation: { weeks: 1 }, launchedDays: 3, compare: false, decided: false, feed: quiet, attention: { notifications: [], clientsQuestion: null } })} />);
+    expect(screen.getByRole("button", { name: /Прожить неделю/ })).toBeTruthy();
     expect(plain(screen.getByTestId("quiet-day"))).toBe("Посмотрели рекламу — менять ничего не нужноДанных пока мало.");
     expect(document.body.textContent).not.toContain("Яндекс иногда пересчитывает");
   });
@@ -173,6 +174,12 @@ describe("SummaryView", () => {
     expect(screen.queryByTestId("insight")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Что заметили (1)" }));
     expect(plain(screen.getByTestId("insight"))).toContain("Пока ничего не меняю: данных мало.");
+  });
+
+  it("reads quiet days in a row as one line", () => {
+    const quietDays = { date: "2026-12-06", from: "2026-12-03", summary: null, quiet: true, rulesReason: null, insights: [], weekly: null };
+    render(<SummaryView model={summary({ feed: feed({ days: [quietDays] }) })} />);
+    expect(plain(screen.getByTestId("quiet-days"))).toBe("С 3 по 6 декабря — посмотрели рекламу, менять ничего не нужно");
   });
 
   it("says that the rules decided alone that day and why", () => {
@@ -220,19 +227,21 @@ describe("SummaryView", () => {
     const line = { date: "2026-11-30", from: "2026-11-04", summary: null, quiet: false, rulesReason: "Решения принимали страховочные правила: лимит расходов на помощника исчерпан", insights: [], weekly: null };
     render(<SummaryView model={summary({ feed: feed({ days: [line] }) })} />);
     const day = plain(screen.getByTestId("day-review"));
-    expect(day).toContain("С 4 ноября по 30 ноября");
+    expect(day).toContain("С 4 по 30 ноября");
     expect(day).toContain("Решения принимали страховочные правила: лимит расходов на помощника исчерпан");
   });
 
-  it("speaks of the simulation, not of Yandex, and offers to skip to the first decision", () => {
+  it("speaks of the simulation, not of Yandex, and offers to live the first week", () => {
     const { container } = render(
-      <SummaryView model={summary({ state: "first_day", simulation: { secondsPerDay: 10 }, spentMonth: 0, decided: false, feed: feed({ days: [] }), attention: { notifications: [], clientsQuestion: null } })} />,
+      <SummaryView model={summary({ state: "first_day", simulation: { weeks: 0 }, spentMonth: 0, decided: false, feed: feed({ days: [] }), attention: { notifications: [], clientsQuestion: null } })} />,
     );
     const text = container.textContent ?? "";
     expect(text).toContain("Симуляция запущена");
-    expect(text).toContain("около минуты");
+    expect(text).toContain("в первую неделю");
     expect(text).not.toMatch(/Яндекс проверяет|проверку Яндекса|в вашем Яндекс Директе|в течение суток|пересчитывает/);
-    expect(screen.getByRole("button", { name: /Перемотать до первого решения/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Прожить первую неделю/ })).toBeTruthy();
+    // The speed is gone with the running clock: the summary names no seconds or minutes.
+    expect(document.body.textContent).not.toMatch(/при текущей скорости|около минуты/);
   });
 
   it("shows the launch state and the month budget on the first day, without the period switch and empty blocks", () => {

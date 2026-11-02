@@ -1,3 +1,6 @@
+import type { SimulationRecord, TurnDigest } from "@impuls/worker";
+import { z } from "zod";
+
 /** What the simulation pult shows (simulation-mode spec «Виртуальное время и пульт»). */
 export interface SimulationStatus {
   /** Day of the simulation, from 1. */
@@ -6,34 +9,89 @@ export interface SimulationStatus {
   /** Virtual «now», ISO. */
   at: string;
   timeZone: string;
-  status: "running" | "paused" | "until_decision" | "stepping";
-  speed: "fast" | "minute" | "real";
+  /** `stepping` while «Прожить неделю» or «+1 день» runs; the time stands otherwise. */
+  status: "paused" | "stepping";
+  /** The step that runs: a week has its number, for «Неделя 2: идёт 10-й день». */
+  step: { kind: "week" | "day"; week: number | null } | null;
+  /** Weeks lived so far: the newest week story is this one. */
+  weeks: number;
+  /** Days left to the scenario's end: below 7 the main action is «Прожить оставшиеся N дней». */
+  daysLeft: number;
   /** The scenario's last day is reached; the pult offers to continue. */
   ended: boolean;
   /** How many history entries there are: the pult refreshes the page when it grows. */
   changes: number;
-  /** The newest change made by the service itself, for «До следующего решения». */
-  lastDecision: { id: string; explanation: string } | null;
-  /** The agent is reviewing this virtual day; the virtual time stands meanwhile (add-agent-insights decision 8). */
+  /** The service is reviewing this virtual day; the step waits meanwhile (add-agent-insights decision 8). */
   agentTurn: { day: number } | null;
+  /** «Повторить этот прогон» (simulation-mode spec «Повтор прогона»). */
+  replay: {
+    /** The run had a turn on a model, so it can be repeated without one. */
+    available: boolean;
+    /** This run repeats the previous one. */
+    repeating: boolean;
+    /** «Вы изменили ход прогона — дальше сервис решает заново», until the next step. */
+    diverged: boolean;
+  };
 }
 
-/** «Агент разбирает 8-й день…» */
-export const agentTurnText = (turn: { day: number }): string => `Агент разбирает ${turn.day}-й день…`;
+/** «Сервис разбирает 8-й день…» */
+export const agentTurnText = (turn: { day: number }): string => `Сервис разбирает ${turn.day}-й день…`;
 
-export const SPEED_LABELS: Record<SimulationStatus["speed"], string> = {
-  fast: "1 день = 10 секунд",
-  minute: "1 день = 1 минута",
-  real: "Реальное время",
+/** «Неделя 2: идёт 10-й день» while a week runs, «Идёт 10-й день» for «+1 день». */
+export const stepText = (status: Pick<SimulationStatus, "step" | "day">): string | null =>
+  status.step === null ? null : status.step.week !== null ? `Неделя ${status.step.week}: идёт ${status.day}-й день` : `Идёт ${status.day}-й день`;
+
+/** «Прожить неделю», or the days left at the end of the scenario. */
+export const stepWeekLabel = (daysLeft: number): string =>
+  daysLeft >= 7 ? "Прожить неделю" : daysLeft === 1 ? "Прожить последний день" : `Прожить оставшиеся ${daysLeft} ${daysLeft < 5 ? "дня" : "дней"}`;
+
+export const DIVERGED_TEXT = "Вы изменили ход прогона — дальше сервис решает заново";
+
+const DAY_MS = 86_400_000;
+
+/** Pure: the pult model from the simulation record and the business's journal. */
+export const simulationStatusOf = (input: {
+  simulation: SimulationRecord;
+  timeZone: string;
+  changes: number;
+  runningTurnStartedAt: Date | null;
+  turns: readonly Pick<TurnDigest, "status" | "usageSource">[];
+}): SimulationStatus => {
+  const { simulation } = input;
+  const totalDays = Math.round((simulation.endsAt.getTime() - simulation.startedAt.getTime()) / DAY_MS);
+  const dayOf = (at: Date) => Math.min(totalDays, Math.floor((at.getTime() - simulation.startedAt.getTime()) / DAY_MS) + 1);
+  const weeks = simulation.steps.filter((step) => step.kind === "week").length;
+  const current = simulation.status === "stepping" ? simulation.steps.at(-1) : undefined;
+  return {
+    day: dayOf(simulation.simNow),
+    totalDays,
+    at: simulation.simNow.toISOString(),
+    timeZone: input.timeZone,
+    status: simulation.status,
+    step: current ? { kind: current.kind, week: current.kind === "week" ? weeks : null } : null,
+    weeks,
+    daysLeft: Math.max(0, Math.ceil((simulation.endsAt.getTime() - simulation.simNow.getTime()) / DAY_MS)),
+    ended: simulation.simNow.getTime() + 3_600_000 > simulation.endsAt.getTime(),
+    changes: input.changes,
+    agentTurn: input.runningTurnStartedAt ? { day: dayOf(input.runningTurnStartedAt) } : null,
+    replay: {
+      available: input.turns.some((t) => t.status === "completed" && t.usageSource !== null),
+      repeating: simulation.replay !== null,
+      diverged: simulation.replay !== null && simulation.replay.diverged && !simulation.replay.notified,
+    },
+  };
 };
 
-/** The same speeds on the pult itself: short enough to stay on one line with the controls. */
-export const SPEED_SHORT: Record<SimulationStatus["speed"], string> = {
-  fast: "1 день = 10 с",
-  minute: "1 день = 1 мин",
-  real: "реальное время",
-};
+export type SimulationAction = { action: "step_week" | "step_day" | "extend" | "go_real" } | { action: "restart"; mode: "repeat" | "fresh" };
 
-export type SimulationAction =
-  | { action: "pause" | "resume" | "until_decision" | "step_day" | "extend" | "restart" | "go_real" }
-  | { action: "speed"; speed: SimulationStatus["speed"] };
+/** Actions of the old pult: the time no longer runs by itself, so an old page is asked to reload. */
+const GONE_ACTIONS = ["pause", "resume", "until_decision", "speed"] as const;
+
+/** Body of a pult action; the old pult's actions parse too, to be answered «обновите страницу». */
+export const SimulationControlBody = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["step_week", "step_day", "extend", "go_real"]) }),
+  z.object({ action: z.literal("restart"), mode: z.enum(["repeat", "fresh"]) }),
+  z.object({ action: z.enum(GONE_ACTIONS) }).passthrough(),
+]);
+
+export const isCurrentAction = (body: z.infer<typeof SimulationControlBody>): body is SimulationAction => !(GONE_ACTIONS as readonly string[]).includes(body.action);

@@ -65,9 +65,13 @@ export const simulations = pgTable("simulations", {
   lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
   /** Virtual milliseconds per real millisecond. */
   speed: integer("speed").notNull(),
-  status: text("status", { enum: ["running", "paused", "until_decision", "stepping"] }).notNull(),
+  status: text("status", { enum: ["paused", "stepping"] }).notNull(),
   state: jsonb("state").notNull(),
   baseline: jsonb("baseline"),
+  /** Windows of the steps «Прожить неделю» and «+1 день», for the week stories (weekly-simulation-triggered-agent). */
+  steps: jsonb("steps").notNull().default([]),
+  /** Recorded turns and owner actions of the run being repeated; null outside «Повторить этот прогон». */
+  replay: jsonb("replay"),
 });
 
 export const platformAccounts = pgTable("platform_accounts", {
@@ -239,6 +243,8 @@ export const evaluations = pgTable("evaluations", {
   adClasses: jsonb("ad_classes").notNull(),
   directionClasses: jsonb("direction_classes").notNull(),
   borderlineSince: jsonb("borderline_since").notNull(),
+  /** Keys of the findings of this evaluation, for the turn reasons (ad-agent «Поводы для хода агента»). */
+  findings: jsonb("findings"),
 });
 
 export const clientConfirmations = pgTable(

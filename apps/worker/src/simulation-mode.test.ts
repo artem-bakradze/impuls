@@ -12,7 +12,7 @@ import type { LaunchPlan } from "./launch";
 import { isAdDecision, isBudgetAdjustment } from "./change-kinds";
 import { MemoryLockManager } from "./locks";
 import { createLogger } from "./logger";
-import { controlSimulation, launchSimulation, SIMULATION_SPEEDS, SimulationError, startSimulationTicker, tickSimulations } from "./simulation-mode";
+import { controlSimulation, launchSimulation, SimulationError } from "./simulation-mode";
 import { SCENARIOS, scenarioStartDate } from "./scenarios";
 import type { ScenarioId } from "./scenarios";
 import { MemoryStore } from "./store";
@@ -86,7 +86,8 @@ describe("simulation mode", () => {
     // A simulation always runs with the agent (add-agent-insights).
     expect(await store.getFlag("agent_enabled", "b1")).toBe(true);
     const record = await store.getSimulation("b1");
-    expect(record).toMatchObject({ scenario: "dead_ad", status: "running", speed: SIMULATION_SPEEDS.fast });
+    // The virtual time stands until the owner steps it on the pult.
+    expect(record).toMatchObject({ scenario: "dead_ad", status: "paused", steps: [] });
     // A calendar month: 09:00 on the 1st of the next month, Moscow time.
     expect(record?.startedAt.toISOString()).toBe("2026-11-01T06:00:00.000Z");
     // The control run is known from the start, day by day.
@@ -103,42 +104,60 @@ describe("simulation mode", () => {
     await expect(launchSimulation(ctx, "b1", plan(1), "dead_ad")).rejects.toThrow(new SimulationError("SCENARIO_UNAVAILABLE", "Нужно хотя бы 2 объявления в поиске — сейчас 1"));
   });
 
-  it("moves about a day every 10 seconds at the fast speed and is skipped by the hourly cron", async () => {
+  it("lives a week per step, stands between steps and is skipped by the hourly cron", async () => {
     const { store, clock, ctx } = await world();
     await launchSimulation(ctx, "b1", plan(), "regular");
-    await controlSimulation(ctx, "b1", { action: "speed", speed: "fast" });
-    for (let second = 0; second < 60; second++) {
-      clock.set(new Date(clock.now().getTime() + 1_000));
-      await tickSimulations(ctx, logger);
-    }
+    const startedAt = (await store.getSimulation("b1"))?.startedAt.getTime() ?? 0;
+    await controlSimulation(ctx, "b1", { action: "step_week" });
     const record = await store.getSimulation("b1");
-    const virtualDays = ((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)) / 86_400_000;
-    expect(virtualDays).toBeGreaterThanOrEqual(5);
+    expect((record?.simNow.getTime() ?? 0) - startedAt).toBe(7 * 86_400_000);
+    expect(record?.status).toBe("paused");
+    expect(record?.steps.map((s) => [s.kind, s.to.getTime() - s.from.getTime()])).toEqual([["week", 7 * 86_400_000]]);
     expect((await store.stats("b1", "2026-10-30", "2026-11-30")).length).toBeGreaterThan(0);
+    // Ten real minutes later the virtual time has not moved.
+    clock.set(new Date(clock.now().getTime() + 600_000));
+    expect((await store.getSimulation("b1"))?.simNow.getTime()).toBe(record?.simNow.getTime());
     // The real hourly dispatcher would throw on the Direct platform if it touched the simulated business.
     await dispatchHour(ctx);
   });
 
-  it("stops at the next decision of the service", async () => {
-    const { store, clock, ctx } = await world();
+  it("goes through the service's decisions without stopping, budget-guard cuts included", async () => {
+    const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan(), "dead_ad");
-    await controlSimulation(ctx, "b1", { action: "until_decision" });
-    const from = (await store.getSimulation("b1"))?.simNow.getTime() ?? 0;
-    let seconds = 0;
-    for (; seconds < 600 && (await store.getSimulation("b1"))?.status !== "paused"; seconds++) {
-      clock.set(new Date(clock.now().getTime() + 1_000));
-      await tickSimulations(ctx, logger);
+    const startedAt = (await store.getSimulation("b1"))?.startedAt.getTime() ?? 0;
+    for (let week = 0; week < 3 && !(await store.changes("b1")).some(isAdDecision); week++) {
+      await controlSimulation(ctx, "b1", { action: "step_week" });
     }
-    const record = await store.getSimulation("b1");
-    expect(record?.status).toBe("paused");
-    // Not paced by the real clock: 6 virtual hours every second, faster than «1 день = 10 секунд».
-    expect(seconds).toBeLessThanOrEqual(Math.ceil(((record?.simNow.getTime() ?? 0) - from) / (6 * 3_600_000)) + 1);
     const changes = await store.changes("b1");
-    // Budget-guard limit cuts came earlier and did not stop it: it stopped in the hour of the first decision about the ads.
     expect(changes.some(isBudgetAdjustment)).toBe(true);
     const decision = changes.find(isAdDecision);
     expect(decision).toBeDefined();
-    expect((record?.simNow.getTime() ?? 0) - (decision?.createdAt.getTime() ?? 0)).toBeLessThanOrEqual(3_600_000);
+    // The week ran to its end: a decision in the middle of it does not stop the step.
+    const record = await store.getSimulation("b1");
+    const weeks = record?.steps.length ?? 0;
+    expect((record?.simNow.getTime() ?? 0) - startedAt).toBe(weeks * 7 * 86_400_000);
+    expect(record?.simNow.getTime()).toBeGreaterThan(decision?.createdAt.getTime() ?? 0);
+  });
+
+  it("lives the last 2 days of the scenario with the last step, then offers to continue", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan(), "regular");
+    for (let week = 0; week < 4; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "step_day" });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    const record = await store.getSimulation("b1");
+    expect(record?.steps.map((s) => [s.kind, Math.round((s.to.getTime() - s.from.getTime()) / 86_400_000)])).toEqual([
+      ["week", 7],
+      ["week", 7],
+      ["week", 7],
+      ["week", 7],
+      ["day", 1],
+      ["week", 1],
+    ]);
+    expect(record?.simNow.getTime()).toBe(record?.endsAt.getTime());
+    // At the end a step does nothing until the owner continues for 30 more days.
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    expect((await store.getSimulation("b1"))?.steps).toHaveLength(6);
   });
 
   it("starts a calendar month on the 1st, «Конец месяца» 4 days before a month ends", () => {
@@ -172,14 +191,14 @@ describe("simulation mode", () => {
     expect(baseline?.spend).toBeLessThanOrEqual(15_000 * 100);
     await days(ctx, 30);
     expect((await store.getSimulation("b1"))?.baseline).toEqual(baseline);
-  });
+  }, 30_000);
 
   it("repeats a run exactly after «Начать заново»", async () => {
     const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan(), "regular");
     await days(ctx, 9);
     const first = { changes: (await store.changes("b1")).map((c) => [c.reasonCode, c.createdAt.toISOString()]), stats: await store.stats("b1", "2026-10-01", "2026-12-31") };
-    await controlSimulation(ctx, "b1", { action: "restart" });
+    await controlSimulation(ctx, "b1", { action: "restart", mode: "fresh" });
     await days(ctx, 9);
     expect((await store.changes("b1")).map((c) => [c.reasonCode, c.createdAt.toISOString()])).toEqual(first.changes);
     expect(await store.stats("b1", "2026-10-01", "2026-12-31")).toEqual(first.stats);
@@ -267,7 +286,8 @@ describe("scenario outcomes on a 15 000 ₽ budget with a wizard-like plan (simu
     expect(firstDay(dead, /^SAFETY_SCALE_EFFECTIVE$/)).toBeLessThanOrEqual(14);
     expect(firstDay(await outcome("borderline", start), /^EXPERIMENT_/)).toBeLessThanOrEqual(30);
     expect(firstDay(await outcome("cabinet_edit", start), /^CABINET_CHANGE$/)).toBe(5);
-  });
+    // Four 30-day runs: several seconds even before the agent was called on reasons.
+  }, 30_000);
 });
 
 describe("owner's rollback in a simulation", () => {
@@ -347,56 +367,42 @@ describe("simulation with the agent (add-agent-insights decision 8)", () => {
     expect(seen).not.toMatch(/"(cr|ctr|costPerClick|impressionsPerDay|truth)"/);
   });
 
-  it("stands still while the agent thinks, and a slow turn of one simulation does not hold up another", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  it("shows the step while the agent thinks, and a slow turn of one simulation does not hold up another", async () => {
     const agent = new SlowPolicy();
-    const { store, clock, ctx } = await world(agent);
+    const { store, ctx } = await world(agent);
     await store.saveBusiness({ ...business, id: "b2" });
     const other = plan();
     other.directions = other.directions.map((d) => ({ ...d, name: d.name.replace("Маникюр", "Педикюр") }));
     await launchSimulation(ctx, "b1", plan(), "regular");
     await launchSimulation(ctx, "b2", other, "regular");
-    const stop = startSimulationTicker(ctx, logger, 1_000);
-    const second = async () => {
-      clock.set(new Date(clock.now().getTime() + 1_000));
-      await vi.advanceTimersByTimeAsync(1_000);
-    };
-    for (let i = 0; i < 60 && !agent.started; i++) await second();
+    const step = controlSimulation(ctx, "b1", { action: "step_week" });
+    for (let i = 0; i < 2_000 && !agent.started; i++) await new Promise((resolve) => setImmediate(resolve));
     expect(agent.started).toBe(true);
-    const thinking = (await store.getSimulation("b1"))?.simNow.getTime() ?? 0;
-    const b2Before = (await store.getSimulation("b2"))?.simNow.getTime() ?? 0;
-    // Thirty seconds of thinking: the first simulation stands, the second one goes on.
-    for (let i = 0; i < 30; i++) await second();
-    expect((await store.getSimulation("b1"))?.simNow.getTime()).toBe(thinking);
-    expect(((await store.getSimulation("b2"))?.simNow.getTime() ?? 0) - b2Before).toBeGreaterThan(24 * 3_600_000);
+    // The pult knows the step and its window while the agent thinks.
+    const thinking = await store.getSimulation("b1");
+    expect(thinking?.status).toBe("stepping");
+    expect(thinking?.steps.at(-1)?.kind).toBe("week");
+    // Another business lives its week meanwhile.
+    await controlSimulation(ctx, "b2", { action: "step_week" });
+    expect((await store.getSimulation("b2"))?.steps).toHaveLength(1);
+    // A second press during the step waits for the lock and then does nothing.
+    const again = controlSimulation(ctx, "b1", { action: "step_week" });
     agent.finish();
-    await vi.advanceTimersByTimeAsync(0);
-    await second();
-    stop();
-    // The thirty seconds do not become virtual time: after the turn the first simulation goes on at its speed.
-    const after = (await store.getSimulation("b1"))?.simNow.getTime() ?? 0;
-    expect(after - thinking).toBeLessThanOrEqual(4 * 3_600_000);
-  });
-
-  it("applies «Пауза» pressed during «+1 день» right after the agent's turn, not at the end of the day", async () => {
-    const agent = new SlowPolicy();
-    const { store, ctx } = await world(agent);
-    await launchSimulation(ctx, "b1", plan(), "regular");
-    const startedAt = (await store.getSimulation("b1"))?.simNow.getTime() ?? 0;
-    const step = controlSimulation(ctx, "b1", { action: "step_day" });
-    for (let i = 0; i < 100 && !agent.started; i++) await new Promise((resolve) => setImmediate(resolve));
-    expect(agent.started).toBe(true);
-    // The owner pauses while the agent thinks; the pause waits for the turn only.
-    const pause = controlSimulation(ctx, "b1", { action: "pause" });
-    agent.finish();
-    await Promise.all([step, pause]);
+    await Promise.all([step, again]);
     const record = await store.getSimulation("b1");
     expect(record?.status).toBe("paused");
-    expect((record?.simNow.getTime() ?? 0) - startedAt).toBeLessThan(86_400_000);
-    // Without a pause the step goes the whole day, through the agent's turns.
+    expect(record?.steps).toHaveLength(1);
+    expect((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)).toBe(7 * 86_400_000);
+  });
+
+  it("goes the whole day with «+1 день», through the agent's turns", async () => {
+    const { store, ctx } = await world(new HeuristicPolicy());
+    await launchSimulation(ctx, "b1", plan(), "regular");
+    const startedAt = (await store.getSimulation("b1"))?.simNow.getTime() ?? 0;
     await controlSimulation(ctx, "b1", { action: "step_day" });
-    expect(((await store.getSimulation("b1"))?.simNow.getTime() ?? 0) - (record?.simNow.getTime() ?? 0)).toBe(86_400_000);
-    expect((await store.getSimulation("b1"))?.status).toBe("paused");
+    const record = await store.getSimulation("b1");
+    expect((record?.simNow.getTime() ?? 0) - startedAt).toBe(86_400_000);
+    expect(record?.status).toBe("paused");
   });
 
   it("repeats a run with a deterministic agent exactly after «Начать заново»", async () => {
@@ -409,10 +415,77 @@ describe("simulation with the agent (add-agent-insights decision 8)", () => {
     });
     const first = await run();
     expect(first.insights.some(([source]) => source === "agent")).toBe(true);
-    await controlSimulation(ctx, "b1", { action: "restart" });
+    await controlSimulation(ctx, "b1", { action: "restart", mode: "fresh" });
     await days(ctx, 12);
     expect(await run()).toEqual(first);
   });
+});
+
+/** The deterministic agent priced as a model: its turns count as turns on a model, so the run can be repeated. */
+class ModelLikePolicy extends HeuristicPolicy {
+  turns = 0;
+  override async runTurn(input: Parameters<HeuristicPolicy["runTurn"]>[0]): Promise<TurnResult> {
+    this.turns++;
+    return { ...(await super.runTurn(input)), usage: { inputTokens: 1_000, outputTokens: 100, source: "api" } };
+  }
+}
+
+describe("«Повторить этот прогон» (simulation-mode spec «Повтор прогона»)", () => {
+  const run = async (store: MemoryStore) => ({
+    changes: (await store.changes("b1")).map((c) => [c.actor, c.reasonCode, c.createdAt.toISOString()]),
+    insights: (await store.insights("b1")).map((i) => [i.source, i.reasonCode, i.observation, i.createdAt.toISOString()]),
+    summaries: (await store.turns("b1")).map((t) => [t.trigger, t.summary, t.startedAt.toISOString()]),
+    stats: await store.stats("b1", "2026-10-01", "2026-12-31"),
+  });
+
+  it("repeats the run from the journals without calling the agent, with the same history, insights and numbers", async () => {
+    const agent = new ModelLikePolicy();
+    const { store, ctx } = await world(agent);
+    await launchSimulation(ctx, "b1", plan(), "dead_ad");
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    const first = await run(store);
+    expect(first.summaries.length).toBeGreaterThan(0);
+    const calls = agent.turns;
+    await controlSimulation(ctx, "b1", { action: "restart", mode: "repeat" });
+    expect((await store.getSimulation("b1"))?.replay?.turns).toHaveLength(first.summaries.length);
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    expect(await run(store)).toEqual(first);
+    expect(agent.turns).toBe(calls);
+    expect((await store.turns("b1")).every((t) => t.inputTokens === null && t.costKopecks === 0)).toBe(true);
+    expect((await store.getSimulation("b1"))?.replay).toMatchObject({ diverged: false, position: first.summaries.length });
+  });
+
+  it("lets the agent decide again from the first turn after the owner did something the original run had not", async () => {
+    const agent = new ModelLikePolicy();
+    const { store, ctx } = await world(agent);
+    await launchSimulation(ctx, "b1", plan(), "dead_ad");
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "restart", mode: "repeat" });
+    const calls = agent.turns;
+    await controlSimulation(ctx, "b1", { action: "step_day" });
+    const ad = (await store.ads("b1")).find((a) => a.status === "active");
+    await handleWebJob(ctx, { kind: "command", businessId: "b1", command: { type: "PauseAd", adId: ad?.id ?? "" }, explanation: "Вы отключили объявление." });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    expect((await store.getSimulation("b1"))?.replay).toMatchObject({ diverged: true });
+    expect(agent.turns).toBeGreaterThan(calls);
+  });
+
+  it("starts fresh when the run had no turn on a model, and «Прогнать заново» keeps nothing to replay", async () => {
+    const { store, ctx } = await world(new HeuristicPolicy());
+    await launchSimulation(ctx, "b1", plan(), "dead_ad");
+    await controlSimulation(ctx, "b1", { action: "step_week" });
+    await controlSimulation(ctx, "b1", { action: "restart", mode: "repeat" });
+    expect((await store.getSimulation("b1"))?.replay).toBeNull();
+    const modelLike = await world(new ModelLikePolicy());
+    await launchSimulation(modelLike.ctx, "b1", plan(), "dead_ad");
+    await controlSimulation(modelLike.ctx, "b1", { action: "step_week" });
+    await controlSimulation(modelLike.ctx, "b1", { action: "restart", mode: "fresh" });
+    expect((await modelLike.store.getSimulation("b1"))?.replay).toBeNull();
+  }, 30_000);
 });
 
 describe("analyst levers in «Обычный месяц» (add-agent-analyst-stage1)", () => {
@@ -423,7 +496,9 @@ describe("analyst levers in «Обычный месяц» (add-agent-analyst-sta
     const [search] = withNegatives.directions;
     if (search) search.negativeKeywords = ["бесплатно", "обучение", "фото"];
     await launchSimulation(ctx, "b1", withNegatives, "regular");
-    await days(ctx, 14);
+    // The agent is called on reasons, and the breakdowns are Monday's job: the phones' price is cut at the review of
+    // the third Monday (weekly-simulation-triggered-agent, Risks).
+    await days(ctx, 16);
     const actions = (await store.changes("b1")).filter((c) => c.actor === "agent" && c.status === "applied").map((c) => c.action);
     expect(actions.filter((a) => a.type === "AddNegativeKeywords").map((a) => (a.type === "AddNegativeKeywords" ? a.phrases : [])).flat().sort()).toEqual(["идеи", "форум"]);
     expect(actions).toContainEqual(expect.objectContaining({ type: "SetDeviceAdjustment", device: "mobile", percent: -25 }));

@@ -13,7 +13,6 @@ import { createLogger } from "./logger";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { startScheduler, WEB_JOB_CONCURRENCY } from "./scheduler";
-import { MAX_MOVING_SIMULATIONS, startSimulationTicker } from "./simulation-mode";
 import { SmtpMailer } from "./email";
 import { FileMiniSiteStore } from "./minisite-store";
 import { BusinessDirectPlatform } from "./direct-platform";
@@ -22,10 +21,10 @@ import { createDirectTokenSource } from "./direct-tokens";
 
 const logger = createLogger();
 /**
- * Up to three nested locks (simulation or job, agent turn, business) for each of the simulation ticks, web jobs and the
- * hourly dispatch running at once.
+ * Up to three nested locks (simulation or job, agent turn, business) for each of the web jobs — the simulation steps
+ * among them — and the hourly dispatch running at once.
  */
-const LOCK_POOL_SIZE = 3 * (MAX_MOVING_SIMULATIONS + WEB_JOB_CONCURRENCY + 1);
+const LOCK_POOL_SIZE = 3 * (WEB_JOB_CONCURRENCY + 1);
 
 const main = async (): Promise<void> => {
   const config = loadConfig(process.env);
@@ -157,12 +156,9 @@ const main = async (): Promise<void> => {
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
   await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL, teamEmail: config.TEAM_ALERT_EMAIL });
-  // Businesses in the simulation mode live on their own virtual clocks (add-simulation-mode decision 4).
-  const stopTicker = startSimulationTicker(ctx, logger);
   logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null });
 
   const shutdown = async (): Promise<void> => {
-    stopTicker();
     await boss.stop();
     await lockPool.end();
     await pool.end();

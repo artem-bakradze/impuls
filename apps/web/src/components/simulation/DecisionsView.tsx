@@ -1,10 +1,12 @@
 "use client";
 
-import { CheckCircleFilled, RobotOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, FastForwardOutlined, RobotOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { formatRub, plural } from "@/lib/format";
 import type { Comparison, DecisionScreen, DecisionScreenModel, RunResult, RunTotals } from "@/lib/simulation-screen";
+import type { WeekStoryModel } from "@/lib/week-story";
 import { InsightFeed } from "../insights/InsightFeed";
+import { WeekStory } from "./WeekStory";
 import { Chip, Empty, PageHead, Surface, SurfaceHead } from "../ui/primitives";
 
 const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
@@ -156,7 +158,7 @@ function Checklist({ items }: { items: DecisionScreenModel["checklist"] }) {
   );
 }
 
-export function DecisionsView({ model }: { model: DecisionScreen }) {
+export function DecisionsView({ model }: { model: DecisionScreen & { story: WeekStoryModel | null } }) {
   return (
     <div className="page">
       <PageHead
@@ -164,6 +166,16 @@ export function DecisionsView({ model }: { model: DecisionScreen }) {
         lead={`${model.scenarioTitle ? `Сценарий «${model.scenarioTitle}». ` : ""}Здесь видно то, чего сервис не знает: как объявления работают на самом деле — и верно ли он это понял.`}
       />
       <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+        {/* The newest lived week first (simulation-mode spec «История недели»). */}
+        {model.story ? (
+          <WeekStory key={model.story.week} story={model.story} names={model.feed.names} />
+        ) : (
+          <Surface className="surface-pad" data-testid="week-story-empty">
+            <Empty icon={<FastForwardOutlined aria-hidden="true" />} title="Прожитых недель пока нет">
+              Нажмите «Прожить неделю» на пульте — здесь появится история недели: цифры объявлений, разборы сервиса и его решения.
+            </Empty>
+          </Surface>
+        )}
         {model.comparison ? <ComparisonCard comparison={model.comparison} day={model.day} totalDays={model.totalDays} decisions={model.decisionDays} result={model.result} /> : null}
         <Checklist items={model.checklist} />
         <section className="stack" style={{ "--gap": "14px" } as React.CSSProperties} data-testid="sim-feed">

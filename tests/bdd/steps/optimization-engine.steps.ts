@@ -156,4 +156,33 @@ describeFeature(feature, ({ Scenario }) => {
       expect(results[0]?.message).toContain("123 457 ₽");
     });
   });
+
+  Scenario("День без повода", ({ Given, When, Then, And }) => {
+    let sim: SimulationDriver;
+    let seenAt = 0;
+    Given("вчерашний ход видел неэффективное объявление и оставил его", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+      for (let day = 0; day < 20 && seenAt === 0; day++) {
+        await sim.runDays(1);
+        const turn = (await sim.store.turns("b1")).find((t) =>
+          ((t.context as { trigger?: { reasons?: { kind: string; objectId: string }[] } }).trigger?.reasons ?? []).some((r) => r.kind === "became_ineffective" && r.objectId === "b1-d1-a2"),
+        );
+        seenAt = turn?.startedAt.getTime() ?? 0;
+      }
+      expect(seenAt).toBeGreaterThan(0);
+    });
+    When("сегодня поводов для хода нет", async () => {
+      await sim.runDays(1);
+    });
+    Then("после утренней оценки объявление ставится на паузу страховочным правилом, как после состоявшегося хода", async () => {
+      const pause = (await sim.store.changes("b1")).find((c) => c.action.type === "PauseAd" && c.objectId === "b1-d1-a2");
+      expect(pause?.actor).toBe("safety_net");
+      expect((pause?.createdAt.getTime() ?? 0) - seenAt).toBeGreaterThanOrEqual(23 * 3_600_000);
+    });
+    And("лента показывает его инсайт, а не «Сегодня решения принимали страховочные правила»", async () => {
+      const insights = await sim.store.insights("b1");
+      expect(insights.some((i) => i.reasonCode === "SAFETY_PAUSE_AD")).toBe(true);
+      expect(insights.filter((i) => i.reasonCode === RULES_DAY_CODE)).toEqual([]);
+    });
+  });
 });

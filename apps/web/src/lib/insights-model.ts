@@ -1,7 +1,7 @@
 import { addDays, toLocalDate } from "@impuls/core";
 import type { InsightFact, InsightMetric, InsightPeriod, LocalDate } from "@impuls/core";
 import type { HypothesisRecord, InsightRecord, TurnDigest } from "@impuls/worker";
-import { RULES_DAY_CODE } from "@impuls/worker/change-kinds";
+import { QUIET_DAY_CODE, RULES_DAY_CODE } from "@impuls/worker/change-kinds";
 import type { ExperimentItem } from "./experiments-model";
 import { formatCount, formatRub, sentence } from "./format";
 import type { HistoryItem, Names } from "./history-view";
@@ -43,12 +43,17 @@ export interface InsightCardModel {
   /** The history entry «Вернуть как было» rolls back, while it still can be rolled back. */
   rollback: HistoryItem | null;
   truth: TruthLine | null;
+  /** Ads and advertising the insight is about, from its object and fact keys: the week story lights their rows. */
+  objectIds: string[];
 }
 
 /** «Разбор 8 ноября»: the agent's review of the day and the insights of that day, newest first. */
 export interface DayReviewModel {
   date: string;
-  /** The first of consecutive days on which the rules decided alone for one reason and changed nothing; else null. */
+  /**
+   * The first of consecutive days on which the rules decided alone for one reason and changed nothing, or of quiet days
+   * in a row without insights; else null.
+   */
   from: string | null;
   /** The agent's message to the owner, when it passed the checks. */
   summary: string | null;
@@ -107,6 +112,8 @@ export interface InsightFeedModel {
 }
 
 export const QUIET_DAY = "Посмотрели рекламу — менять ничего не нужно";
+/** The same for quiet days in a row: «С 3 по 6 декабря — посмотрели рекламу, менять ничего не нужно». */
+export const QUIET_DAYS = "посмотрели рекламу, менять ничего не нужно";
 
 const METRICS: Record<InsightMetric, string> = {
   spend: "расход",
@@ -158,7 +165,8 @@ export type TruthOf = (ref: NonNullable<InsightRecord["objectRef"]>, goal: numbe
  * The days of the feed (insights spec «Разбор дня»), newest first: a day with a completed turn shows the agent's
  * checked review, or one line when it found nothing to change; a day without a turn says why the rules decided alone.
  * Consecutive days on which the rules decided alone for one reason and changed nothing make one line, so that the feed
- * keeps saying why there are no reviews without repeating it every day.
+ * keeps saying why there are no reviews without repeating it every day. A day without reasons for the agent is quiet,
+ * and quiet days in a row without insights make one line too (ad-agent «Поводы для хода агента»).
  */
 export const feedDays = (input: {
   insights: readonly InsightRecord[];
@@ -171,16 +179,17 @@ export const feedDays = (input: {
   /** The agent's hypothesis journal, for «Разбор недели». */
   hypotheses?: readonly HypothesisRecord[];
 }): DayReviewModel[] => {
-  const days = new Map<LocalDate, { records: InsightRecord[]; marker: InsightRecord | null; turns: TurnDigest[] }>();
+  const days = new Map<LocalDate, { records: InsightRecord[]; marker: InsightRecord | null; quiet: boolean; turns: TurnDigest[] }>();
   const day = (at: Date) => {
     const date = toLocalDate(at, input.timeZone);
-    const known = days.get(date) ?? { records: [], marker: null, turns: [] };
+    const known = days.get(date) ?? { records: [], marker: null, quiet: false, turns: [] };
     days.set(date, known);
     return known;
   };
   for (const record of input.insights) {
     const d = day(record.createdAt);
     if (record.reasonCode === RULES_DAY_CODE) d.marker = record;
+    else if (record.reasonCode === QUIET_DAY_CODE) d.quiet = true;
     else d.records.push(record);
   }
   for (const turn of input.turns) {
@@ -189,6 +198,17 @@ export const feedDays = (input: {
   const reviews: DayReviewModel[] = [];
   for (const [date, d] of [...days].sort(([a], [b]) => b.localeCompare(a))) {
     if (input.since !== null && date < input.since) continue;
+    if (d.turns.length === 0 && d.records.length === 0 && d.marker === null) {
+      if (!d.quiet) continue;
+      const newer = reviews.at(-1);
+      // Days go newest first: a quiet day right before a quiet line extends it.
+      if (newer && newer.quiet && newer.insights.length === 0 && newer.summary === null && newer.rulesReason === null && newer.weekly === null && addDays(date, 1) === (newer.from ?? newer.date)) {
+        newer.from = date;
+        continue;
+      }
+      reviews.push({ date, from: null, summary: null, quiet: true, rulesReason: null, insights: [], weekly: null });
+      continue;
+    }
     if (d.turns.length === 0 && d.records.length === 0) {
       if (d.marker === null) continue;
       const reason = d.marker.observation;
@@ -218,7 +238,8 @@ export const feedDays = (input: {
       date,
       from: null,
       summary: review?.summary ?? null,
-      quiet: records.length === 0 && latest.length > 0,
+      // A quiet day keeps its line above the rules' insights of that day.
+      quiet: (records.length === 0 && latest.length > 0) || (d.quiet && latest.length === 0),
       rulesReason: d.turns.length === 0 ? (d.marker?.observation ?? null) : null,
       insights: [...records].reverse().map(card),
       weekly:
@@ -252,4 +273,15 @@ export const toInsightCard = (record: InsightRecord, rollback: HistoryItem | nul
   next: record.next,
   rollback,
   truth,
+  objectIds: objectIdsOf(record),
 });
+
+/** `ad:<id>:…`, `direction:<id>:…` and `segment:<direction>:…` fact keys name their objects; so does the object ref. */
+const objectIdsOf = (record: InsightRecord): string[] => {
+  const ids = new Set<string>(record.objectRef ? [record.objectRef.id] : []);
+  for (const fact of record.facts) {
+    const [kind, id] = fact.key.split(":");
+    if ((kind === "ad" || kind === "direction" || kind === "segment") && id) ids.add(id);
+  }
+  return [...ids];
+};

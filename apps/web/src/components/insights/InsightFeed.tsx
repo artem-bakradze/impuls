@@ -9,7 +9,7 @@ import { experimentProgress, experimentReady } from "@/lib/experiments-model";
 import type { ExperimentVariant } from "@/lib/experiments-model";
 import { formatDateTime, formatLocalDate, formatRub, sentence } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
-import { DECISION_LABELS, INSIGHT_AUTHORS, QUIET_DAY } from "@/lib/insights-model";
+import { DECISION_LABELS, INSIGHT_AUTHORS, QUIET_DAY, QUIET_DAYS } from "@/lib/insights-model";
 import type { DayReviewModel, HypothesisCardModel, InsightCardModel, InsightFeedModel, WeeklyReviewModel } from "@/lib/insights-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { DiffText } from "../ui/DiffText";
@@ -207,6 +207,10 @@ function WeeklyReview({ weekly, timeZone, onRollback }: { weekly: WeeklyReviewMo
   );
 }
 
+/** «С 3 по 6 декабря», or «С 30 ноября по 2 декабря» across months. */
+const rangeText = (from: string, to: string): string =>
+  from.slice(0, 7) === to.slice(0, 7) ? `С ${Number(from.slice(8, 10))} по ${formatLocalDate(to)}` : `С ${formatLocalDate(from)} по ${formatLocalDate(to)}`;
+
 function DayReview({ day, timeZone, onRollback }: { day: DayReviewModel; timeZone: string; onRollback: (item: HistoryItem) => void }) {
   /**
    * A turn that only observed: the message, «Что заметили» and «Что решили» all say «nothing changes», so the day reads
@@ -214,9 +218,19 @@ function DayReview({ day, timeZone, onRollback }: { day: DayReviewModel; timeZon
    */
   const observationsOnly = !day.quiet && day.rulesReason === null && day.weekly === null && day.insights.length > 0 && day.insights.every((card) => card.decision.status === "none");
   const [open, setOpen] = useState(false);
+  // Quiet days in a row read as one line: «С 3 по 6 декабря — посмотрели рекламу, менять ничего не нужно».
+  if (day.quiet && day.from !== null && day.insights.length === 0) {
+    return (
+      <section className="stack day-review" style={{ "--gap": "10px" } as React.CSSProperties} data-testid="day-review">
+        <h3 className="t-h3" data-testid="quiet-days">
+          {rangeText(day.from, day.date)} — <span style={{ fontWeight: 500, color: "var(--text-2)" }}>{QUIET_DAYS}</span>
+        </h3>
+      </section>
+    );
+  }
   return (
     <section className="stack day-review" style={{ "--gap": "10px" } as React.CSSProperties} data-testid="day-review">
-      <h3 className="t-h3">{day.from ? `С ${formatLocalDate(day.from)} по ${formatLocalDate(day.date)}` : `Разбор ${formatLocalDate(day.date)}`}</h3>
+      <h3 className="t-h3">{day.from ? rangeText(day.from, day.date) : `Разбор ${formatLocalDate(day.date)}`}</h3>
       {day.weekly ? <WeeklyReview weekly={day.weekly} timeZone={timeZone} onRollback={onRollback} /> : null}
       {day.rulesReason ? (
         <div className="note" data-testid="rules-day">

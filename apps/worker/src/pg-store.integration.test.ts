@@ -43,10 +43,16 @@ describe("PgStore with the full worker loop", () => {
     const changes = await store.changes("b1");
     expect(changes.length).toBeGreaterThan(0);
     expect(changes.every((c) => c.status !== "pending")).toBe(true);
+    // The agent is called on reasons: in a first week of collecting data, the Monday review at least.
     const turns = await store.turns("b1");
-    expect(turns.length).toBeGreaterThanOrEqual(6);
+    expect(turns.length).toBeGreaterThanOrEqual(1);
+    // The quiet mornings are marked, and the evaluation keeps its findings for the next day's reasons.
+    expect((await store.insights("b1")).some((i) => i.reasonCode === "QUIET_DAY")).toBe(true);
+    expect(Array.isArray((await store.lastEvaluation("b1"))?.findings)).toBe(true);
     // The feed's light view of the journal and the pult's running turn.
-    expect(await store.turnDigests("b1")).toEqual(turns.map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: t.startedAt, summary: t.summary, summaryValid: t.summaryValid })));
+    expect(await store.turnDigests("b1")).toEqual(
+      turns.map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: t.startedAt, summary: t.summary, summaryValid: t.summaryValid, usageSource: t.usageSource })),
+    );
     expect(await store.runningTurnStartedAt("b1")).toBeNull();
     const last = turns.at(-1);
     if (!last) throw new Error("no turns");
@@ -74,16 +80,17 @@ describe("PgStore with the full worker loop", () => {
       endsAt: new Date("2026-10-31T00:00:00Z"),
       lastTickAt: null,
       speed: 8_640,
-      status: "running" as const,
+      status: "stepping" as const,
       state,
       baseline: null,
+      steps: [{ kind: "week" as const, from: at, to: new Date("2026-10-08T00:00:00Z") }],
+      replay: null,
     };
     await store.saveSimulation(simulation);
     expect((await store.getBusiness("b1")).mode).toBe("simulation");
     expect(await store.getSimulation("b1")).toEqual(simulation);
-    expect((await store.movingSimulations()).map((s) => s.businessId)).toEqual(["b1"]);
     await store.saveSimulation({ ...simulation, status: "paused" });
-    expect(await store.movingSimulations()).toEqual([]);
+    expect((await store.getSimulation("b1"))?.status).toBe("paused");
 
     // Analyst settings of a direction and the hypothesis journal (add-agent-analyst-stage1).
     const [direction] = await store.directions("b1");

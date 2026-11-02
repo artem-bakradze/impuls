@@ -5,10 +5,9 @@ import { afterAll, describe, expect, it } from "vitest";
 import { ManualClock } from "./clock";
 import type { JobContext } from "./context";
 import { CommandExecutor } from "./executor";
-import { createLogger } from "./logger";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
-import { controlSimulation, launchSimulation, tickSimulations } from "./simulation-mode";
+import { controlSimulation, launchSimulation } from "./simulation-mode";
 
 // Requires the compose PostgreSQL with migrations applied (pnpm db:migrate).
 const pool = createPool(databaseUrl());
@@ -18,9 +17,9 @@ afterAll(async () => {
   await pool.end();
 });
 
-/** simulation-mode spec: at «1 день = 10 секунд» 30 virtual days take at most 6 minutes on the real store. */
+/** simulation-mode spec: a week without model calls takes at most 30 seconds on the real store. */
 describe("simulation speed on PostgreSQL", () => {
-  it("runs 30 days of «Пограничное объявление» at the fast speed within 6 minutes", async () => {
+  it("lives a week of «Пограничное объявление» within 30 seconds", async () => {
     await db.execute(sql`DELETE FROM simulations WHERE business_id = 'speed-b1'`);
     await db.execute(sql`DELETE FROM users WHERE id = 'speed-u1'`).catch(() => undefined);
     const store = new PgStore(db);
@@ -59,20 +58,13 @@ describe("simulation speed on PostgreSQL", () => {
       },
       "borderline",
     );
-    await controlSimulation(ctx, "speed-b1", { action: "speed", speed: "fast" });
-    const logger = createLogger(() => undefined);
     const started = Date.now();
-    // Real seconds of the ticker; each tick does the work of one second at «1 день = 10 секунд».
-    for (let second = 0; second < 400 && (await store.getSimulation("speed-b1"))?.status !== "paused"; second++) {
-      real.set(new Date(real.now().getTime() + 1_000));
-      await tickSimulations(ctx, logger);
-    }
+    await controlSimulation(ctx, "speed-b1", { action: "step_week" });
     const elapsed = (Date.now() - started) / 1_000;
     const simulation = await store.getSimulation("speed-b1");
-    console.log(`30 virtual days took ${elapsed.toFixed(1)} s of work`);
+    console.log(`A virtual week took ${elapsed.toFixed(1)} s of work`);
     expect(simulation?.status).toBe("paused");
-    expect(simulation?.baseline?.days).toBe(30);
-    // The ticker's own pace is 300 s for 30 days; the work must fit into it with room to spare.
-    expect(elapsed).toBeLessThan(300);
-  }, 600_000);
+    expect(simulation?.steps.map((s) => s.kind)).toEqual(["week"]);
+    expect(elapsed).toBeLessThan(30);
+  }, 120_000);
 });

@@ -105,6 +105,7 @@ describe("history entry", () => {
         next: "Через 7 дней сравним цену обращения с прежней.",
         rollback: null,
         truth: null,
+        objectIds: [],
       },
     };
     render(<HistoryEntry item={decision} timeZone="Europe/Moscow" onRollback={() => undefined} />);

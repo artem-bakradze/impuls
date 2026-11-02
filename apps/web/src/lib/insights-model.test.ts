@@ -31,6 +31,7 @@ const turn = (id: string, at: string, overrides: Partial<TurnDigest> = {}): Turn
   startedAt: new Date(at),
   summary: "Отключили одно объявление: оно тратило деньги без обращений.",
   summaryValid: true,
+  usageSource: null,
   ...overrides,
 });
 
@@ -134,6 +135,30 @@ describe("facts of an insight (insights spec «Инсайт»)", () => {
 
 describe("day reviews of the feed (insights spec «Разбор дня»)", () => {
   const timeZone = "Europe/Moscow";
+
+  it("folds quiet days in a row into one line and keeps a quiet day's line above the rules' insights", () => {
+    const quiet = (id: string, at: string) => insight(id, at, { turnId: null, source: "rule", reasonCode: "QUIET_DAY", facts: [], objectRef: null, decision: { kind: "none", text: "", status: "none", changeIds: [] } });
+    const days = feedDays({
+      insights: [
+        quiet("q3", "2026-12-03T03:00:00Z"),
+        quiet("q4", "2026-12-04T03:00:00Z"),
+        quiet("q5", "2026-12-05T03:00:00Z"),
+        quiet("q6", "2026-12-06T03:00:00Z"),
+        quiet("q8", "2026-12-08T03:00:00Z"),
+        insight("r8", "2026-12-08T03:00:01Z", { turnId: null, source: "rule", reasonCode: "SAFETY_PAUSE_AD" }),
+      ],
+      turns: [turn("d7", "2026-12-07T03:00:00Z")],
+      timeZone,
+      since: null,
+      entries: new Map(),
+    });
+    expect(days.map((d) => [d.from, d.date, d.quiet, d.insights.length])).toEqual([
+      [null, "2026-12-08", true, 1],
+      // A turn without insights was quiet already, and it breaks the run of days without turns.
+      [null, "2026-12-07", true, 0],
+      ["2026-12-03", "2026-12-06", true, 0],
+    ]);
+  });
 
   it("groups the insights under the day's review, newest first, with «Вернуть как было» while it is possible", () => {
     const days = feedDays({

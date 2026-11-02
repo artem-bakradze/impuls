@@ -1,13 +1,12 @@
 "use client";
 
-import { CaretRightOutlined, CheckOutlined, FastForwardOutlined, MoreOutlined, PauseOutlined, RocketOutlined, RotateLeftOutlined, StepForwardOutlined } from "@ant-design/icons";
+import { FastForwardOutlined, MoreOutlined, RocketOutlined, RotateLeftOutlined, StepForwardOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal, Tooltip } from "antd";
 import type { MenuProps } from "antd";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { callApi, runWebJob } from "@/lib/client-api";
-import { agentTurnText, SPEED_LABELS, SPEED_SHORT } from "@/lib/simulation-model";
+import { agentTurnText, DIVERGED_TEXT, stepText, stepWeekLabel } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 
 const POLL_MS = 1_000;
@@ -15,7 +14,7 @@ const POLL_MS = 1_000;
 const clockText = (status: SimulationStatus): string =>
   new Intl.DateTimeFormat("ru-RU", { timeZone: status.timeZone, hour: "2-digit", minute: "2-digit" }).format(new Date(status.at));
 
-/** Days of the scenario as a thin strip inside the pult row: passed, today, ahead. */
+/** Days of the scenario as a thin strip along the bottom edge of the pult: passed, today, ahead. */
 function DayStrip({ day, totalDays }: { day: number; totalDays: number }) {
   return (
     <div className="sim-strip" aria-hidden="true">
@@ -27,9 +26,10 @@ function DayStrip({ day, totalDays }: { day: number; totalDays: number }) {
 }
 
 /**
- * The simulation pult on every screen of a simulated business (simulation-mode spec): one row with the virtual day,
- * the days strip, pause, «+1 день», «До следующего решения» and «Начать заново»; the speed choice and «Запустить
- * по-настоящему» are in the menu. It polls the status and refreshes the page when the history grows, so the screens follow the virtual time.
+ * The simulation pult on every screen of a simulated business (simulation-mode spec «Виртуальное время и пульт»): one
+ * row with the virtual day, «Прожить неделю» and «Начать заново»; «+1 день» and «Запустить по-настоящему» are in the
+ * menu. The time moves only by these steps. While a step runs the pult says which day goes; after a week it opens the
+ * week's story. It polls the status and refreshes the page when the history grows.
  */
 export function SimulationBar({ initial }: { initial: SimulationStatus }) {
   const router = useRouter();
@@ -37,9 +37,8 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
   const [status, setStatus] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Shown after «До следующего решения» stopped on a decision, until the next action on the pult. */
-  const [decision, setDecision] = useState<SimulationStatus["lastDecision"]>(null);
-  const seen = useRef({ changes: initial.changes, day: initial.day, status: initial.status, thinking: initial.agentTurn !== null });
+  const [restartOpen, setRestartOpen] = useState(false);
+  const seen = useRef({ changes: initial.changes, day: initial.day, status: initial.status, thinking: initial.agentTurn !== null, week: initial.step?.week ?? null });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -47,14 +46,15 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
         if (result.kind !== "ok") return;
         const next = result.body;
         const before = seen.current;
-        if (before.status === "until_decision" && next.status === "paused" && !next.ended) {
-          setDecision(next.lastDecision);
+        // A week has been lived: its story opens on «Как сервис принимает решения».
+        if (before.status === "stepping" && next.status === "paused" && before.week !== null) {
+          router.push(`/simulation?week=${before.week}`);
         }
         // A finished agent turn brings its insights even when it changed nothing.
-        if (next.changes !== before.changes || next.day !== before.day || (before.thinking && next.agentTurn === null)) {
+        if (next.changes !== before.changes || next.day !== before.day || (before.thinking && next.agentTurn === null) || before.status !== next.status) {
           router.refresh();
         }
-        seen.current = { changes: next.changes, day: next.day, status: next.status, thinking: next.agentTurn !== null };
+        seen.current = { changes: next.changes, day: next.day, status: next.status, thinking: next.agentTurn !== null, week: next.step?.week ?? null };
         setStatus(next);
       });
     }, POLL_MS);
@@ -64,7 +64,11 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
   const act = async (control: SimulationAction) => {
     setBusy(control.action);
     setError(null);
-    setDecision(null);
+    if (control.action === "step_week" || control.action === "step_day") {
+      // The pult shows the step at once; the polling follows it day by day.
+      setStatus((current) => ({ ...current, status: "stepping", step: { kind: control.action === "step_week" ? "week" : "day", week: control.action === "step_week" ? current.weeks + 1 : null } }));
+      seen.current = { ...seen.current, status: "stepping", week: control.action === "step_week" ? status.weeks + 1 : null };
+    }
     const outcome = await runWebJob<{ ok: true }>("/api/simulation", control);
     setBusy(null);
     if (outcome.kind === "error") {
@@ -76,23 +80,16 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
       window.location.assign("/wizard");
       return;
     }
-    if (control.action === "speed") {
-      setStatus((current) => ({ ...current, speed: control.speed }));
-    }
     if (control.action === "restart") {
       router.push("/summary");
     }
     router.refresh();
   };
 
-  const confirmRestart = () =>
-    modal.confirm({
-      title: "Начать симуляцию заново?",
-      content: "Тот же сценарий с первого дня: рынок будет тем же, но агент может решить иначе. История и цифры этого прогона удалятся.",
-      okText: "Начать заново",
-      cancelText: "Отмена",
-      onOk: () => act({ action: "restart" }),
-    });
+  const restart = (mode: "repeat" | "fresh") => {
+    setRestartOpen(false);
+    void act({ action: "restart", mode });
+  };
   const confirmGoReal = () =>
     modal.confirm({
       title: "Запустить настоящую рекламу?",
@@ -102,30 +99,26 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
       onOk: () => act({ action: "go_real" }),
     });
 
-  const speeds = Object.keys(SPEED_LABELS) as SimulationStatus["speed"][];
+  const stepping = status.status === "stepping";
   const menu: MenuProps = {
     items: [
-      {
-        type: "group",
-        label: "Скорость",
-        children: speeds.map((speed) => ({ key: `speed:${speed}`, label: SPEED_LABELS[speed], icon: speed === status.speed ? <CheckOutlined /> : <span style={{ width: 14, display: "inline-block" }} /> })),
-      },
+      { key: "step_day", label: "+1 день", icon: <StepForwardOutlined />, disabled: stepping || status.ended },
       { type: "divider" },
       { key: "go_real", label: "Запустить по-настоящему", icon: <RocketOutlined /> },
     ],
     onClick: ({ key }) => {
       if (key === "go_real") confirmGoReal();
-      else if (key.startsWith("speed:")) void act({ action: "speed", speed: key.slice(6) as SimulationStatus["speed"] });
+      else if (key === "step_day") void act({ action: "step_day" });
     },
   };
 
-  const moving = status.status !== "paused";
+  const progress = status.agentTurn ? agentTurnText(status.agentTurn) : stepText(status);
   return (
     <div className="sim-bar" data-testid="simulation-bar">
       {modalHolder}
       <div className="sim-bar-inner">
-        <span className="sim-label" title="Реклама не показывается людям, время идёт быстрее">
-          <span className="sim-live" data-moving={moving} aria-hidden="true" />
+        <span className="sim-label" title="Реклама не показывается людям, время идёт по шагам">
+          <span className="sim-live" data-moving={stepping} aria-hidden="true" />
           <span className="sim-label-text">Симуляция — реклама не показывается</span>
         </span>
         <span className="sim-time">
@@ -133,71 +126,61 @@ export function SimulationBar({ initial }: { initial: SimulationStatus }) {
             День {status.day} из {status.totalDays}
             <span className="on-wide"> · {clockText(status)}</span>
           </span>
-          <span className="sim-speed" data-testid="simulation-speed" title="Скорость виртуального времени">
-            {SPEED_SHORT[status.speed]}
+          <span className="sim-speed" data-testid="simulation-progress" role="status">
+            {progress ?? (status.weeks > 0 ? `Прожито недель: ${status.weeks}` : "Время стоит, пока вы не нажмёте")}
           </span>
         </span>
-        {status.agentTurn ? (
-          <span className="sim-thinking" role="status" data-testid="simulation-agent-turn">
-            {agentTurnText(status.agentTurn)}
-          </span>
-        ) : null}
         <span className="sim-actions">
           {status.ended ? (
             <Button size="small" type="primary" onClick={() => void act({ action: "extend" })} loading={busy === "extend"}>
               Продолжить ещё 30 дней
             </Button>
           ) : (
-            <span className="sim-group">
-              {moving ? (
-                <Button size="small" type="text" icon={<PauseOutlined aria-hidden="true" />} onClick={() => void act({ action: "pause" })} loading={busy === "pause"} aria-label="Пауза">
-                  <span className="on-wide">Пауза</span>
-                </Button>
-              ) : (
-                <Button size="small" type="primary" icon={<CaretRightOutlined aria-hidden="true" />} onClick={() => void act({ action: "resume" })} loading={busy === "resume"} aria-label="Продолжить">
-                  <span className="on-wide">Продолжить</span>
-                </Button>
-              )}
-              <Button size="small" type="text" icon={<StepForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "step_day" })} loading={busy === "step_day"} aria-label="+1 день">
-                <span className="on-wide">+1 день</span>
-                <span className="on-narrow">+1</span>
-              </Button>
-              <Button size="small" type="text" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void act({ action: "until_decision" })} loading={busy === "until_decision" || status.status === "until_decision"}
-                aria-label="До следующего решения"
-              >
-                <span className="on-xl">До следующего решения</span>
-                <span className="off-xl">До решения</span>
-              </Button>
-            </span>
+            <Button
+              size="small"
+              type="primary"
+              icon={<FastForwardOutlined aria-hidden="true" />}
+              onClick={() => void act({ action: "step_week" })}
+              loading={stepping || busy === "step_week"}
+              data-testid="simulation-step-week"
+            >
+              <span className="on-wide">{stepWeekLabel(status.daysLeft)}</span>
+              <span className="on-narrow">{status.daysLeft >= 7 ? "Неделя" : `${status.daysLeft} дн.`}</span>
+            </Button>
           )}
           <Tooltip title="Начать заново">
-            <Button size="small" type="text" className="sim-icon" icon={<RotateLeftOutlined aria-hidden="true" />} onClick={() => { confirmRestart(); }} loading={busy === "restart"} aria-label="Начать заново" />
+            <Button size="small" type="text" className="sim-icon" icon={<RotateLeftOutlined aria-hidden="true" />} onClick={() => setRestartOpen(true)} loading={busy === "restart"} disabled={stepping} aria-label="Начать заново" />
           </Tooltip>
           <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button size="small" type="text" className="sim-icon" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: скорость и запуск по-настоящему" loading={busy === "go_real" || busy === "speed"} />
+            <Button size="small" type="text" className="sim-icon" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: один день и запуск по-настоящему" loading={busy === "go_real" || busy === "step_day"} />
           </Dropdown>
         </span>
         <DayStrip day={status.day} totalDays={status.totalDays} />
       </div>
-      {decision ? (
-        <div className="sim-bar-inner">
-          <Alert
-            type="info"
-            showIcon
-            closable={{ onClose: () => setDecision(null) }}
-            title={decision.explanation}
-            action={
-              <Link href={`/history#${decision.id}`} onClick={() => setDecision(null)}>
-                В истории
-              </Link>
-            }
-            style={{ width: "100%" }}
-            data-testid="simulation-decision"
-          />
+      <Modal open={restartOpen} title="Начать симуляцию заново?" onCancel={() => setRestartOpen(false)} footer={null}>
+        <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
+          <p className="t-body t-muted">Тот же сценарий с первого дня: рынок будет тем же. История и цифры этого прогона удалятся.</p>
+          <Button type="primary" block onClick={() => restart("repeat")} disabled={!status.replay.available} data-testid="restart-repeat">
+            Повторить этот прогон
+          </Button>
+          <span className="t-small">
+            {status.replay.available
+              ? "Сервис повторит те же решения без новых запросов к модели — цифры совпадут, если вы будете действовать так же."
+              : "Повторять пока нечего: в этом прогоне сервис ещё не принимал решений на модели."}
+          </span>
+          <Button block onClick={() => restart("fresh")} data-testid="restart-fresh">
+            Прогнать заново
+          </Button>
+          <span className="t-small">Сервис будет решать заново — рынок будет тем же, но агент может решить иначе.</span>
+        </div>
+      </Modal>
+      {status.replay.diverged ? (
+        <div className="sim-bar-inner sim-bar-note">
+          <Alert type="info" showIcon title={DIVERGED_TEXT} style={{ width: "100%" }} data-testid="simulation-diverged" />
         </div>
       ) : null}
       {error ? (
-        <div className="sim-bar-inner">
+        <div className="sim-bar-inner sim-bar-note">
           <Alert type="error" showIcon title={error} style={{ width: "100%" }} />
         </div>
       ) : null}

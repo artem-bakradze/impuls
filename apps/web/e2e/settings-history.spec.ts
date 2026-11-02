@@ -13,7 +13,7 @@ test("changing show hours goes to every campaign and can be rolled back from the
   await expect(schedule).toContainText("Сейчас: Пн–Вс 10:00–20:00");
   await choose(page, "Показывать до", "до 21:00");
   await page.getByRole("button", { name: "Сохранить время" }).click();
-  await expect(schedule).toContainText("Расписание показов обновлено во всех кампаниях");
+  await expect(schedule).toContainText("Расписание обновлено во всей рекламе");
   await expect(schedule).toContainText("Сейчас: Пн–Вс 10:00–21:00");
 
   await page.getByRole("link", { name: "История" }).click();

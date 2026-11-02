@@ -204,12 +204,13 @@ describe("experiments started by the agent", () => {
 describe("replay and prompt injection", () => {
   it("replays recorded turns deterministically and reports changed verdicts", async () => {
     const recordedSim = await world(new AdversarialPolicy());
-    await recordedSim.runDays(3);
+    // Up to Monday's review: on the other days the agent is called only on reasons.
+    await recordedSim.runDays(5);
     const recorded = (await recordedSim.store.turns("b1")).map((t) => ({ summary: "", calls: t.calls as TurnResult["calls"], usage: null }));
     const turns = recorded.map((t) => ({ trigger: { kind: "daily_review" as const }, calls: t.calls.map(({ command, insight: i }) => ({ command, insight: i })) }));
 
     const replaySim = await world(new ReplayPolicy(turns));
-    await replaySim.runDays(3);
+    await replaySim.runDays(5);
     const replayed = (await replaySim.store.turns("b1")).map((t) => ({ summary: "", calls: t.calls as TurnResult["calls"], usage: null }));
     expect(compareVerdicts(recorded, replayed)).toEqual([]);
     expect(compareVerdicts(recorded, replayed.map((t) => ({ ...t, calls: [] })))[0]).toMatchObject({ after: "missing" });

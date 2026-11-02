@@ -59,24 +59,24 @@ Whether the approval carries over to the user-facing app is to be confirmed with
 ## Showing the mechanics in 10 minutes (simulation mode)
 
 Works in any environment, including production; nothing reaches the Direct API and no money is spent on ads. With
-`AGENT_RUNTIME=openai` the agent's turns are paid (about 30 per 30-day run, within `AGENT_SIMULATION_RUN_LIMIT_RUB`);
-a run takes about 5 minutes plus the agent's reviews (≈17 s each). `heuristic` shows the same screens for free.
+`AGENT_RUNTIME=openai` the agent's turns are paid (only on days with reasons and on Mondays, within
+`AGENT_SIMULATION_RUN_LIMIT_RUB`); a week without model calls takes under 30 s, plus the agent's reviews (≈17 s
+each). «Повторить этот прогон» replays a run without the model. `heuristic` shows the same screens for free.
 
 1. Sign in, go through the wizard (budget from 10 000 ₽, keep at least 2 search ads for «Одно объявление не приносит
    клиентов»).
 2. On step 6 choose «Симуляция»: «Обычный месяц» is selected, the others are under «Другие сценарии». Press
-   «Запустить симуляцию». The simulated month starts on the 1st of the next month; 30 virtual days take about
-   5 minutes at the default speed.
-3. On the summary press «Перемотать до первого решения» (or «До следующего решения» on the pult): the simulation
-   stops on the service's first decision about the ads and shows its explanation. The summary has three numbers and
-   the insight feed: the day reviews of the agent and, under them, what it noticed, on which facts, what it decided
-   and what comes next. While the agent reviews a day the pult says «Агент разбирает N-й день…» and the time stands.
-4. «Как решает сервис» starts with the comparison «с сервисом / без сервиса» by day, then the checklist of what the
-   scenario shows (with «обычно к N-му дню») and the feed of the run, where every insight about an ad or advertising
-   says «На самом деле: …» by the scenario's hidden truth against the goal of the decision.
+   «Запустить симуляцию». The simulated month starts on the 1st of the next month; the time stands until you step it.
+3. Press «Прожить неделю» on the pult (or «Прожить первую неделю» on the summary): the pult says which day goes and
+   when the service reviews a day; then «Как решает сервис» opens with the week's story — the ads' numbers with the
+   service's estimate and the scenario's truth, the service's insights one by one, its decisions with the guard's
+   answers and «Вернуть как было», and the comparison «с сервисом / без сервиса». «Показать сразу» skips the scenes.
+4. Below the story: the comparison by day, the checklist of what the scenario shows (with «обычно к N-му дню») and the
+   feed of the run, where every insight about an ad or advertising says «На самом деле: …».
    «Вы отменили изменение одной кнопкой» is ticked after any rollback, from the history or from a card.
-5. The pult's menu (⋯) has the speed, «Начать заново» and «Запустить по-настоящему»; the latter deletes the
-   simulation and opens step 6 with the same card, budget and ads.
+5. «Начать заново» offers «Повторить этот прогон» (the same decisions without the model, the same numbers while you
+   act the same) and «Прогнать заново» (the agent decides again). The pult's menu (⋯) has «+1 день» and «Запустить
+   по-настоящему»; the latter deletes the simulation and opens step 6 with the same card, budget and ads.
 
 ## Kill switches (no deploy needed)
 

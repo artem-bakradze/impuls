@@ -2,12 +2,12 @@ import { HeuristicPolicy, QuietPolicy, ReplayPolicy } from "@impuls/agent";
 import type { AgentRuntime, ToolResult, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { factKey } from "@impuls/core";
 import type { InsightDraft } from "@impuls/core";
-import { ACTION_META, controlSimulation, isBudgetAdjustment, runAgentTurn } from "@impuls/worker";
+import { ACTION_META, controlSimulation, isBudgetAdjustment, QUIET_DAY_CODE, runAgentTurn } from "@impuls/worker";
 import type { ChangeEntry, SimulationDriver } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
 import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
-import { feedDays } from "../../../apps/web/src/lib/insights-model";
+import { feedDays, QUIET_DAYS } from "../../../apps/web/src/lib/insights-model";
 import type { DayReviewModel, InsightCardModel } from "../../../apps/web/src/lib/insights-model";
 import { featurePath, launchedWorld, simulatedBusiness } from "./world";
 
@@ -142,7 +142,8 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then("инсайт и действие отклоняются с причиной «число 3 000 ₽ не найдено в данных»", async () => {
       expect(results[0]).toMatchObject({ status: "rejected", code: "INSIGHT_INVALID", message: "число 3 000 ₽ не найдено в данных" });
-      expect(await sim.store.insights("b1")).toEqual([]);
+      // Only the marks of the quiet mornings are there: the refused insight was not saved.
+      expect((await sim.store.insights("b1")).filter((i) => i.reasonCode !== QUIET_DAY_CODE)).toEqual([]);
     });
     And("объявление продолжает работать", async () => {
       expect((await sim.store.ads("b1")).find((a) => a.id === BAD_AD)?.status).toBe("active");
@@ -278,6 +279,21 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await world.store.insights("b1")).toEqual([]);
       expect(await world.store.changes("b1")).toEqual([]);
       expect(await feed(world)).toEqual([]);
+    });
+  });
+
+  Scenario("Тихие дни подряд", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, которая только начала собирать данные", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+    });
+    When("четыре дня подряд поводов для хода нет, и страховочные правила ничего не делают", async () => {
+      await sim.runDays(4);
+    });
+    Then("лента показывает одну строку «С 1 по 4 октября — посмотрели рекламу, менять ничего не нужно» вместо четырёх разборов", async () => {
+      const days = feedDays({ insights: await sim.store.insights("b1"), turns: await sim.store.turnDigests("b1"), timeZone: "Europe/Moscow", since: null, entries: new Map() });
+      expect(days.map((d) => [d.from, d.date, d.quiet, d.insights.length])).toEqual([["2026-10-01", "2026-10-04", true, 0]]);
+      expect(QUIET_DAYS).toBe("посмотрели рекламу, менять ничего не нужно");
     });
   });
 });

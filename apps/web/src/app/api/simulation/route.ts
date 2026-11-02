@@ -1,14 +1,10 @@
-import { z } from "zod";
 import { ApiError, handleApi } from "@/lib/server/errors";
 import { enqueueWebJob } from "@/lib/server/jobs";
 import { parseBody } from "@/lib/server/request";
 import { buildSimulationStatus } from "@/lib/server/simulation";
+import { isCurrentAction, SimulationControlBody } from "@/lib/simulation-model";
 import { apiLaunchedBusiness } from "@/lib/server/session";
 
-const Body = z.discriminatedUnion("action", [
-  z.object({ action: z.enum(["pause", "resume", "until_decision", "step_day", "extend", "restart", "go_real"]) }),
-  z.object({ action: z.literal("speed"), speed: z.enum(["fast", "minute", "real"]) }),
-]);
 
 const simulatedBusiness = async () => {
   const business = await apiLaunchedBusiness();
@@ -30,7 +26,11 @@ export async function GET() {
 export async function POST(request: Request) {
   return handleApi("simulation.control", async () => {
     const business = await simulatedBusiness();
-    const control = await parseBody(request, Body);
+    const control = await parseBody(request, SimulationControlBody);
+    // The pult of an old page: the time no longer runs by itself (simulation-mode «Виртуальное время и пульт»).
+    if (!isCurrentAction(control)) {
+      throw new ApiError(410, "SIMULATION_ACTION_GONE", "Пульт симуляции обновился — обновите страницу");
+    }
     const jobId = await enqueueWebJob({ kind: "simulation_control", businessId: business.id, control });
     return { jobId };
   });

@@ -4,7 +4,7 @@ import type { Command, InsightDraft, InsightFact, PerformanceStats } from "@impu
 import type { DailyStatRow } from "@impuls/platforms";
 import type { JobContext } from "./context";
 import { DEVICE_WORDS } from "./analyst";
-import { RULES_DAY_CODE } from "./change-kinds";
+import { QUIET_DAY_CODE, RULES_DAY_CODE } from "./change-kinds";
 import type { ExecutionResult } from "./executor";
 import { aggregate, loadBusinessView } from "./state";
 import type { BusinessView } from "./state";
@@ -346,6 +346,23 @@ export const saveRulesDay = async (ctx: JobContext, businessId: string, reason: 
     source: "rule",
     reasonCode: RULES_DAY_CODE,
     observation: `Сегодня решения принимали страховочные правила: ${RULES_DAY_REASONS[reason]}`,
+    facts: [],
+    decision: { kind: "none", text: "", status: "none", changeIds: [] },
+    next: "",
+    objectRef: null,
+    createdAt: ctx.clock.now(),
+  });
+};
+
+/** A day without reasons for the agent's turn: «Посмотрели рекламу — менять ничего не нужно», with no model call. */
+export const saveQuietDay = async (ctx: JobContext, businessId: string): Promise<void> => {
+  await ctx.store.saveInsight({
+    id: randomUUID(),
+    businessId,
+    turnId: null,
+    source: "rule",
+    reasonCode: QUIET_DAY_CODE,
+    observation: "Посмотрели рекламу — менять ничего не нужно",
     facts: [],
     decision: { kind: "none", text: "", status: "none", changeIds: [] },
     next: "",

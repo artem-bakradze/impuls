@@ -201,8 +201,27 @@ export class HeuristicPolicy implements AgentRuntime {
       }
     }
 
-    // The analyst levers by the service's verdicts (add-agent-analyst-stage1): junk queries and an expensive device.
-    // Advertising that is still collecting data is left alone, as the instructions say of the «learning» class.
+    await this.analystLevers(snapshot, tools, act);
+
+    if (calls.length === 0) {
+      const search = factKey.channel("search", "cost_per_lead", "14d");
+      const network = factKey.channel("network", "cost_per_lead", "14d");
+      if (keys.has(search) && keys.has(network) && !recent.some((r) => r.observation.startsWith("Сравнили площадки"))) {
+        const observation = { reasonCode: "CHANNELS_COMPARED", observation: "Сравнили площадки по цене обращения за 14 дней.", factKeys: [search, network, goal], next: "Вернёмся к сравнению через неделю, когда данных станет больше.", decision: "Пока ничего не меняем: обеим площадкам нужно больше обращений для надёжного вывода." };
+        calls.push({ command: null, insight: observation, result: await tools.observe(observation) });
+      }
+    }
+    const summary = done.length > 0 ? `Разобрал рекламу: ${done.join(", ")}.` : "Посмотрел рекламу — менять ничего не нужно.";
+    return { summary, calls, usage: null };
+  }
+
+  /**
+   * The analyst levers by the service's verdicts (add-agent-analyst-stage1): junk queries and an expensive device. Run
+   * on the daily turns and on Monday's review, as the instructions say. Advertising that is still collecting data is
+   * left alone, as the instructions say of the «learning» class.
+   */
+  private async analystLevers(snapshot: TurnSnapshot, tools: AgentToolbox, act: (command: Command, insight: InsightDraft, what: string) => Promise<void>): Promise<void> {
+    const goal = factKey.goal();
     for (const direction of snapshot.directions.filter((d) => d.status === "active" && d.class !== "learning" && d.spend14Rub > 0)) {
       const queries = await tools.breakdown(direction.id, "query");
       if (queries.status === "ok") {
@@ -242,17 +261,6 @@ export class HeuristicPolicy implements AgentRuntime {
         }
       }
     }
-
-    if (calls.length === 0) {
-      const search = factKey.channel("search", "cost_per_lead", "14d");
-      const network = factKey.channel("network", "cost_per_lead", "14d");
-      if (keys.has(search) && keys.has(network) && !recent.some((r) => r.observation.startsWith("Сравнили площадки"))) {
-        const observation = { reasonCode: "CHANNELS_COMPARED", observation: "Сравнили площадки по цене обращения за 14 дней.", factKeys: [search, network, goal], next: "Вернёмся к сравнению через неделю, когда данных станет больше.", decision: "Пока ничего не меняем: обеим площадкам нужно больше обращений для надёжного вывода." };
-        calls.push({ command: null, insight: observation, result: await tools.observe(observation) });
-      }
-    }
-    const summary = done.length > 0 ? `Разобрал рекламу: ${done.join(", ")}.` : "Посмотрел рекламу — менять ничего не нужно.";
-    return { summary, calls, usage: null };
   }
 
   /** Queries «дороже цели» not cut yet, each with a word that is not in the direction's own phrases. */
@@ -296,6 +304,14 @@ export class HeuristicPolicy implements AgentRuntime {
     const goal = factKey.goal();
     const keys = new Set(snapshot.facts.map((f) => f.key));
     const done: string[] = [];
+    const calls: ToolCallRecord[] = [];
+    const act = async (command: Command, insight: InsightDraft, what: string) => {
+      const result = await tools.act(command, insight);
+      calls.push({ command, insight, result });
+      if (result.status !== "rejected") done.push(what);
+    };
+    // The review acts on the breakdowns as a daily turn does (weekly review instructions, step 4).
+    await this.analystLevers(snapshot, tools, act);
     const journal = await tools.hypotheses();
     const direction = snapshot.directions.find((d) => d.status === "active" && d.spend14Rub > 0);
     const cpl = direction === undefined ? null : factKey.direction(direction.id, "cost_per_lead", "14d");
@@ -328,7 +344,7 @@ export class HeuristicPolicy implements AgentRuntime {
       }
     }
     const summary = done.length > 0 ? `Разбор недели: ${done.join(", ")}.` : "Разбор недели: новых выводов нет.";
-    return { summary, calls: [], usage: null };
+    return { summary, calls, usage: null };
   }
 }
 
@@ -359,7 +375,7 @@ export class ReplayPolicy implements AgentRuntime {
   readonly instructionsVersion = "replay";
   readonly decides = true;
   private index = 0;
-  constructor(private readonly turns: readonly { trigger: TurnTrigger; calls: readonly Omit<ToolCallRecord, "result">[] }[]) {}
+  constructor(private readonly turns: readonly { trigger: TurnTrigger; calls: readonly Omit<ToolCallRecord, "result">[]; summary?: string }[]) {}
   async runTurn(input: { tools: AgentToolbox }): Promise<TurnResult> {
     const turn = this.turns[this.index++];
     if (!turn) {
@@ -370,6 +386,7 @@ export class ReplayPolicy implements AgentRuntime {
       const result = call.command === null ? await input.tools.observe({ ...call.insight, decision: call.insight.decision ?? "" }) : await input.tools.act(call.command, call.insight);
       calls.push({ ...call, result });
     }
-    return { summary: `replayed ${calls.length} calls`, calls, usage: null };
+    // The recorded summary when there is one, so a replayed turn reads as the original (weekly-simulation-triggered-agent).
+    return { summary: turn.summary ?? `replayed ${calls.length} calls`, calls, usage: null };
   }
 }

@@ -17,6 +17,9 @@ export const isBudgetAdjustment = (entry: Pick<ChangeKindFields, "actor" | "reas
 /** The mark of a day on which the rules decided without the agent; the insight feed shows it as the day's heading. */
 export const RULES_DAY_CODE = "RULES_DAY";
 
+/** The mark of a day without reasons for the agent's turn (ad-agent «Поводы для хода агента»): one quiet line in the feed. */
+export const QUIET_DAY_CODE = "QUIET_DAY";
+
 /** Why a budget-guard limit cut has no «Вернуть как было», in the owner's words. */
 export const BUDGET_ADJUSTMENT_REASON = "лимит пересчитывается сам по остатку бюджета; вернуть можно решение, к которому он относится";
 

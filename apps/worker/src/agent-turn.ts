@@ -17,7 +17,7 @@ import { addDays, catalogFacts, emptyStats, monthKey, toLocalDate, validateExpla
 import type { Command, Fact, InsightDraft, InsightFact } from "@impuls/core";
 import { breakdownForAgent, breakdownPeriod } from "./analyst";
 import type { AgentCosts, JobContext } from "./context";
-import { RULES_DAY_CODE } from "./change-kinds";
+import { QUIET_DAY_CODE, RULES_DAY_CODE } from "./change-kinds";
 import { budgetFigures, directionLabel, factCatalog, saveAgentInsight } from "./insights";
 import { turnLockKey } from "./locks";
 import { loadBusinessView } from "./state";
@@ -294,7 +294,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       recentInsights: async () => {
         const since = ctx.clock.now().getTime() - RECENT_INSIGHT_DAYS * 86_400_000;
         return (await ctx.store.insights(businessId))
-          .filter((i) => i.createdAt.getTime() >= since && i.reasonCode !== RULES_DAY_CODE)
+          .filter((i) => i.createdAt.getTime() >= since && i.reasonCode !== RULES_DAY_CODE && i.reasonCode !== QUIET_DAY_CODE)
           .map((i) => ({ at: i.createdAt.toISOString(), observation: i.observation, decision: i.decision.text, facts: i.facts.map((f) => ({ object: f.object, metric: f.metric, period: f.period, value: f.value })) }));
       },
       breakdown: async (directionId, dimension) => {
@@ -338,7 +338,8 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       startedAt: ctx.clock.now(),
       finishedAt: null,
       status: "running",
-      context: { trigger, snapshot },
+      // The findings of the morning evaluation this turn saw: a finding it saw gives no reason again (ad-agent spec).
+      context: { trigger, snapshot, findings: (await ctx.store.lastEvaluation(businessId))?.findings ?? [] },
       calls: [],
       summary: null,
       summaryValid: false,
@@ -399,6 +400,14 @@ const reportUnavailability = async (ctx: JobContext, businessId: string): Promis
   if (!alreadyOpen && now - firstFailure >= AGENT_UNAVAILABLE_INCIDENT_MS) {
     await ctx.store.openIncident({ kind: "agent_unavailable", businessId, message: "Agent turns have been failing for more than 24 hours", openedAt: ctx.clock.now() });
   }
+};
+
+/** Findings of the evaluation the last completed turn saw (ad-agent «Поводы для хода агента»). */
+export const findingsSeenByLastTurn = async (ctx: JobContext, businessId: string): Promise<Set<string>> => {
+  const completed = (await ctx.store.turns(businessId)).filter((t) => t.status === "completed");
+  const last = completed.reduce<(typeof completed)[number] | null>((latest, t) => (latest === null || t.startedAt >= latest.startedAt ? t : latest), null);
+  const findings = (last?.context as { findings?: unknown } | undefined)?.findings;
+  return new Set(Array.isArray(findings) ? findings.filter((f): f is string => typeof f === "string") : []);
 };
 
 /** Queues an event for the next turn; a settings change interrupts the running turn (ad-agent spec). */

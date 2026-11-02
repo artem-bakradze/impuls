@@ -86,7 +86,7 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
     timeZone: business.timeZone,
     period,
     state: allPaused ? "paused" : allRows.length === 0 ? "first_day" : "running",
-    simulation: simulation ? { secondsPerDay: DAY_MS / simulation.speed / 1_000 } : null,
+    simulation: simulation ? { weeks: simulation.steps.filter((s) => s.kind === "week").length } : null,
     launchedDays: daysBetween(launchedOn, today) + 1,
     // The previous period entirely before the launch: nothing to compare with.
     compare: launchedOn < range.from,

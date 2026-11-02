@@ -12,8 +12,6 @@ import {
   MemoryStore,
   SimulationError,
   handleWebJob,
-  tickSimulation,
-  tickSimulations,
   createLogger,
   runAgentTurn,
   withSimulation,
@@ -28,7 +26,9 @@ import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
 import { feedDays } from "../../../apps/web/src/lib/insights-model";
 import type { DayReviewModel } from "../../../apps/web/src/lib/insights-model";
-import { agentTurnText } from "../../../apps/web/src/lib/simulation-model";
+import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
+import { agentTurnText, DIVERGED_TEXT, simulationStatusOf, stepText, stepWeekLabel } from "../../../apps/web/src/lib/simulation-model";
+import { buildWeekStory } from "../../../apps/web/src/lib/week-story";
 import { buildDecisionScreen, scenarioTruth } from "../../../apps/web/src/lib/simulation-screen";
 import { featurePath } from "./world";
 
@@ -99,14 +99,90 @@ const launched = async (title: string, agent?: AgentRuntime, goalRub?: number): 
   return w;
 };
 
-/** «До следующего решения» on the ticker until the simulation pauses. */
-const untilDecision = async (w: World) => {
-  await controlSimulation(w.ctx, "b1", { action: "until_decision" });
-  for (let second = 0; second < 900 && (await w.store.getSimulation("b1"))?.status !== "paused"; second++) {
-    w.clock.set(new Date(w.clock.now().getTime() + 1_000));
-    await tickSimulations(w.ctx, createLogger());
+/** «Прожить неделю» until the service decides something about the ads (at most the whole scenario). */
+const weeksUntilDecision = async (w: World) => {
+  for (let week = 0; week < 5 && !(await w.store.changes("b1")).some(isAdDecision); week++) {
+    await controlSimulation(w.ctx, "b1", { action: "step_week" });
   }
 };
+
+/** The pult as the owner sees it, from the same pure model the web uses. */
+const pult = async (w: World) => {
+  const simulation = await w.store.getSimulation("b1");
+  if (!simulation) throw new Error("no simulation");
+  return simulationStatusOf({
+    simulation,
+    timeZone: "Europe/Moscow",
+    changes: (await w.store.changes("b1")).length,
+    runningTurnStartedAt: await w.store.runningTurnStartedAt("b1"),
+    turns: await w.store.turnDigests("b1"),
+  });
+};
+
+/** The story of a lived week, as «Как сервис принимает решения» builds it. */
+const weekStory = async (w: World, week: number) => {
+  const simulation = await w.store.getSimulation("b1");
+  if (!simulation) throw new Error("no simulation");
+  const changes = await w.store.changes("b1");
+  const history: HistoryItem[] = changes.map((c) => ({
+    id: c.id,
+    at: c.createdAt.toISOString(),
+    author: c.author,
+    object: c.objectKind === "ad" ? "Объявление" : "Реклама",
+    diff: [],
+    explanation: c.explanation,
+    outcome: null,
+    turnId: c.turnId,
+    insight: null,
+    status: c.status,
+    reverted: c.revertedById !== null,
+    rollback: { kind: "available", consequences: [] },
+    budgetAdjustment: isBudgetAdjustment(c),
+  }));
+  return buildWeekStory({
+    simulation,
+    week,
+    timeZone: "Europe/Moscow",
+    directions: await w.store.directions("b1"),
+    ads: await w.store.ads("b1"),
+    stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
+    cso: rubles(500),
+    truthOf: scenarioTruth({ simulation, ads: await w.store.ads("b1"), goal: rubles(500) }),
+    reviews: await simulationFeed(w),
+    history,
+    changes,
+    comparison: (await screen(w)).comparison,
+  });
+};
+
+/** What the week story is built from, for scenarios that change one part of it. */
+const storyInput = async (w: World): Promise<Parameters<typeof buildWeekStory>[0]> => {
+  const simulation = await w.store.getSimulation("b1");
+  if (!simulation) throw new Error("no simulation");
+  return {
+    simulation,
+    week: 1,
+    timeZone: "Europe/Moscow",
+    directions: await w.store.directions("b1"),
+    ads: await w.store.ads("b1"),
+    stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
+    cso: rubles(500),
+    truthOf: scenarioTruth({ simulation, ads: await w.store.ads("b1"), goal: rubles(500) }),
+    reviews: await simulationFeed(w),
+    history: [],
+    changes: await w.store.changes("b1"),
+    comparison: (await screen(w)).comparison,
+  };
+};
+
+/** The deterministic agent priced as a model: its turns count as turns on a model, so a run can be repeated. */
+class ModelLikeAgent extends HeuristicPolicy {
+  turns = 0;
+  override async runTurn(input: Parameters<HeuristicPolicy["runTurn"]>[0]): Promise<TurnResult> {
+    this.turns++;
+    return { ...(await super.runTurn(input)), usage: { inputTokens: 1_000, outputTokens: 100, source: "api" } };
+  }
+}
 
 const untilDay = async (w: World, day: number) => {
   const record = await w.store.getSimulation("b1");
@@ -288,7 +364,7 @@ describeFeature(feature, ({ Scenario }) => {
       expect((await w.store.turns("b1")).length).toBeGreaterThan(0);
     });
     When("владелец нажимает «Начать заново» и снова доводит симуляцию до 10-го дня", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "restart" });
+      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "fresh" });
       await untilDay(w, 10);
     });
     Then("правда объявлений та же, а с тестовой политикой агента расходы, обращения, записи истории и инсайты совпадают с первым прогоном", async () => {
@@ -313,56 +389,110 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario("Ускорение", ({ Given, When, Then }) => {
+    let w: World;
+    let started = 0;
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц» с тестовой политикой агента", async () => {
+      w = await launched("Обычный месяц");
+    });
+    When("владелец нажимает «Прожить неделю»", async () => {
+      started = Date.now();
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    Then("не позже чем через 30 секунд пульт показывает «День 8 из 30», расходы и обращения выросли, а у недели 1 есть история", async () => {
+      expect((Date.now() - started) / 1_000).toBeLessThan(30);
+      const status = await pult(w);
+      expect(`День ${status.day} из ${status.totalDays}`).toBe("День 8 из 30");
+      const story = await weekStory(w, 1);
+      expect(story?.totals.spend).toBeGreaterThan(0);
+      expect(story?.days).toHaveLength(7);
+    });
+  });
+
+  Scenario("Время стоит между шагами", ({ Given, When, Then }) => {
+    let w: World;
+    let day = 0;
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц», и владелец прожил неделю", async () => {
+      w = await launched("Обычный месяц");
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      day = (await pult(w)).day;
+    });
+    When("владелец 10 минут ничего не нажимает", () => {
+      w.clock.set(new Date(w.clock.now().getTime() + 600_000));
+    });
+    Then("виртуальное время не сдвинулось, и пульт показывает тот же день", async () => {
+      expect((await pult(w)).day).toBe(day);
+      expect((await w.store.getSimulation("b1"))?.status).toBe("paused");
+    });
+  });
+
   Scenario("Агент разбирает день", ({ Given, When, Then, And }) => {
     let w: World;
     const agent = new SlowAgent();
-    let tick: Promise<void> = Promise.resolve();
+    let step: Promise<unknown> = Promise.resolve();
     let thinking = 0;
-    const second = () => w.clock.set(new Date(w.clock.now().getTime() + 1_000));
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» и прошла 7 дней, а агент разбирает день долго", async () => {
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц», а агент разбирает день долго", async () => {
       w = await launched("Обычный месяц", agent);
-      await untilDay(w, 7);
       agent.armed = true;
-      await controlSimulation(w.ctx, "b1", { action: "resume" });
     });
-    When("симуляция идёт, и агент начинает ежедневный разбор", async () => {
-      let started = false;
-      void agent.started.then(() => {
-        started = true;
-      });
-      for (let i = 0; i < 60 && !started; i++) {
-        second();
-        tick = tickSimulation(w.ctx, createLogger(() => undefined), "b1");
-        await Promise.race([tick, agent.started]);
-      }
-      expect(started).toBe(true);
+    When("владелец нажимает «Прожить неделю», и агент начинает разбор дня", async () => {
+      step = controlSimulation(w.ctx, "b1", { action: "step_week" });
+      await agent.started;
     });
-    Then("виртуальное время стоит, пока агент думает, а пульт показывает «Агент разбирает N-й день…»", async () => {
-      const record = await w.store.getSimulation("b1");
-      thinking = record?.simNow.getTime() ?? 0;
-      const turnStarted = await w.store.runningTurnStartedAt("b1");
-      expect(turnStarted).not.toBeNull();
-      // Thirty real seconds of thinking: the tick of this simulation is still running, the next ones wait for it.
-      for (let i = 0; i < 30; i++) {
-        second();
-        await tickSimulation(w.ctx, createLogger(() => undefined), "b1");
-      }
+    Then("виртуальное время стоит, пока агент думает, а пульт показывает «Сервис разбирает N-й день…» и номер недели", async () => {
+      thinking = (await w.store.getSimulation("b1"))?.simNow.getTime() ?? 0;
+      // Thirty real seconds of thinking do not move the virtual time.
+      w.clock.set(new Date(w.clock.now().getTime() + 30_000));
       expect((await w.store.getSimulation("b1"))?.simNow.getTime()).toBe(thinking);
-      const day = Math.floor(((turnStarted?.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)) / 86_400_000) + 1;
-      expect(agentTurnText({ day })).toBe(`Агент разбирает ${day}-й день…`);
+      const status = await pult(w);
+      expect(status.status).toBe("stepping");
+      expect(status.step).toEqual({ kind: "week", week: 1 });
+      expect(status.agentTurn).not.toBeNull();
+      expect(agentTurnText(status.agentTurn ?? { day: 0 })).toBe(`Сервис разбирает ${status.agentTurn?.day ?? 0}-й день…`);
+      expect(stepText({ step: status.step, day: status.day })).toBe(`Неделя 1: идёт ${status.day}-й день`);
     });
-    And("после хода время идёт дальше, а в ленте появляется разбор этого дня", async () => {
+    And("после хода неделя идёт дальше до конца, а в ленте появляется разбор этого дня", async () => {
       const turnDay = toLocalDate((await w.store.runningTurnStartedAt("b1")) ?? new Date(), "Europe/Moscow");
       agent.finish();
-      await tick;
-      expect(await w.store.runningTurnStartedAt("b1")).toBeNull();
-      second();
-      await tickSimulation(w.ctx, createLogger(() => undefined), "b1");
-      const moved = ((await w.store.getSimulation("b1"))?.simNow.getTime() ?? 0) - thinking;
-      // The thirty seconds did not turn into virtual time: one second at «1 день = 10 секунд» is a few hours.
-      expect(moved).toBeGreaterThan(0);
-      expect(moved).toBeLessThanOrEqual(6 * 3_600_000);
+      await step;
+      const record = await w.store.getSimulation("b1");
+      expect(record?.status).toBe("paused");
+      expect((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)).toBe(7 * 86_400_000);
       expect((await simulationFeed(w)).some((d) => d.date === turnDay)).toBe(true);
+    });
+  });
+
+  Scenario("Последний неполный шаг", ({ Given, When, Then }) => {
+    let w: World;
+    let label = "";
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц» и дошла до 29-го дня", async () => {
+      w = await launched("Обычный месяц");
+      for (let week = 0; week < 4; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    When("владелец смотрит на пульт", async () => {
+      const status = await pult(w);
+      expect(status.day).toBe(29);
+      label = stepWeekLabel(status.daysLeft);
+    });
+    Then("основное действие называется «Прожить оставшиеся 2 дня», а после него пульт предлагает «Продолжить ещё 30 дней»", async () => {
+      expect(label).toBe("Прожить оставшиеся 2 дня");
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      expect((await pult(w)).ended).toBe(true);
+    });
+  });
+
+  Scenario("Один день из меню", ({ Given, When, Then }) => {
+    let w: World;
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
+      w = await launched("Обычный месяц");
+    });
+    When("владелец выбирает в меню «+1 день»", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "step_day" });
+    });
+    Then("симуляция проходит один виртуальный день, а истории недели у этого шага нет", async () => {
+      expect((await pult(w)).day).toBe(2);
+      expect((await w.store.getSimulation("b1"))?.steps.map((s) => s.kind)).toEqual(["day"]);
+      expect(await weekStory(w, 1)).toBeNull();
     });
   });
 
@@ -413,16 +543,16 @@ describeFeature(feature, ({ Scenario }) => {
     Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
       w = await launched("Одно объявление не приносит клиентов");
     });
-    When("владелец нажимает «До следующего решения»", async () => {
-      await untilDecision(w);
+    When("владелец проживает недели, пока сервис не примет решение про рекламу", async () => {
+      await weeksUntilDecision(w);
     });
-    Then("симуляция идёт до первого решения сервиса про рекламу и встаёт на паузу, а пульт показывает его объяснение", async () => {
+    Then("шаг не останавливается на решении и проходит неделю целиком, а решение показано в сцене «Решение» истории этой недели", async () => {
       const record = await w.store.getSimulation("b1");
-      expect(record?.status).toBe("paused");
-      // The pult shows the newest decision about the ads; it was made in the last virtual hour.
-      const decision = [...(await w.store.changes("b1"))].reverse().find(isAdDecision);
-      expect(decision?.explanation).toBeTruthy();
-      expect((record?.simNow.getTime() ?? 0) - (decision?.createdAt.getTime() ?? 0)).toBeLessThanOrEqual(3_600_000);
+      const weeks = record?.steps.length ?? 0;
+      expect((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)).toBe(weeks * 7 * 86_400_000);
+      const decision = (await w.store.changes("b1")).find((c) => isAdDecision(c) && c.author === "service");
+      const story = await weekStory(w, weeks);
+      expect(story?.decisions.map((d) => d.item.id)).toContain(decision?.id);
     });
   });
 
@@ -431,17 +561,135 @@ describeFeature(feature, ({ Scenario }) => {
     Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
       w = await launched("Одно объявление не приносит клиентов");
     });
-    When("владелец нажимает «До следующего решения»", async () => {
-      await untilDecision(w);
+    When("владелец проживает недели, пока сервис не примет решение про рекламу", async () => {
+      await weeksUntilDecision(w);
     });
-    Then("защита бюджета по пути снижала лимиты, но симуляция на этом не остановилась", async () => {
+    Then("защита бюджета по пути снижала лимиты, но среди решений истории недели этих подстроек нет, а записи о них есть в истории изменений", async () => {
       const changes = await w.store.changes("b1");
-      const firstCut = changes.findIndex(isBudgetAdjustment);
-      const decision = changes.findIndex(isAdDecision);
-      // The cut came first and the run went on past it, to the decision.
-      expect(firstCut).toBeGreaterThanOrEqual(0);
-      expect(decision).toBeGreaterThan(firstCut);
-      expect((await w.store.getSimulation("b1"))?.status).toBe("paused");
+      const cuts = changes.filter(isBudgetAdjustment).map((c) => c.id);
+      expect(cuts.length).toBeGreaterThan(0);
+      const weeks = (await w.store.getSimulation("b1"))?.steps.length ?? 0;
+      const shown = (await Promise.all(Array.from({ length: weeks }, (_, i) => weekStory(w, i + 1)))).flatMap((story) => story?.decisions.map((d) => d.item.id) ?? []);
+      expect(shown.some((id) => cuts.includes(id))).toBe(false);
+    });
+  });
+
+  Scenario("Неделя без решений", ({ Given, When, Then }) => {
+    let w: World;
+    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
+      w = await launched("Обычный месяц");
+    });
+    When("владелец проживает первую неделю, а записей о решениях у этой недели нет", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    Then("сцена «Решение» говорит «За неделю менять ничего не понадобилось» и почему", async () => {
+      const story = await weekStory(w, 1);
+      if (!story) throw new Error("no story");
+      // The story's own rule: no decisions in the week, a reason in plain words.
+      const quiet = buildWeekStory({ ...(await storyInput(w)), week: 1, changes: [] });
+      expect(quiet?.decisions).toEqual([]);
+      expect(quiet?.noDecisionReason).toBeTruthy();
+    });
+  });
+
+  Scenario("Прошлая неделя снова", ({ Given, When, Then }) => {
+    let w: World;
+    let second: unknown;
+    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов», и владелец прожил 2 недели", async () => {
+      w = await launched("Одно объявление не приносит клиентов");
+      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      second = await weekStory(w, 2);
+    });
+    When("владелец проживает ещё 2 недели и открывает историю недели 2", async () => {
+      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    Then("она показывает те же объявления, цифры, инсайты и решения, что после шага недели 2", async () => {
+      const again = await weekStory(w, 2);
+      // The list of weeks and the comparison since the start grow with every week; the rest is the week's own.
+      const strip = (story: unknown) => Object.fromEntries(Object.entries(story as Record<string, unknown>).filter(([key]) => key !== "weeks" && key !== "comparison"));
+      // Only the list of weeks has grown; the week itself reads the same.
+      expect(strip(again)).toEqual(strip(second));
+    });
+  });
+
+  Scenario("Точный повтор", ({ Given, When, Then }) => {
+    let w: World;
+    const agent = new ModelLikeAgent();
+    let first: unknown;
+    let calls = 0;
+    const run = async () => ({
+      changes: (await w.store.changes("b1")).map((c) => [c.actor, c.reasonCode, c.createdAt.toISOString()]),
+      insights: (await w.store.insights("b1")).map((i) => [i.source, i.reasonCode, i.observation, i.createdAt.toISOString()]),
+      stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
+    });
+    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов» с агентом на модели, и владелец прожил 2 недели", async () => {
+      w = await launched("Одно объявление не приносит клиентов", agent);
+      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      first = await run();
+      calls = agent.turns;
+      expect((await pult(w)).replay.available).toBe(true);
+    });
+    When("владелец нажимает «Начать заново» → «Повторить этот прогон» и снова проживает 2 недели, ничего не меняя", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "repeat" });
+      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    Then("история изменений, инсайты и цифры совпадают с исходным прогоном, а затраты на модель за повтор равны нулю", async () => {
+      expect(await run()).toEqual(first);
+      expect(agent.turns).toBe(calls);
+      expect((await w.store.turns("b1")).every((t) => t.costKopecks === 0 && t.inputTokens === null)).toBe(true);
+    });
+  });
+
+  Scenario("Повтор разошёлся", ({ Given, When, Then }) => {
+    let w: World;
+    const agent = new ModelLikeAgent();
+    let calls = 0;
+    let dayBefore = 0;
+    Given("идёт повтор прогона, в котором владелец ничего не откатывал", async () => {
+      w = await launched("Одно объявление не приносит клиентов", agent);
+      for (let week = 0; week < 3; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "repeat" });
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      calls = agent.turns;
+    });
+    When("во 2-ю неделю повтора владелец откатывает решение сервиса", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      const decision = (await w.store.changes("b1")).find((c) => c.author === "service" && c.status === "applied" && inverseCommands(c) !== null && !isBudgetAdjustment(c));
+      if (!decision) throw new Error("no decision to roll back");
+      dayBefore = (await pult(w)).day;
+      const result = (await handleWebJob(w.ctx, { kind: "rollback", businessId: "b1", entryId: decision.id })) as { kind: string };
+      expect(result.kind).toBe("done");
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    Then("начиная со следующего хода агент решает на модели, а пульт один раз показывает «Вы изменили ход прогона — дальше сервис решает заново»", async () => {
+      expect(agent.turns).toBeGreaterThan(calls);
+      const status = await pult(w);
+      expect(status.replay.diverged).toBe(true);
+      expect(DIVERGED_TEXT).toBe("Вы изменили ход прогона — дальше сервис решает заново");
+      expect(status.day).toBeGreaterThan(dayBefore);
+      // Said once: the next step takes the message away.
+      await controlSimulation(w.ctx, "b1", { action: "step_day" });
+      expect((await pult(w)).replay.diverged).toBe(false);
+    });
+  });
+
+  Scenario("Прогнать заново", ({ Given, When, Then }) => {
+    let w: World;
+    const agent = new ModelLikeAgent();
+    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов» с агентом на модели, и владелец прожил неделю", async () => {
+      w = await launched("Одно объявление не приносит клиентов", agent);
+      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    });
+    When("владелец нажимает «Начать заново» → «Прогнать заново»", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "fresh" });
+    });
+    Then("сценарий начинается с первого дня, повторять нечего, и ходы агента снова идут на модели", async () => {
+      const status = await pult(w);
+      expect(status.day).toBe(1);
+      expect(status.replay.repeating).toBe(false);
+      const before = agent.turns;
+      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      expect(agent.turns).toBeGreaterThan(before);
     });
   });
 

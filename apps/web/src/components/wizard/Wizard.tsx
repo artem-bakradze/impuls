@@ -49,7 +49,7 @@ const LEADS: Record<number, string> = {
 };
 
 /** Step 6 when the simulation is chosen: nothing about the Direct balance (business-onboarding spec). */
-const SIMULATION_LEAD = "Тот же сервис на симуляторе рынка: месяц рекламы пройдёт примерно за 5 минут, без денег и без Директа. Проверьте итог и запускайте.";
+const SIMULATION_LEAD = "Тот же сервис на симуляторе рынка, без денег и без Директа: время идёт по неделям, и после каждой видно, что он заметил и решил. Проверьте итог и запускайте.";
 
 /** One progress indicator: six segments, read together with «Шаг N из 6». */
 function Progress({ step }: { step: number }) {

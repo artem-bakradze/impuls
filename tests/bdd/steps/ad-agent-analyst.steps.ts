@@ -218,8 +218,8 @@ describeFeature(feature, ({ Scenario }) => {
     let sim: SimulationDriver;
     Given("затраты на модель за месяц достигли лимита до понедельника", async () => {
       sim = await salon({ days: 0, agent: paidHeuristic() });
-      // Each daily turn costs 1.5 ₽: a limit of 3 ₽ is used up by Saturday.
-      sim.ctx.agentCosts = { inputKopecksPerMTok: 1_000, outputKopecksPerMTok: 5_000, monthlyLimitKopecks: 300, simulationRunLimitKopecks: 300 };
+      // The month's limit is used up already: without reasons there are no daily turns to spend it before Monday.
+      sim.ctx.agentCosts = { inputKopecksPerMTok: 1_000, outputKopecksPerMTok: 5_000, monthlyLimitKopecks: 0, simulationRunLimitKopecks: 0 };
     });
     When("наступает понедельник 07:00 по времени бизнеса", async () => {
       await sim.runHours(4 * 24 + 4);

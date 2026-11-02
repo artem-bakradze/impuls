@@ -15,7 +15,8 @@ describe("agent journal retention", () => {
       csoSource: { kind: "user", goal: rubles(800) },
       directions: [{ name: "Маникюр — Поиск", weeklyLimitRub: 2_000, ads: [{ title: "Маникюр у метро", truth: { impressionsPerDay: 100, ctr: 0.05, cr: 0.05, costPerClick: rubles(20) } }] }],
     });
-    await sim.runDays(2);
+    // The first turn is Monday's review: 2026-10-01 is a Thursday, and the agent is called on reasons the other days.
+    await sim.runDays(5);
     const first = (await sim.store.turns("b1"))[0];
     expect(first).toBeDefined();
     const day = 86_400_000;

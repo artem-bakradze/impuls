@@ -21,7 +21,7 @@ import { useState } from "react";
 import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult } from "@/lib/client-api";
 import { formatCount, formatDateTime, formatLocalDate, formatRub, plural, sentence } from "@/lib/format";
-import { channelLabel, compareText, goalComparable, goalLine, goalTileText, launchMonthText, moderationText, periodLead, realTimeText } from "@/lib/summary-model";
+import { channelLabel, compareText, goalComparable, goalLine, goalTileText, launchMonthText, moderationText, periodLead } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { InsightFeed } from "../insights/InsightFeed";
 import { Chip, Empty, Note, PageHead, Surface, SurfaceHead } from "../ui/primitives";
@@ -56,18 +56,18 @@ const directSteps = (checked: boolean) =>
     { state: "todo", icon: <LineChartOutlined />, title: "Первые выводы", text: "Сервис разбирает рекламу каждое утро; через 7 дней он начнёт убирать то, что не приносит клиентов, и добавлять денег тому, что приносит" },
   ] as const;
 
-/** The same steps in a simulation: no Yandex moderation, and the first decisions come in real seconds. */
-const simulationSteps = (secondsPerDay: number) =>
+/** The same steps in a simulation: no Yandex moderation, and the first decisions usually come in the first week. */
+const simulationSteps = () =>
   [
     { state: "done", icon: <CheckOutlined />, title: "Реклама запущена в симуляции", text: "Реклама создана в симуляторе рынка, Яндекс Директ не нужен" },
     { state: "now", icon: <EyeOutlined />, title: "Первые просмотры рекламы", text: "Уже в первый виртуальный день" },
-    { state: "todo", icon: <LineChartOutlined />, title: "Первые выводы", text: `На 7-й день — ${realTimeText(secondsPerDay * 6)} при текущей скорости` },
+    { state: "todo", icon: <LineChartOutlined />, title: "Первые выводы", text: "Обычно в первую неделю: нажмите «Прожить первую неделю»" },
   ] as const;
 
 /** What happens after launch, so an empty dashboard reads as «on the way», not «broken». */
 function NextSteps({ moderation, simulation }: { moderation: SummaryModel["moderation"]; simulation: SummaryModel["simulation"] }) {
   const checked = moderation.pending === 0;
-  const steps = simulation ? simulationSteps(simulation.secondsPerDay) : directSteps(checked);
+  const steps = simulation ? simulationSteps() : directSteps(checked);
   return (
     <ol className="timeline">
       {steps.map((s) => (
@@ -110,11 +110,12 @@ export function SummaryView({ model }: { model: SummaryModel }) {
     finish(failed ? { kind: "error", message: sentence(failed.message) } : outcome, "Реклама снова работает");
   };
 
-  /** «Перемотать до первого решения» in a simulation: the pult's «До следующего решения». */
-  const fastForward = async () => {
+  /** «Прожить первую неделю» in a simulation: the pult's «Прожить неделю» (analytics spec «Сводка»). */
+  const liveWeek = async () => {
     setBusy("forward");
-    finish(await runWebJob("/api/simulation", { action: "until_decision" }), "Перематываем до первого решения сервиса");
+    finish(await runWebJob("/api/simulation", { action: "step_week" }), "Неделя прожита — её история на экране «Как решает сервис»");
   };
+  const weekLabel = model.simulation?.weeks === 0 ? "Прожить первую неделю" : "Прожить неделю";
 
   const answerClients = async (week: string) => {
     if (clients === null) return;
@@ -172,11 +173,11 @@ export function SummaryView({ model }: { model: SummaryModel }) {
     </Surface>
   );
 
-  /** Until the service has decided something, a simulation offers to skip the wait (the first-day card has its own button). */
+  /** Until the service has decided something, a simulation offers to live a week (the first-day card has its own button). */
   const forwardButton =
     sim && !model.decided ? (
-      <Button type="primary" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void fastForward()} loading={busy === "forward"}>
-        Перемотать до первого решения
+      <Button type="primary" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void liveWeek()} loading={busy === "forward"}>
+        {weekLabel}
       </Button>
     ) : null;
 
@@ -194,7 +195,7 @@ export function SummaryView({ model }: { model: SummaryModel }) {
               {model.launchedDays > 2
                 ? "Помощник и автоматические решения в эти дни не работали — реклама шла как настроена."
                 : sim
-                  ? `Сервис разбирает рекламу каждое утро: первый разбор — утром 2-го виртуального дня, первые решения — на 7-й день, ${realTimeText(sim.secondsPerDay * Math.max(1, 7 - model.launchedDays))} при текущей скорости.`
+                  ? "Сервис смотрит рекламу каждое утро, а первые решения обычно принимает в первую неделю. Время в симуляции идёт по шагам: проживите неделю."
                   : "Сервис разбирает рекламу каждое утро: первый разбор — завтра утром, первые решения — примерно через неделю."}
               {!firstDay && forwardButton ? <div style={{ marginTop: 12 }}>{forwardButton}</div> : null}
             </Empty>
@@ -287,12 +288,12 @@ export function SummaryView({ model }: { model: SummaryModel }) {
                     <h2 className="t-h2">{sim ? "Симуляция запущена" : moderationText(model.moderation)}</h2>
                     <p className="t-body t-muted">
                       {sim
-                        ? `Первые решения сервис примет на 7-й виртуальный день — это ${realTimeText(sim.secondsPerDay * 6)}. Можно не ждать.`
+                        ? "Первые решения сервис обычно принимает в первую неделю. Проживите её за один шаг — и посмотрите, что он заметил и решил."
                         : "Первые результаты появятся в течение суток."}
                     </p>
                     {sim ? (
-                      <Button type="primary" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void fastForward()} loading={busy === "forward"} style={{ alignSelf: "flex-start", marginTop: 6 }}>
-                        Перемотать до первого решения
+                      <Button type="primary" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void liveWeek()} loading={busy === "forward"} style={{ alignSelf: "flex-start", marginTop: 6 }}>
+                        {weekLabel}
                       </Button>
                     ) : null}
                   </div>

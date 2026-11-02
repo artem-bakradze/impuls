@@ -19,7 +19,7 @@ describe("migrations on an empty database", () => {
       expect(await store.getFlag("agent_enabled", null)).toBe(true);
       expect(await store.getFlag("agent_enabled", "any-business")).toBe(true);
       expect(await store.getFlag("automation_enabled", "any-business")).toBe(true);
-      expect(await store.movingSimulations()).toEqual([]);
+      expect(await store.getSimulation("any-business")).toBeNull();
     } finally {
       await pool.end();
       await admin.query(`DROP DATABASE ${name}`);

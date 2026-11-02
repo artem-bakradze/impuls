@@ -21,16 +21,13 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
   await page.waitForURL("**/summary");
 
   const bar = page.getByTestId("simulation-bar");
-  await bar.getByRole("button", { name: "Пауза" }).click();
-  await expect(bar.getByRole("button", { name: "Продолжить" })).toBeVisible();
-  const dayNow = async () => Number(/День (\d+)/.exec((await page.getByTestId("simulation-day").textContent()) ?? "")?.[1]);
-  // Two weeks day by day: the junk queries spend the goal without a client in about ten days.
-  while ((await dayNow()) < 15) {
-    const button = bar.getByRole("button", { name: "+1 день" });
-    await expect(button).not.toHaveClass(/ant-btn-loading/);
-    const before = await dayNow();
-    await button.click();
-    await expect(page.getByTestId("simulation-day")).toContainText(`День ${before + 1} из 30`, { timeout: 30_000 });
+  // Two weeks and a Monday's review: the junk queries spend the goal without a client in about ten days, and the
+  // breakdowns are the review's job.
+  for (const week of [1, 2, 3]) {
+    const step = bar.getByTestId("simulation-step-week");
+    await expect(step).not.toHaveClass(/ant-btn-loading/);
+    await step.click();
+    await page.waitForURL(`**/simulation?week=${week}`, { timeout: 150_000 });
   }
 
   await page.getByRole("link", { name: "История" }).click();
@@ -39,7 +36,8 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
   await expect(negative.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
   await negative.getByRole("button", { name: /Почему/ }).click();
   await expect(negative.getByTestId("insight")).toContainText("Добавили минус-фразу");
-  await expect(negative.getByTestId("insight")).toContainText("запрос «");
+  // The insight names the query: «По запросу «…» …» when it brought no leads, «Запрос «…» …» otherwise.
+  await expect(negative.getByTestId("insight")).toContainText(/[Зз]апрос[уа]? «/);
 
   await page.goto("/summary?period=month");
   await expect(page.getByTestId("weekly-review").first()).toContainText("Разбор недели");

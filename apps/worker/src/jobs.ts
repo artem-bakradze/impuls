@@ -1,13 +1,14 @@
-import { addDays, allowedWeeklyTotal, budgetSignal, fitLimits, monthKey, safetyNet, toLocalDate } from "@impuls/core";
+import { addDays, allowedWeeklyTotal, budgetSignal, evaluationFindings, fitLimits, monthKey, safetyNet, toLocalDate, turnReasons } from "@impuls/core";
 import type { Command, EffectivenessClass, Kopecks } from "@impuls/core";
 import { ADJUSTABLE_DEVICES, trafficSnapshot } from "./analyst";
 import type { JobContext } from "./context";
 import { adSnapshot, directionSnapshot } from "./executor";
 import { businessLockKey } from "./locks";
-import { runAgentTurn } from "./agent-turn";
-import { isRuleInsightCode, saveRuleInsight, saveRulesDay } from "./insights";
+import { agentBudgetSpent, findingsSeenByLastTurn, runAgentTurn } from "./agent-turn";
+import { QUIET_DAY_CODE } from "./change-kinds";
+import { isRuleInsightCode, saveQuietDay, saveRuleInsight, saveRulesDay } from "./insights";
 import { prepareExperiment } from "./experiments";
-import { loadBusinessView } from "./state";
+import { aggregate, loadBusinessView } from "./state";
 import { renderTemplate } from "./templates";
 import type { TemplateFacts } from "./templates";
 
@@ -295,14 +296,21 @@ export const budgetGuard = async (ctx: JobContext, businessId: string): Promise<
   await ctx.store.beat(HEARTBEAT_BUDGET_GUARD, ctx.clock.now());
 };
 
-/** Whether a deciding agent completed a turn since `since` (add-agent-insights decision 5). */
-const agentActedSince = async (ctx: JobContext, businessId: string, since: Date): Promise<boolean> =>
-  ctx.agent.decides && (await ctx.store.turns(businessId)).some((t) => t.status === "completed" && t.startedAt >= since);
+/**
+ * Whether a deciding agent had its chance since `since`: it completed a turn, or the day was quiet — no reasons, so it
+ * had already seen every finding (add-agent-insights decision 5; weekly-simulation-triggered-agent decision 3).
+ */
+const agentHadChanceSince = async (ctx: JobContext, businessId: string, since: Date): Promise<boolean> => {
+  if (!ctx.agent.decides) return false;
+  if ((await ctx.store.turns(businessId)).some((t) => t.status === "completed" && t.startedAt >= since)) return true;
+  return (await ctx.store.insights(businessId)).some((i) => i.reasonCode === QUIET_DAY_CODE && i.createdAt >= since);
+};
 
 /**
  * Daily at 06:00 local time: the rules' backup for what the agent left from the previous evaluation, a new
- * evaluation and the agent's turn. When no turn of a deciding agent took place (off, unavailable, out of its cost
- * limit, or a runtime that decides nothing), the rules act on the new evaluation the same day (optimization-engine).
+ * evaluation, its findings and — only when there are reasons — the agent's turn (ad-agent «Поводы для хода агента»).
+ * A day without reasons is quiet: no model call, and the rules wait for the agent as after a turn. When the agent is
+ * off, unavailable or out of its cost limit, the rules act on the new evaluation the same day (optimization-engine).
  */
 export const dailyEvaluation = async (ctx: JobContext, businessId: string): Promise<void> => {
   const platform = ctx.platformFor(businessId);
@@ -310,8 +318,8 @@ export const dailyEvaluation = async (ctx: JobContext, businessId: string): Prom
   const now = ctx.clock.now();
   const agentEnabled = await ctx.store.getFlag("agent_enabled", businessId);
   const automationEnabled = await ctx.store.getFlag("automation_enabled", businessId);
-  if (automationEnabled && previous && now.getTime() - previous.evaluatedAt.getTime() >= 23.5 * 3_600_000 && (await agentActedSince(ctx, businessId, previous.evaluatedAt))) {
-    await runSafetyNet(ctx, businessId, previous.evaluatedAt, previous.directionClasses, previous.borderlineSince, true);
+  if (automationEnabled && previous && now.getTime() - previous.evaluatedAt.getTime() >= 23.5 * 3_600_000 && (await agentHadChanceSince(ctx, businessId, previous.evaluatedAt))) {
+    await runSafetyNet(ctx, businessId, previous.evaluatedAt, previous.directionClasses, previous.borderlineSince, true, previous.adClasses);
   }
   const view = await loadBusinessView(ctx.store, businessId, ctx.clock, platform.capabilities());
   const borderlineSince = new Map<string, string>();
@@ -320,6 +328,7 @@ export const dailyEvaluation = async (ctx: JobContext, businessId: string): Prom
       borderlineSince.set(adId, previous?.borderlineSince.get(adId) ?? view.today);
     }
   }
+  const findings = await findingsOf(ctx, businessId, view, borderlineSince);
   await ctx.store.saveEvaluation({
     businessId,
     evaluatedAt: now,
@@ -327,14 +336,51 @@ export const dailyEvaluation = async (ctx: JobContext, businessId: string): Prom
     adClasses: view.adClasses,
     directionClasses: view.directionClasses,
     borderlineSince,
+    findings,
   });
   // A runtime that decides nothing is no agent: its turns are not run and the rules decide (add-agent-insights).
   const withAgent = agentEnabled && ctx.agent.decides;
-  const outcome = withAgent ? await runAgentTurn(ctx, businessId, { kind: "daily_review" }) : null;
+  const reasons = withAgent ? turnReasons(findings, new Set(previous?.findings ?? []), await findingsSeenByLastTurn(ctx, businessId)) : [];
+  if (withAgent && reasons.length === 0 && !(await agentBudgetSpent(ctx, businessId))) {
+    await saveQuietDay(ctx, businessId);
+    return;
+  }
+  const outcome = withAgent
+    ? await runAgentTurn(ctx, businessId, { kind: "daily_review", reasons: reasons.map((r) => ({ kind: r.kind, objectKind: r.objectKind, objectId: r.objectId })) })
+    : null;
   if (automationEnabled && outcome?.status !== "completed") {
     await saveRulesDay(ctx, businessId, !withAgent ? "disabled" : outcome?.status === "skipped" && outcome.reason === "cost_limit" ? "cost_limit" : "unavailable");
     await runSafetyNet(ctx, businessId, now, view.directionClasses, borderlineSince, false);
   }
+};
+
+/** The morning evaluation's findings: classes, room for a raise, a week against the one before, check days. */
+const findingsOf = async (
+  ctx: JobContext,
+  businessId: string,
+  view: Awaited<ReturnType<typeof loadBusinessView>>,
+  borderlineSince: Map<string, string>,
+): Promise<string[]> => {
+  const toDirection = new Map(view.directions.map((d) => [d.platformCampaignId, d.id]));
+  // Full days only: the 7 days before today and the 7 before them.
+  const rows = await ctx.store.stats(businessId, addDays(view.today, -14), addDays(view.today, -1));
+  const byDirection = (from: string, to: string) =>
+    aggregate(
+      rows.filter((r) => r.date >= from && r.date <= to),
+      (r) => toDirection.get(r.campaignId) ?? r.campaignId,
+    );
+  const experiments = await ctx.store.experiments(businessId);
+  const hypotheses = await ctx.store.hypotheses(businessId);
+  return evaluationFindings({
+    state: view.guardState,
+    directionClasses: view.directionClasses,
+    borderlineSince,
+    adsInExperiments: new Set(experiments.filter((e) => e.status === "running").map((e) => e.adId)),
+    spendLast7Days: view.spendLast7,
+    directionLast7: byDirection(addDays(view.today, -7), addDays(view.today, -1)),
+    directionPrevious7: byDirection(addDays(view.today, -14), addDays(view.today, -8)),
+    hypothesesDue: hypotheses.filter((h) => h.status === "checking" && h.checkOn <= view.today).map((h) => ({ id: h.id, checkOn: h.checkOn })),
+  });
 };
 
 const runSafetyNet = async (
@@ -344,9 +390,15 @@ const runSafetyNet = async (
   directionClasses: Map<string, EffectivenessClass>,
   borderlineSince: Map<string, string>,
   agentActed: boolean,
+  /** Ad classes of that evaluation: the rules pause only what the agent saw as ineffective and had 24 hours for. */
+  seenAdClasses?: Map<string, EffectivenessClass>,
 ): Promise<void> => {
   const platform = ctx.platformFor(businessId);
   const view = await loadBusinessView(ctx.store, businessId, ctx.clock, platform.capabilities());
+  const adClasses =
+    seenAdClasses === undefined
+      ? view.guardState.adClasses
+      : new Map([...view.guardState.adClasses].map(([id, cls]): [string, EffectivenessClass] => [id, cls === "ineffective" && seenAdClasses.get(id) !== "ineffective" ? "learning" : cls]));
   const touched = new Set(
     (await ctx.store.changes(businessId))
       // Resuming does not count as handling the problem, so it never postpones the safety net.
@@ -356,7 +408,7 @@ const runSafetyNet = async (
   const leads14 = new Map([...view.directionStats14].map(([id, s]) => [id, s.leads]));
   const experiments = await ctx.store.experiments(businessId);
   const actions = safetyNet({
-    state: view.guardState,
+    state: { ...view.guardState, adClasses },
     directionClasses,
     touchedByAgent: touched,
     spendLast7Days: view.spendLast7,

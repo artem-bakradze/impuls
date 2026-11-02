@@ -617,6 +617,12 @@ a {
     animation: none;
   }
 }
+/* Notes under the pult row (an error, «Вы изменили ход прогона»): no strip, no room for it. */
+.sim-bar-note {
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 8px;
+}
 /* Days of the scenario as a thin strip along the bottom edge of the pult: passed, today, ahead. */
 .sim-strip {
   position: absolute;
@@ -1969,6 +1975,208 @@ li[data-state="now"] .tl-dot {
 }
 .danger-zone {
   border-color: #f5cfcb;
+}
+
+/* ---------- Week story (simulation-mode «История недели») ---------- */
+
+.week-story {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  border-color: rgba(86, 70, 242, 0.16);
+  background:
+    radial-gradient(520px 240px at 100% 0%, rgba(124, 109, 255, 0.12), transparent 70%),
+    var(--surface);
+}
+.week-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.week-head .t-eyebrow {
+  color: var(--accent-ink);
+}
+.week-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(18, 18, 23, 0.05);
+}
+.week-tabs a {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.week-tabs a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-xs);
+}
+.week-scene {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.week-scene + .week-scene {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+/* The seven days light up one by one. */
+.week-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.week-days li {
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  background: rgba(18, 18, 23, 0.05);
+  transition: background 0.3s var(--ease), color 0.3s var(--ease), transform 0.3s var(--ease);
+}
+.week-days li[data-lit="true"] {
+  background: var(--grad-accent);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.week-counters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.week-counters > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.week-big {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.week-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.week-rows li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease), background 0.3s var(--ease);
+}
+/* The rows of the insight being read: its facts are about these ads. */
+.week-rows li[data-lit="true"] {
+  border-color: rgba(86, 70, 242, 0.55);
+  background: linear-gradient(135deg, #f4f2ff 0%, #ffffff 70%);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.week-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.week-row-title {
+  font-weight: 600;
+}
+.week-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(86, 70, 242, 0.08);
+  overflow: hidden;
+}
+.week-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad-accent);
+  transition: width 0.8s var(--ease);
+}
+.week-truth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+.week-truth.note-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.week-truth.note-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.week-truth.note-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.week-insights,
+.week-decisions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.week-insights li,
+.week-decisions li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.week-compare {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+@media (max-width: 720px) {
+  .week-story {
+    padding: 18px;
+  }
+  .week-counters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .week-big {
+    font-size: 22px;
+  }
 }
 
 /* ---------- Ant Design accents ---------- */

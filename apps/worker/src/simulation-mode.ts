@@ -11,8 +11,7 @@ import { runBusinessHour } from "./dispatcher";
 import { CommandExecutor } from "./executor";
 import { launchAds } from "./launch";
 import type { LaunchPlan, LaunchResult } from "./launch";
-import type { Logger } from "./logger";
-import { isAdDecision } from "./change-kinds";
+import { recordReplay, replayRuntime } from "./simulation-replay";
 import { isScenarioId, launchTruth, planAds, SCENARIOS, scenarioStartDate, scenarioUnavailable } from "./scenarios";
 import type { Scenario } from "./scenarios";
 import type { BusinessRecord, SimulationBaseline, SimulationRecord, Store } from "./store";
@@ -22,11 +21,8 @@ export const SIMULATION_DAYS = 30;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
-/** Virtual milliseconds per real millisecond: «1 день = 10 секунд», «1 день = 1 минута», «Реальное время». */
-export const SIMULATION_SPEEDS = { fast: DAY_MS / 10_000, minute: DAY_MS / 60_000, real: 1 } as const;
-export type SimulationSpeed = keyof typeof SIMULATION_SPEEDS;
-export const speedName = (speed: number): SimulationSpeed =>
-  (Object.entries(SIMULATION_SPEEDS).find(([, value]) => value === speed)?.[0] as SimulationSpeed | undefined) ?? "minute";
+/** «Прожить неделю» moves this many virtual days (simulation-mode spec «Виртуальное время и пульт»). */
+export const WEEK_DAYS = 7;
 
 export class SimulationError extends Error {
   constructor(
@@ -117,16 +113,30 @@ export const simulationWorld = (base: JobContext, business: BusinessRecord, reco
   const platformFor = () => platform;
   const executor = new CommandExecutor({ store, locks: base.locks, clock, platformFor });
   const world = { record, business, scenario, clock, platform, agentTurns: 0, agentTurnMs: 0 } as SimulationWorld;
+  // «Повторить этот прогон»: both runtimes play the same recorded turns in order, until the run goes elsewhere.
+  const replayed = (live: AgentRuntime): AgentRuntime =>
+    record.replay === null
+      ? live
+      : replayRuntime({
+          live,
+          clock,
+          store,
+          businessId: business.id,
+          record: () => world.record,
+          update: (replay) => {
+            world.record = { ...world.record, replay };
+          },
+        });
   world.ctx = {
     store,
     clock,
     locks: base.locks,
     executor,
     platformFor,
-    agent: timedAgent(base.agent, base.clock, world),
+    agent: timedAgent(replayed(base.agent), base.clock, world),
     creatives: new TemplateCreativeEngine(),
     ...(base.agentCosts !== undefined && { agentCosts: base.agentCosts }),
-    ...(base.strategist !== undefined && { strategist: { ...base.strategist, runtime: timedAgent(base.strategist.runtime, base.clock, world) } }),
+    ...(base.strategist !== undefined && { strategist: { ...base.strategist, runtime: timedAgent(replayed(base.strategist.runtime), base.clock, world) } }),
   };
   return world;
 };
@@ -193,24 +203,24 @@ const assignTruths = async (world: SimulationWorld, directionIds: readonly strin
 };
 
 /**
- * Creates campaigns in the scenario's market; used by «Запустить в симуляции» and by «Начать заново». The record is
- * saved paused first, so the ticker never moves a market without campaigns; the clock starts after the launch.
+ * Creates campaigns in the scenario's market; used by «Запустить в симуляции» and by «Начать заново». The virtual time
+ * then stands until the owner steps it on the pult.
  */
 const launchInWorld = async (base: JobContext, record: SimulationRecord): Promise<LaunchResult> => {
-  await base.store.saveSimulation({ ...record, status: "paused", lastTickAt: null });
+  await base.store.saveSimulation({ ...record, status: "paused" });
   return withSimulation(base, record.businessId, async (world) => {
     const result = await launchAds(world.ctx, record.businessId, record.plan);
     if (result.status === "launched") {
       await assignTruths(world, result.directionIds);
       // The control run does not depend on what the service or the owner will do, so it is known from the start.
       const baseline = await baselineRun(world.business, world.record, world.record.endsAt);
-      world.record = { ...world.record, status: "running", lastTickAt: base.clock.now(), baseline };
+      world.record = { ...world.record, baseline };
     }
     return result;
   });
 };
 
-/** «Запустить в симуляции» (simulation-mode spec): the business gets the scenario's market and starts its clock. */
+/** «Запустить в симуляции» (simulation-mode spec): the business gets the scenario's market on its first virtual day. */
 export const launchSimulation = async (base: JobContext, businessId: string, plan: LaunchPlan, scenarioId: string): Promise<LaunchResult> => {
   const scenario = scenarioOf(scenarioId);
   const business = await base.store.getBusiness(businessId);
@@ -222,10 +232,10 @@ export const launchSimulation = async (base: JobContext, businessId: string, pla
   const start = virtualStart(scenario, realNow, business.timeZone);
   const simulated: BusinessRecord = { ...business, mode: "simulation" };
   await base.store.saveBusiness(simulated);
-  return launchInWorld(base, newRecord(simulated, scenario, plan, start, realNow));
+  return launchInWorld(base, newRecord(simulated, scenario, plan, start));
 };
 
-const newRecord = (business: BusinessRecord, scenario: Scenario, plan: LaunchPlan, start: Date, realNow: Date): SimulationRecord => ({
+const newRecord = (business: BusinessRecord, scenario: Scenario, plan: LaunchPlan, start: Date): SimulationRecord => ({
   businessId: business.id,
   scenario: scenario.id,
   seed: scenario.seed,
@@ -233,12 +243,14 @@ const newRecord = (business: BusinessRecord, scenario: Scenario, plan: LaunchPla
   startedAt: start,
   simNow: start,
   endsAt: new Date(start.getTime() + SIMULATION_DAYS * DAY_MS),
-  lastTickAt: realNow,
-  // «1 день = 10 секунд»: a month in 5 minutes, as step 6 promises.
-  speed: SIMULATION_SPEEDS.fast,
-  status: "running",
+  // The time moves only by steps on the pult; the old tick fields stay empty.
+  lastTickAt: null,
+  speed: 0,
+  status: "paused",
   state: emptyState(business, scenario, scenario.seed, start),
   baseline: null,
+  steps: [],
+  replay: null,
 });
 
 /** Virtual moment of a scenario event: 11:00 of its day, counted from the launch. */
@@ -255,23 +267,19 @@ const applyEvents = async (world: SimulationWorld, from: number, to: number): Pr
   }
 };
 
-/** Decisions about the ads (not budget-guard limit cuts, not the owner's changes): what «До следующего решения» waits for. */
-const adDecisions = async (world: SimulationWorld): Promise<number> => (await world.ctx.store.changes(world.business.id)).filter(isAdDecision).length;
-
 /**
  * Moves the virtual clock hour by hour up to `target` (never past the end): scenario events, one hour of market
- * traffic, then the same per-business hour of the service as in the real mode. Returns the hours done and why it
- * stopped early, if it did. With `yieldAfterTurn` it also returns after an hour in which a deciding agent took its
- * turn, so the pult shows the turn's insights and a pause takes effect right after it (add-agent-insights decision 8).
+ * traffic, then the same per-business hour of the service as in the real mode. Returns the hours done and whether the
+ * scenario's end was reached. With `yieldAfterTurn` it also returns after an hour in which a deciding agent took its
+ * turn, so the pult shows the step's progress between the turns (add-agent-insights decision 8).
  */
 export const advanceWorld = async (
   base: JobContext,
   world: SimulationWorld,
   target: Date,
-  options: { untilDecision?: boolean; yieldAfterTurn?: boolean } = {},
-): Promise<{ hours: number; stopped: "decision" | "end" | null }> => {
+  options: { yieldAfterTurn?: boolean } = {},
+): Promise<{ hours: number; stopped: "end" | null }> => {
   const end = Math.min(target.getTime(), world.record.endsAt.getTime());
-  const decisionsBefore = options.untilDecision ? await adDecisions(world) : 0;
   const atEnd = () => world.clock.now().getTime() + HOUR_MS > world.record.endsAt.getTime();
   let hours = 0;
   while (world.clock.now().getTime() + HOUR_MS <= end) {
@@ -285,9 +293,6 @@ export const advanceWorld = async (
     await world.ctx.executor.recoverPending(5 * 60_000, (id) => id === world.business.id);
     await saveWorld(base, world);
     hours++;
-    if (options.untilDecision && (await adDecisions(world)) > decisionsBefore) {
-      return { hours, stopped: "decision" };
-    }
     if (options.yieldAfterTurn && world.ctx.agent.decides && world.agentTurns > turnsBefore) {
       return { hours, stopped: atEnd() ? "end" : null };
     }
@@ -380,18 +385,26 @@ export const baselineRun = async (business: BusinessRecord, record: SimulationRe
   };
 };
 
-/** «Начать заново»: the same scenario from its first hour; with the same owner actions the run repeats exactly. */
-export const restartSimulation = async (base: JobContext, businessId: string): Promise<LaunchResult> => {
+/**
+ * «Начать заново» (simulation-mode spec «Повтор прогона»): the same scenario from its first hour. «Повторить этот
+ * прогон» keeps the run's turns and owner actions to replay them without the model; «Прогнать заново» lets the agent
+ * decide again. A run without a turn on a model has nothing to replay and starts fresh.
+ */
+export const restartSimulation = async (base: JobContext, businessId: string, mode: "repeat" | "fresh" = "fresh"): Promise<LaunchResult> => {
   const record = await base.store.getSimulation(businessId);
   if (!record) {
     throw new SimulationError("NOT_SIMULATED", `Business ${businessId} has no simulation`);
   }
   const business = { ...(await base.store.getBusiness(businessId)), launchedOn: null };
-  const fresh = newRecord(business, scenarioOf(record.scenario), record.plan, record.startedAt, base.clock.now());
+  const replay =
+    mode === "repeat"
+      ? recordReplay(await base.store.turns(businessId), await base.store.changes(businessId), await base.store.directions(businessId), await base.store.ads(businessId))
+      : null;
+  const fresh = { ...newRecord(business, scenarioOf(record.scenario), record.plan, record.startedAt), replay };
   await base.locks.withLock(simulationLockKey(businessId), async () => {
     await base.store.deleteLaunchData(businessId);
     await base.store.saveBusiness(business);
-    await base.store.saveSimulation({ ...fresh, status: "paused", lastTickAt: null });
+    await base.store.saveSimulation({ ...fresh, status: "paused" });
   });
   return launchInWorld(base, fresh);
 };
@@ -406,8 +419,8 @@ export const leaveSimulation = async (base: JobContext, businessId: string): Pro
 };
 
 export type SimulationControl =
-  | { action: "pause" | "resume" | "until_decision" | "step_day" | "extend" | "restart" | "go_real" }
-  | { action: "speed"; speed: SimulationSpeed };
+  | { action: "step_week" | "step_day" | "extend" | "go_real" }
+  | { action: "restart"; mode: "repeat" | "fresh" };
 
 /** The control run covering the whole scenario; runs saved before it was kept by day get it computed once. */
 const fullBaseline = async (world: SimulationWorld): Promise<SimulationBaseline> => {
@@ -416,33 +429,29 @@ const fullBaseline = async (world: SimulationWorld): Promise<SimulationBaseline>
   return known !== null && Array.isArray(known.daily) && known.days === days ? known : baselineRun(world.business, world.record, world.record.endsAt);
 };
 
-const finishIfEnded = async (world: SimulationWorld, stopped: "decision" | "end" | null): Promise<void> => {
-  if (stopped === "end") {
-    world.record = { ...world.record, status: "paused", lastTickAt: null, baseline: await fullBaseline(world) };
-  } else if (stopped === "decision") {
-    world.record = { ...world.record, status: "paused", lastTickAt: null };
-  }
-};
-
 /**
- * «+1 день»: one virtual day, moved in parts that end after every agent turn, so that «Пауза» or another action pressed
- * meanwhile takes effect right after the turn (add-agent-insights decision 8). Meanwhile the simulation is `stepping`,
- * and the ticker leaves it alone; any other action ends the step.
+ * «Прожить неделю» and «+1 день» (simulation-mode spec «Виртуальное время и пульт»): the step's window is recorded
+ * first, so the pult shows which day goes; then the time moves in parts that end after every agent turn, so the pult
+ * follows the step. Meanwhile the simulation is `stepping`. The step runs to its end on the server even if the tab is
+ * closed; the window is cut to where the scenario ended.
  */
-const stepDay = async (base: JobContext, businessId: string): Promise<void> => {
+const step = async (base: JobContext, businessId: string, kind: "week" | "day"): Promise<void> => {
   const target = await withSimulation(base, businessId, (world) => {
-    if (world.clock.now().getTime() + HOUR_MS > world.record.endsAt.getTime()) return Promise.resolve(null);
-    world.record = { ...world.record, status: "stepping", lastTickAt: null };
-    return Promise.resolve(new Date(Math.min(world.clock.now().getTime() + DAY_MS, world.record.endsAt.getTime())));
+    const from = world.clock.now();
+    if (world.record.status === "stepping" || from.getTime() + HOUR_MS > world.record.endsAt.getTime()) return Promise.resolve(null);
+    const to = new Date(Math.min(from.getTime() + (kind === "week" ? WEEK_DAYS : 1) * DAY_MS, world.record.endsAt.getTime()));
+    // «Вы изменили ход прогона» has been on the pult since the last step: it is said once.
+    const replay = world.record.replay?.diverged ? { ...world.record.replay, notified: true } : world.record.replay;
+    world.record = { ...world.record, status: "stepping", steps: [...world.record.steps, { kind, from, to }], replay };
+    return Promise.resolve(to);
   });
   if (target === null) return;
   for (;;) {
     const done = await withSimulation(base, businessId, async (world) => {
-      if (world.record.status !== "stepping") return true;
       const { stopped } = await advanceWorld(base, world, target, { yieldAfterTurn: true });
       if (world.clock.now().getTime() + HOUR_MS <= target.getTime() && stopped === null) return false;
-      world.record = { ...world.record, status: "paused", lastTickAt: null };
-      await finishIfEnded(world, stopped);
+      const steps = world.record.steps.map((s, index) => (index === world.record.steps.length - 1 ? { ...s, to: world.clock.now() } : s));
+      world.record = { ...world.record, status: "paused", steps, ...(stopped === "end" && { baseline: await fullBaseline(world) }) };
       return true;
     }).catch((error: unknown) => {
       // «Запустить по-настоящему» deleted the simulation between the parts.
@@ -455,111 +464,25 @@ const stepDay = async (base: JobContext, businessId: string): Promise<void> => {
 
 /** The pult (simulation-mode spec «Виртуальное время и пульт»); executed by the worker like any other change. */
 export const controlSimulation = async (base: JobContext, businessId: string, control: SimulationControl): Promise<{ ok: true }> => {
-  if (control.action === "step_day") {
-    await stepDay(base, businessId);
-    return { ok: true };
-  }
-  if (control.action === "restart") {
-    await restartSimulation(base, businessId);
-    return { ok: true };
-  }
-  if (control.action === "go_real") {
-    await leaveSimulation(base, businessId);
-    return { ok: true };
-  }
-  await withSimulation(base, businessId, async (world) => {
-    const now = base.clock.now();
-    const atEnd = world.clock.now().getTime() + HOUR_MS > world.record.endsAt.getTime();
-    switch (control.action) {
-      case "pause":
-        world.record = { ...world.record, status: "paused", lastTickAt: null };
-        break;
-      case "resume":
-      case "until_decision":
-        if (!atEnd) {
-          world.record = { ...world.record, status: control.action === "resume" ? "running" : "until_decision", lastTickAt: now };
-        }
-        break;
-      case "speed":
-        world.record = { ...world.record, speed: SIMULATION_SPEEDS[control.speed], lastTickAt: world.record.status === "paused" ? null : now };
-        break;
-      case "extend":
+  switch (control.action) {
+    case "step_week":
+      await step(base, businessId, "week");
+      break;
+    case "step_day":
+      await step(base, businessId, "day");
+      break;
+    case "restart":
+      await restartSimulation(base, businessId, control.mode);
+      break;
+    case "go_real":
+      await leaveSimulation(base, businessId);
+      break;
+    case "extend":
+      await withSimulation(base, businessId, async (world) => {
         world.record = { ...world.record, endsAt: new Date(world.record.endsAt.getTime() + SIMULATION_DAYS * DAY_MS) };
         world.record = { ...world.record, baseline: await fullBaseline(world) };
-        break;
-    }
-  });
-  return { ok: true };
-};
-
-/** At most this much virtual time per tick, so one simulation does not hold its lock for long. */
-const MAX_HOURS_PER_TICK = 6;
-/**
- * Simulations one worker moves at the same time (add-agent-insights decision 8): a tick holds up to three lock
- * connections (simulation, agent turn, business), so the lock pool of the worker is sized for this many.
- */
-export const MAX_MOVING_SIMULATIONS = 3;
-
-/** One tick of one simulation (add-simulation-mode decision 4): moves it by the real time elapsed. */
-export const tickSimulation = async (base: JobContext, logger: Logger, businessId: string): Promise<void> => {
-  const realNow = base.clock.now();
-  await base.locks.tryWithLock(simulationLockKey(businessId), async () => {
-    const record = await base.store.getSimulation(businessId);
-    if (!record || record.status === "paused") return;
-    const world = simulationWorld(base, await base.store.getBusiness(record.businessId), record);
-    const untilDecision = record.status === "until_decision";
-    const speed = record.speed;
-    const last = record.lastTickAt ?? realNow;
-    // «До следующего решения» is not paced by the real clock: the owner is waiting for the decision, so every tick
-    // moves the most a tick may.
-    const due = untilDecision ? Number.POSITIVE_INFINITY : record.simNow.getTime() + (realNow.getTime() - last.getTime()) * speed;
-    const target = new Date(Math.min(due, record.simNow.getTime() + MAX_HOURS_PER_TICK * HOUR_MS));
-    const { hours, stopped } = await advanceWorld(base, world, target, { untilDecision, yieldAfterTurn: true });
-    // Real time is consumed only for the hours done, so a slow tick catches up later instead of skipping hours; the
-    // time the agent thought is consumed as it is, so virtual time stands while it thinks.
-    const lastTickAt = untilDecision ? base.clock.now() : new Date(last.getTime() + (hours * HOUR_MS) / speed + world.agentTurnMs);
-    world.record = { ...world.record, lastTickAt };
-    await finishIfEnded(world, stopped);
-    await saveWorld(base, world);
-    if (stopped !== null) {
-      logger.info("Simulation paused", { businessId: record.businessId, reason: stopped, simNow: world.clock.now().toISOString() });
-    }
-  });
-};
-
-/** One tick of every moving simulation (up to the limit), all at the same time: a slow agent turn delays no other. */
-export const tickSimulations = async (base: JobContext, logger: Logger): Promise<void> => {
-  const moving = (await base.store.movingSimulations()).slice(0, MAX_MOVING_SIMULATIONS);
-  await Promise.all(moving.map((m) => tickSimulation(base, logger, m.businessId)));
-};
-
-/**
- * Ticks the simulations every second in the worker, each on its own: a simulation's tick is not started again while
- * its previous one runs (an agent turn takes seconds), and the others go on meanwhile.
- */
-export const startSimulationTicker = (base: JobContext, logger: Logger, everyMs = 1_000): (() => void) => {
-  const busy = new Set<string>();
-  let listing = false;
-  const failed = (businessId: string | null) => (error: unknown) =>
-    logger.error("Simulation tick failed", { businessId, error: error instanceof Error ? error.message : String(error) });
-  const timer = setInterval(() => {
-    if (listing) return;
-    listing = true;
-    void base.store
-      .movingSimulations()
-      .then((moving) => {
-        for (const { businessId } of moving) {
-          if (busy.has(businessId) || busy.size >= MAX_MOVING_SIMULATIONS) continue;
-          busy.add(businessId);
-          void tickSimulation(base, logger, businessId)
-            .catch(failed(businessId))
-            .finally(() => busy.delete(businessId));
-        }
-      })
-      .catch(failed(null))
-      .finally(() => {
-        listing = false;
       });
-  }, everyMs);
-  return () => clearInterval(timer);
+      break;
+  }
+  return { ok: true };
 };

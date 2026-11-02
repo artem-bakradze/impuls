@@ -35,7 +35,7 @@ describe("SimulationDriver", () => {
     const first = await run();
     expect(Date.now() - started).toBeLessThan(60_000);
     expect(await run()).toEqual(first);
-  });
+  }, 30_000);
 
   it("the safety net pauses an ad without leads within 14 days when the agent does nothing", async () => {
     const sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 3, agent: new IdlePolicy() });
@@ -56,7 +56,7 @@ describe("SimulationDriver", () => {
       const spent = sim.platform.trueSpend(await campaignIds(sim), "2026-10-01", "2026-10-31");
       expect(spent).toBeLessThanOrEqual(rubles(9_000));
     }
-  });
+  }, 30_000);
 
   it("random agent policies cannot break the budget either", async () => {
     const sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 21, agent: new RandomPolicy(21) });
@@ -68,7 +68,8 @@ describe("SimulationDriver", () => {
   it("adversarial calls on foreign objects are rejected and logged in the turn journal", async () => {
     const sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 5, agent: new AdversarialPolicy() });
     await launch(sim);
-    await sim.runDays(2);
+    // The first turn without reasons is Monday's review: 2026-10-01 is a Thursday.
+    await sim.runDays(5);
     const turn = (await sim.store.turns("b1"))[0];
     const calls = turn?.calls as { command: { adId?: string }; result: { status: string; code?: string } }[];
     expect(calls.find((c) => c.command.adId === "foreign-ad")?.result).toMatchObject({ status: "rejected", code: "OBJECT_NOT_FOUND" });

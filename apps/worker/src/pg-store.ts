@@ -4,11 +4,22 @@ import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
-import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, SimulationStep, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
 
 const GLOBAL = "*";
 const toMap = <V>(value: unknown): Map<string, V> => new Map(Object.entries(value as Record<string, V>));
 const fromMap = <V>(map: ReadonlyMap<string, V>): Record<string, V> => Object.fromEntries(map);
+
+/** jsonb keeps the replay's times as strings. */
+const reviveReplay = (value: unknown): SimulationReplay | null => {
+  if (value === null || value === undefined) return null;
+  const replay = value as SimulationReplay;
+  return {
+    ...replay,
+    turns: replay.turns.map((t) => ({ ...t, at: new Date(t.at) })),
+    ownerActions: replay.ownerActions.map((a) => ({ ...a, at: new Date(a.at) })),
+  };
+};
 
 /** PostgreSQL implementation of the persistence port. Every call autocommits, so `pending` survives crashes. */
 export class PgStore implements Store {
@@ -247,6 +258,7 @@ export class PgStore implements Store {
       adClasses: fromMap(e.adClasses),
       directionClasses: fromMap(e.directionClasses),
       borderlineSince: fromMap(e.borderlineSince),
+      findings: e.findings,
     };
     await this.db.insert(schema.evaluations).values(values).onConflictDoUpdate({ target: schema.evaluations.businessId, set: values });
   }
@@ -261,6 +273,8 @@ export class PgStore implements Store {
           adClasses: toMap<EffectivenessClass>(row.adClasses),
           directionClasses: toMap<EffectivenessClass>(row.directionClasses),
           borderlineSince: toMap<LocalDate>(row.borderlineSince),
+          // Evaluations saved before the reasons existed have no findings: every finding is new once.
+          findings: (row.findings as string[] | null) ?? [],
         }
       : null;
   }
@@ -308,7 +322,7 @@ export class PgStore implements Store {
   async turnDigests(businessId: string): Promise<TurnDigest[]> {
     const t = schema.agentTurns;
     return this.db
-      .select({ id: t.id, trigger: t.trigger, status: t.status, startedAt: t.startedAt, summary: t.summary, summaryValid: t.summaryValid })
+      .select({ id: t.id, trigger: t.trigger, status: t.status, startedAt: t.startedAt, summary: t.summary, summaryValid: t.summaryValid, usageSource: t.usageSource })
       .from(t)
       .where(eq(t.businessId, businessId))
       .orderBy(asc(t.startedAt));
@@ -441,6 +455,8 @@ export class PgStore implements Store {
       status: row.status,
       state: row.state as SimulationRecord["state"],
       baseline: (row.baseline as SimulationRecord["baseline"]) ?? null,
+      steps: ((row.steps as { kind: SimulationStep["kind"]; from: string; to: string }[] | null) ?? []).map((s) => ({ kind: s.kind, from: new Date(s.from), to: new Date(s.to) })),
+      replay: reviveReplay(row.replay),
     };
   }
 
@@ -458,10 +474,6 @@ export class PgStore implements Store {
     await this.db.delete(schema.simulations).where(eq(schema.simulations.businessId, businessId));
   }
 
-  async movingSimulations(): Promise<SimulationRecord[]> {
-    const rows = await this.db.select().from(schema.simulations).where(inArray(schema.simulations.status, ["running", "until_decision"]));
-    return rows.map((r) => this.toSimulation(r));
-  }
 
   async reopenWizard(businessId: string, step: number): Promise<void> {
     // The wizard draft lives in card.onboarding (web); only «Директ подключён» is reset there.

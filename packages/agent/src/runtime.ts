@@ -1,8 +1,15 @@
-import type { Command, EffectivenessClass, InsightDraft, InsightFact, Kopecks, LocalDate, ObjectStatus } from "@impuls/core";
+import type { Command, EffectivenessClass, InsightDraft, InsightFact, Kopecks, LocalDate, ObjectStatus, TurnReasonKind } from "@impuls/core";
+
+/** Why the daily turn runs: a finding of the morning evaluation the last turn did not see (ad-agent spec «Поводы для хода агента»). */
+export interface TurnReasonView {
+  kind: TurnReasonKind;
+  objectKind: "ad" | "direction" | "hypothesis";
+  objectId: string;
+}
 
 export type TurnTrigger =
   | { kind: "launch" }
-  | { kind: "daily_review" }
+  | { kind: "daily_review"; reasons?: TurnReasonView[] }
   /** Monday 07:00: the weekly strategic review on the strategy model (add-agent-analyst-stage1 decision 7). */
   | { kind: "weekly_review" }
   | { kind: "moderation_rejected"; adIds: string[] }

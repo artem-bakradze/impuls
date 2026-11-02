@@ -2,7 +2,7 @@ import { HeuristicPolicy, IdlePolicy, QuietPolicy, ReplayPolicy } from "@impuls/
 import type { AgentRuntime, AgentToolbox, ToolResult, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { factKey, rubles, toLocalDate } from "@impuls/core";
 import type { InsightDraft } from "@impuls/core";
-import { controlSimulation, enqueueAgentEvent, handleWebJob, processAgentInbox, RULES_DAY_CODE, rollback, runAgentTurn, SimulationDriver } from "@impuls/worker";
+import { controlSimulation, enqueueAgentEvent, handleWebJob, processAgentInbox, QUIET_DAY_CODE, RULES_DAY_CODE, rollback, runAgentTurn, SimulationDriver } from "@impuls/worker";
 import type { TurnOutcome } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
@@ -144,27 +144,35 @@ describeFeature(feature, ({ Scenario }) => {
       await handleWebJob(sim.ctx, { kind: "launch", businessId: "b1", plan });
       await sim.runDays(2);
     });
-    Then("выполняется ход агента по запуску, а на следующий день в 06:00 — ежедневный разбор", async () => {
+    Then("выполняется ход агента по запуску, а дальше каждое утро в 06:00 сервис оценивает рекламу и вызывает агента, только когда есть повод", async () => {
       expect(await sim.store.directions("b1")).toHaveLength(2);
       const turns = (await sim.store.turns("b1")).filter((t) => t.status === "completed");
-      expect(turns.map((t) => t.trigger)).toEqual(expect.arrayContaining(["launch", "daily_review"]));
-      const daily = turns.find((t) => t.trigger === "daily_review");
-      expect(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hourCycle: "h23" }).format(daily?.startedAt)).toBe("06");
+      expect(turns.map((t) => t.trigger)).toContain("launch");
+      // The ads only started collecting data: the mornings had no reasons, so no model was called.
+      expect(turns.some((t) => t.trigger === "daily_review")).toBe(false);
+      const quiet = (await sim.store.insights("b1")).filter((i) => i.reasonCode === QUIET_DAY_CODE);
+      expect(quiet.length).toBeGreaterThan(0);
+      expect(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hourCycle: "h23" }).format(quiet[0]?.createdAt)).toBe("06");
       expect(await sim.store.pendingInbox("b1")).toEqual([]);
     });
   });
 
   Scenario("Агент не повторяет вывод", ({ Given, When, Then }) => {
     let world: Awaited<ReturnType<typeof simulatedBusiness>>;
+    let turnsBefore = 0;
     Given("реклама в поиске и на сайтах-партнёрах с агентом, который сравнил площадки по цене обращения", async () => {
       world = await simulatedBusiness(new HeuristicPolicy(), 2);
-      expect((await world.store.insights("b1")).filter((i) => i.reasonCode === "CHANNELS_COMPARED")).toHaveLength(1);
+      // The agent is called on reasons: the comparison comes with the first turn that finds nothing to change.
+      const compared = async () => (await world.store.insights("b1")).filter((i) => i.reasonCode === "CHANNELS_COMPARED").length;
+      for (let day = 0; day < 21 && (await compared()) === 0; day++) await controlSimulation(world.ctx, "b1", { action: "step_day" });
+      expect(await compared()).toBe(1);
+      turnsBefore = (await world.store.turns("b1")).filter((t) => t.status === "completed").length;
     });
-    When("следующие две недели агент каждый день разбирает рекламу", async () => {
-      for (let day = 0; day < 12; day++) await controlSimulation(world.ctx, "b1", { action: "step_day" });
+    When("следующие две недели агента вызывают по поводам и на разборах недели", async () => {
+      for (let week = 0; week < 2; week++) await controlSimulation(world.ctx, "b1", { action: "step_week" });
     });
     Then("он видит свой инсайт через инструмент чтения и не создаёт такой же", async () => {
-      expect((await world.store.turns("b1")).filter((t) => t.trigger === "daily_review" && t.status === "completed").length).toBeGreaterThanOrEqual(12);
+      expect((await world.store.turns("b1")).filter((t) => t.status === "completed").length).toBeGreaterThan(turnsBefore);
       expect((await world.store.insights("b1")).filter((i) => i.reasonCode === "CHANNELS_COMPARED")).toHaveLength(1);
     });
   });
@@ -187,7 +195,7 @@ describeFeature(feature, ({ Scenario }) => {
     });
     Then("исполнитель урезает лимит до 2 400 ₽, а инсайт показывает в «Что решили»: «2 400 ₽ в неделю — урезано: не больше +20% за шаг»", async () => {
       expect((await sim.store.directions("b1")).find((d) => d.id === "b1-d1")?.weeklyLimit).toBe(rubles(2_400));
-      const [insight] = await sim.store.insights("b1");
+      const insight = (await sim.store.insights("b1")).find((i) => i.reasonCode === "SCALE");
       expect(insight?.decision.status).toBe("clamped");
       expect(insight?.decision.text.replace(/[\u00a0\u202f]/g, " ")).toContain("2 400 ₽ в неделю — урезано: не больше +20% за шаг");
     });
@@ -307,6 +315,148 @@ describeFeature(feature, ({ Scenario }) => {
       expect(automated.every((c) => c.explanation.trim() !== "")).toBe(true);
       const pause = automated.find((c) => c.action.type === "PauseAd");
       expect((await rollback(sim.ctx, { businessId: "b1", entryId: pause?.id ?? "", includeLater: true })).kind).toBe("done");
+    });
+  });
+
+  // --- Turns on reasons (weekly-simulation-triggered-agent) ---
+
+  const reasonsOf = (turn: { context: unknown }): { kind: string; objectId: string }[] =>
+    (turn.context as { trigger?: { reasons?: { kind: string; objectId: string }[] } }).trigger?.reasons ?? [];
+
+  Scenario("Повода нет", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, которая только начала собирать данные", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+    });
+    When("три утра подряд обновляется статистика, классы объектов не меняются, а событий нет", async () => {
+      await sim.runDays(3);
+    });
+    Then("модель не вызывается, затраты на неё не растут, а лента показывает «Посмотрели рекламу — менять ничего не нужно»", async () => {
+      expect((await sim.store.turns("b1")).filter((t) => t.trigger === "daily_review")).toEqual([]);
+      expect((await sim.store.turns("b1")).reduce((sum, t) => sum + t.costKopecks, 0)).toBe(0);
+      const quiet = (await sim.store.insights("b1")).filter((i) => i.reasonCode === QUIET_DAY_CODE);
+      expect(quiet).toHaveLength(3);
+      expect(quiet[0]?.observation).toBe("Посмотрели рекламу — менять ничего не нужно");
+    });
+  });
+
+  Scenario("Разбор недели без повода", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, которая только начала собирать данные", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+    });
+    When("наступает понедельник, а поводов для ежедневного разбора нет", async () => {
+      // 2026-10-01 is a Thursday; Monday 07:00 in Moscow is 04:00 UTC on the 5th.
+      await sim.runHours(4 * 24 + 5);
+    });
+    Then("разбор недели всё равно выполняется", async () => {
+      const turns = await sim.store.turns("b1");
+      expect(turns.filter((t) => t.trigger === "daily_review")).toEqual([]);
+      expect(turns.filter((t) => t.trigger === "weekly_review" && t.status === "completed").map((t) => t.startedAt.toISOString())).toEqual(["2026-10-05T04:00:00.000Z"]);
+    });
+  });
+
+  Scenario("Объявление стало неэффективным", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, где одно объявление тратит деньги без обращений", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+    });
+    When("утренняя оценка впервые признаёт его неэффективным", async () => {
+      await sim.runDays(20);
+    });
+    Then("выполняется ход с поводом «объявление стало неэффективным», и этот повод записан в журнале хода", async () => {
+      const turn = (await sim.store.turns("b1")).find((t) => reasonsOf(t).some((r) => r.kind === "became_ineffective" && r.objectId === "b1-d1-a2"));
+      expect(turn?.trigger).toBe("daily_review");
+      expect(turn?.status).toBe("completed");
+    });
+  });
+
+  Scenario("Находку уже видели", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, где одно объявление тратит деньги без обращений, и агент уже видел, что оно неэффективно", async () => {
+      // The rules wait for the agent and would pause the ad the next day; with automation off it stays ineffective.
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+      await sim.store.setFlag("automation_enabled", false, null);
+      await sim.runDays(14);
+      expect((await sim.store.turns("b1")).some((t) => reasonsOf(t).some((r) => r.kind === "became_ineffective" && r.objectId === "b1-d1-a2"))).toBe(true);
+    });
+    When("следующие дни оно остаётся неэффективным", async () => {
+      await sim.runDays(6);
+    });
+    Then("по этой находке новых ходов нет", async () => {
+      const turns = (await sim.store.turns("b1")).filter((t) => reasonsOf(t).some((r) => r.kind === "became_ineffective" && r.objectId === "b1-d1-a2"));
+      expect(turns).toHaveLength(1);
+    });
+  });
+
+  Scenario("Пограничное объявление перед страховочной проверкой", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, где одно объявление приводит клиентов примерно по цене цели", async () => {
+      sim = new SimulationDriver({ start: new Date("2026-10-01T00:00:00Z"), seed: 11, agent: new QuietPolicy() });
+      await sim.launchBusiness({
+        id: "b1",
+        monthlyBudgetRub: 30_000,
+        launchedOn: "2026-10-01",
+        csoSource: { kind: "user", goal: rubles(800) },
+        // 20 ₽ a click and one lead in 40 clicks: about 800 ₽ a lead — the goal itself.
+        directions: [{ name: "Маникюр — Поиск", weeklyLimitRub: 3_000, ads: [{ title: "Маникюр у метро", truth: goodTruth }, { title: "Маникюр на грани", truth: { impressionsPerDay: 800, ctr: 0.06, cr: 0.025, costPerClick: rubles(20) } }] }],
+      });
+    });
+    When("оно 6 дней подряд пограничное без проверки нового варианта", async () => {
+      await sim.runDays(30);
+    });
+    Then("в этот день выполняется ход с этим поводом, раньше чем страховочное правило может запустить проверку", async () => {
+      const turn = (await sim.store.turns("b1")).find((t) => reasonsOf(t).some((r) => r.kind === "borderline"));
+      expect(turn).toBeDefined();
+      const started = (await sim.store.changes("b1")).find((c) => c.action.type === "StartExperiment");
+      if (started) expect(started.createdAt.getTime()).toBeGreaterThan(turn?.startedAt.getTime() ?? 0);
+    });
+  });
+
+  Scenario("День проверки гипотезы", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом и открытая гипотеза, назначенная к проверке на 3 октября", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+      await sim.store.saveHypothesis({
+        id: "h1",
+        businessId: "b1",
+        openedTurnId: null,
+        closedTurnId: null,
+        statement: "С телефонов клиенты обходятся дороже.",
+        facts: [],
+        check: "Сравним цену обращения по устройствам.",
+        checkOn: "2026-10-03",
+        status: "checking",
+        result: null,
+        resultFacts: [],
+        openedAt: new Date("2026-10-01T00:00:00Z"),
+        closedAt: null,
+      });
+    });
+    When("наступает 3 октября", async () => {
+      await sim.runDays(3);
+    });
+    Then("выполняется ход с поводом «день проверки гипотезы», хотя других поводов нет", async () => {
+      const turns = (await sim.store.turns("b1")).filter((t) => t.trigger === "daily_review");
+      expect(turns).toHaveLength(1);
+      expect(toLocalDate(turns[0]?.startedAt ?? new Date(0), "Europe/Moscow")).toBe("2026-10-03");
+      expect(reasonsOf(turns[0] ?? { context: null })).toEqual([{ kind: "hypothesis_due", objectKind: "hypothesis", objectId: "h1" }]);
+    });
+  });
+
+  Scenario("Неделя без поводов", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама с агентом, которая только начала собирать данные", async () => {
+      sim = await launchedWorld(30_000, { agent: new QuietPolicy() });
+    });
+    When("пять дней подряд поводов нет", async () => {
+      await sim.runDays(5);
+    });
+    Then("модель не вызывается, страховочные правила ничего не делают «без ожидания агента», инцидента о недоступности нет, а лента не говорит «Сегодня решения принимали страховочные правила»", async () => {
+      expect((await sim.store.turns("b1")).filter((t) => t.trigger === "daily_review")).toEqual([]);
+      expect((await sim.store.changes("b1")).filter((c) => c.actor === "safety_net")).toEqual([]);
+      expect((await sim.store.incidents()).filter((i) => i.kind === "agent_unavailable")).toEqual([]);
+      expect((await sim.store.insights("b1")).filter((i) => i.reasonCode === RULES_DAY_CODE)).toEqual([]);
     });
   });
 });

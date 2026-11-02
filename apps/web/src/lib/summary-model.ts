@@ -16,7 +16,8 @@ export interface SummaryModel {
   /** first_day: no statistics yet, show the launch state instead of zeros. */
   state: "first_day" | "running" | "paused";
   /** A business in the simulation mode: no Yandex moderation or data corrections, real seconds per virtual day. */
-  simulation: { secondsPerDay: number } | null;
+  /** A simulated business: how many weeks have been lived, for «Прожить первую неделю». */
+  simulation: { weeks: number } | null;
   /** Whole days since the launch, today included. */
   launchedDays: number;
   /** False in the first period after launch: the previous one was entirely before it (analytics spec). */
@@ -113,13 +114,6 @@ export const launchMonthText = (model: Pick<SummaryModel, "launchMonth" | "month
   model.launchMonth === null
     ? null
     : `До конца ${model.launchMonth.monthName} — ${formatRub(model.launchMonth.budget)}, с 1 ${model.launchMonth.nextMonthName} — ${formatRub(model.monthlyBudget)} в месяц`;
-
-/** Real time to the service's first look at the ads in a simulation: «около минуты». */
-export const realTimeText = (seconds: number): string => {
-  if (seconds < 90) return "около минуты";
-  if (seconds < 3_600) return `около ${Math.round(seconds / 60)} мин`;
-  return `около ${Math.round(seconds / 3_600)} ч`;
-};
 
 export const moderationText = (m: SummaryModel["moderation"]): string => {
   if (m.pending > 0) {

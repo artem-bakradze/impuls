@@ -5,6 +5,7 @@ import type {
   CsoSource,
   Direction,
   EffectivenessClass,
+  InsightDraft,
   InsightMetric,
   InsightPeriod,
   Kopecks,
@@ -16,8 +17,8 @@ import type { LaunchPlan } from "./launch";
 
 export type BusinessMode = "direct" | "simulation";
 
-/** `stepping`: «+1 день» moves the simulation; the ticker leaves it alone (add-agent-insights decision 8). */
-export type SimulationStatus = "running" | "paused" | "until_decision" | "stepping";
+/** `stepping`: «Прожить неделю» or «+1 день» moves the simulation; otherwise its time stands (simulation-mode spec). */
+export type SimulationStatus = "paused" | "stepping";
 
 /** Result of the control run «если бы сервис ничего не делал» over the same period. */
 export interface SimulationBaseline {
@@ -26,6 +27,47 @@ export interface SimulationBaseline {
   leads: number;
   /** Spend and leads of each day of the control run, from the first day, for the comparison by day. */
   daily: { spend: Kopecks; leads: number }[];
+}
+
+/** One step on the pult: «Прожить неделю» has a week story, «+1 день» has none (simulation-mode spec). */
+export interface SimulationStep {
+  kind: "week" | "day";
+  from: Date;
+  to: Date;
+}
+
+/** A recorded agent turn of the run being repeated, with the virtual time it started at. */
+export interface ReplayTurn {
+  at: Date;
+  trigger: string;
+  summary: string;
+  calls: { command: Command | null; insight: InsightDraft; accepted: boolean }[];
+  /** Hypothesis journal writes of the turn (ad-agent «Журнал гипотез»), as the agent sent them. */
+  hypotheses: unknown[];
+}
+
+/** An owner action of the run being repeated: the same at the same virtual hour keeps the repeat exact. */
+export interface ReplayOwnerAction {
+  at: Date;
+  type: string;
+  objectId: string;
+}
+
+/** «Повторить этот прогон» (simulation-mode spec «Повтор прогона»). */
+export interface SimulationReplay {
+  turns: ReplayTurn[];
+  ownerActions: ReplayOwnerAction[];
+  /**
+   * The run's ids of directions and ads by their simulated platform ids, which repeat in every run of the scenario:
+   * the recorded calls are carried over to the new run's objects by them.
+   */
+  ids: Record<string, string>;
+  /** Turns already replayed. */
+  position: number;
+  /** The owner or the guards took the run elsewhere: the agent decides on the model from here. */
+  diverged: boolean;
+  /** The pult has said so once. */
+  notified: boolean;
 }
 
 /** Virtual time and saved market of a business in the simulation mode. */
@@ -37,13 +79,15 @@ export interface SimulationRecord {
   startedAt: Date;
   simNow: Date;
   endsAt: Date;
-  /** Real time of the last tick; null while paused. */
+  /** Unused since the time moves only by steps (weekly-simulation-triggered-agent); kept as stored. */
   lastTickAt: Date | null;
-  /** Virtual milliseconds per real millisecond. */
+  /** Unused since the time moves only by steps (weekly-simulation-triggered-agent); kept as stored. */
   speed: number;
   status: SimulationStatus;
   state: SimulatorState;
   baseline: SimulationBaseline | null;
+  steps: SimulationStep[];
+  replay: SimulationReplay | null;
 }
 
 export interface BusinessRecord {
@@ -193,6 +237,8 @@ export interface Evaluation {
   adClasses: Map<string, EffectivenessClass>;
   directionClasses: Map<string, EffectivenessClass>;
   borderlineSince: Map<string, LocalDate>;
+  /** Keys of the findings of this evaluation (ad-agent «Поводы для хода агента»). */
+  findings: string[];
 }
 
 export interface Experiment {
@@ -229,7 +275,7 @@ export interface AgentTurnRecord {
 }
 
 /** What the insight feed needs of a turn: when, how it ended and its day review (insights spec «Разбор дня»). */
-export type TurnDigest = Pick<AgentTurnRecord, "id" | "trigger" | "status" | "startedAt" | "summary" | "summaryValid">;
+export type TurnDigest = Pick<AgentTurnRecord, "id" | "trigger" | "status" | "startedAt" | "summary" | "summaryValid" | "usageSource">;
 
 /** An event waiting for the next agent turn; several events are merged into one turn. */
 export interface InboxEvent {
@@ -335,7 +381,6 @@ export interface Store {
   saveSimulation(simulation: SimulationRecord): Promise<void>;
   deleteSimulation(businessId: string): Promise<void>;
   /** Simulations whose virtual time moves: running or going to the next decision. */
-  movingSimulations(): Promise<SimulationRecord[]>;
   /**
    * Everything the launch created for a business — campaigns, ads, stats, history, experiments, evaluations,
    * client answers, notifications, agent journal, hypotheses and cursors; the business row and its card stay.
@@ -513,7 +558,7 @@ export class MemoryStore implements Store {
     return Promise.resolve(
       this.turnList
         .filter((t) => t.businessId === businessId)
-        .map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: new Date(t.startedAt.getTime()), summary: t.summary, summaryValid: t.summaryValid })),
+        .map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: new Date(t.startedAt.getTime()), summary: t.summary, summaryValid: t.summaryValid, usageSource: t.usageSource })),
     );
   }
   runningTurnStartedAt(businessId: string): Promise<Date | null> {
@@ -600,9 +645,6 @@ export class MemoryStore implements Store {
   deleteSimulation(businessId: string): Promise<void> {
     this.simulationMap.delete(businessId);
     return Promise.resolve();
-  }
-  movingSimulations(): Promise<SimulationRecord[]> {
-    return Promise.resolve([...this.simulationMap.values()].filter((s) => s.status !== "paused").map((s) => structuredClone(s)));
   }
   reopenWizard(businessId: string): Promise<void> {
     const business = this.businessMap.get(businessId);
