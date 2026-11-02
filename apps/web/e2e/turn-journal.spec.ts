@@ -84,6 +84,7 @@ test("from a history entry made by the agent the owner opens the turn with guard
   // «Почему»: the insight of the decision with its facts, right at the entry.
   await entry.getByRole("button", { name: /Почему/ }).click();
   const insight = entry.getByTestId("insight");
+  await insight.getByRole("button", { name: /На каких данных и что дальше/ }).click();
   await expect(insight).toContainText("На каких данных");
   await expect(insight).toContainText("Осталось в этом месяце");
   await expect(insight).toContainText("урезано: не больше +20% за шаг");

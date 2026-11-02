@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyDraft } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
@@ -110,6 +110,7 @@ describe("history entry", () => {
     render(<HistoryEntry item={decision} timeZone="Europe/Moscow" onRollback={() => undefined} />);
     expect(screen.queryByTestId("insight")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Почему/ }));
+    fireEvent.click(within(screen.getByTestId("insight")).getByRole("button", { name: /На каких данных и что дальше/ }));
     expect(screen.getByTestId("insight").textContent).toContain("Объявление «Маникюр без записи»: расход за 14 дней");
     // The entry keeps its own «Вернуть как было»; the insight under it has none.
     expect(screen.getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(1);

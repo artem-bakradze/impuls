@@ -435,49 +435,6 @@ exports[`SummaryView > shows three numbers without charts or a ring, then the in
                 <span
                   class="t-eyebrow"
                 >
-                  На каких данных
-                </span>
-                <dl
-                  class="insight-facts"
-                >
-                  <div>
-                    <dt>
-                      Объявление «Маникюр без записи»: расход за 14 дней
-                    </dt>
-                    <dd
-                      class="t-num"
-                    >
-                      1 530 ₽
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>
-                      Объявление «Маникюр без записи»: обращения за 14 дней
-                    </dt>
-                    <dd
-                      class="t-num"
-                    >
-                      0
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>
-                      Цель
-                    </dt>
-                    <dd
-                      class="t-num"
-                    >
-                      300 ₽ за обращение
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-              <div
-                class="insight-part"
-              >
-                <span
-                  class="t-eyebrow"
-                >
                   Что решили
                 </span>
                 <div
@@ -531,18 +488,74 @@ exports[`SummaryView > shows three numbers without charts or a ring, then the in
                 </button>
               </div>
               <div
-                class="insight-part"
+                class="stack"
+                style="--gap: 8px;"
               >
-                <span
-                  class="t-eyebrow"
+                <button
+                  aria-expanded="true"
+                  class="link-button"
+                  style="align-self: flex-start;"
+                  type="button"
                 >
-                  Что дальше
-                </span>
-                <p
-                  class="t-body"
+                  Скрыть данные и прогноз
+                </button>
+                <div
+                  class="insight-part"
                 >
-                  Через 7 дней сравним цену обращения рекламы в поиске с прежней.
-                </p>
+                  <span
+                    class="t-eyebrow"
+                  >
+                    На каких данных
+                  </span>
+                  <dl
+                    class="insight-facts"
+                  >
+                    <div>
+                      <dt>
+                        Объявление «Маникюр без записи»: расход за 14 дней
+                      </dt>
+                      <dd
+                        class="t-num"
+                      >
+                        1 530 ₽
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Объявление «Маникюр без записи»: обращения за 14 дней
+                      </dt>
+                      <dd
+                        class="t-num"
+                      >
+                        0
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Цель
+                      </dt>
+                      <dd
+                        class="t-num"
+                      >
+                        300 ₽ за обращение
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                <div
+                  class="insight-part"
+                >
+                  <span
+                    class="t-eyebrow"
+                  >
+                    Что дальше
+                  </span>
+                  <p
+                    class="t-body"
+                  >
+                    Через 7 дней сравним цену обращения рекламы в поиске с прежней.
+                  </p>
+                </div>
               </div>
             </article>
           </section>

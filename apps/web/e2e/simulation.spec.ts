@@ -47,7 +47,9 @@ test("an owner runs the simulation, sees the service decide and goes on to a rea
   expect(await dayNow()).toBeGreaterThan(3);
   // The summary has no charts: three numbers and the insight feed with the day reviews.
   await expect(page.getByTestId("summary-feed")).toContainText("Разбор", { timeout: 20_000 });
-  await expect(page.getByTestId("summary-feed").getByTestId("insight").first()).toContainText("На каких данных");
+  const firstInsight = page.getByTestId("summary-feed").getByTestId("insight").first();
+  await firstInsight.getByRole("button", { name: /На каких данных и что дальше/ }).click();
+  await expect(firstInsight).toContainText("На каких данных");
   await expect(page.locator(".ring")).toHaveCount(0);
   // Nothing on the phone screen is wider than the screen.
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

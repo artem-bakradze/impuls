@@ -30,6 +30,9 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
  */
 export function InsightCard({ card, timeZone, onRollback }: { card: InsightCardModel; timeZone: string; onRollback?: (item: HistoryItem) => void }) {
   const status = card.decision.status === "none" ? null : DECISION_LABELS[card.decision.status];
+  /** Evidence and forecast are one click away: a feed of many insights stays readable on a phone. */
+  const [details, setDetails] = useState(false);
+  const hasDetails = card.facts.length > 0 || Boolean(card.next);
   return (
     <article className="surface insight-card" id={`insight-${card.id}`} data-testid="insight">
       <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
@@ -45,18 +48,6 @@ export function InsightCard({ card, timeZone, onRollback }: { card: InsightCardM
       <Part title="Что заметили">
         <p className="t-body insight-observation">{card.observation}</p>
       </Part>
-      {card.facts.length > 0 ? (
-        <Part title="На каких данных">
-          <dl className="insight-facts">
-            {card.facts.map((fact) => (
-              <div key={fact.label}>
-                <dt>{fact.label}</dt>
-                <dd className="t-num">{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </Part>
-      ) : null}
       <Part title="Что решили">
         <div className="row" style={{ "--gap": "8px", alignItems: "center" } as React.CSSProperties}>
           <span className="t-body" style={{ flex: "1 1 220px" }}>
@@ -70,10 +61,33 @@ export function InsightCard({ card, timeZone, onRollback }: { card: InsightCardM
           </Button>
         ) : null}
       </Part>
-      {card.next ? (
-        <Part title="Что дальше">
-          <p className="t-body">{card.next}</p>
-        </Part>
+      {hasDetails ? (
+        <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
+          <button type="button" className="link-button" style={{ alignSelf: "flex-start" }} aria-expanded={details} onClick={() => setDetails(!details)}>
+            {details ? "Скрыть данные и прогноз" : "На каких данных и что дальше"}
+          </button>
+          {details ? (
+            <>
+              {card.facts.length > 0 ? (
+                <Part title="На каких данных">
+                  <dl className="insight-facts">
+                    {card.facts.map((fact) => (
+                      <div key={fact.label}>
+                        <dt>{fact.label}</dt>
+                        <dd className="t-num">{fact.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </Part>
+              ) : null}
+              {card.next ? (
+                <Part title="Что дальше">
+                  <p className="t-body">{card.next}</p>
+                </Part>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       ) : null}
       {card.truth ? (
         <div className={`note insight-truth note-${card.truth.tone}`} data-testid="insight-truth">

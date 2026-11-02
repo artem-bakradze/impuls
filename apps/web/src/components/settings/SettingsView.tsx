@@ -305,7 +305,7 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                       type="primary"
                       disabled={city.trim() === ""}
                       loading={busy === "city"}
-                      onClick={() => void commands("city", { action: "city", city: city.trim() }, "Город показа обновлён во всех кампаниях")}
+                      onClick={() => void commands("city", { action: "city", city: city.trim() }, "Город обновлён во всей рекламе")}
                     >
                       Сохранить город
                     </Button>
@@ -329,7 +329,7 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                       type="primary"
                       disabled={from === to}
                       loading={busy === "schedule"}
-                      onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание показов обновлено во всех кампаниях")}
+                      onClick={() => void commands("schedule", { action: "schedule", schedule }, "Расписание обновлено во всей рекламе")}
                     >
                       Сохранить время
                     </Button>

@@ -45,22 +45,22 @@ function Kpi({ label, value, sub, extra }: { label: string; value: string; sub?:
 /** After launch with Direct: moderation, first impressions, first decisions. */
 const directSteps = (checked: boolean) =>
   [
-    { state: "done", icon: <CheckOutlined />, title: "Реклама запущена", text: "Кампании созданы в вашем Яндекс Директе" },
+    { state: "done", icon: <CheckOutlined />, title: "Реклама запущена", text: "Реклама создана в вашем Яндекс Директе" },
     {
       state: checked ? "done" : "now",
       icon: checked ? <CheckOutlined /> : <FileSearchOutlined />,
       title: checked ? "Яндекс проверил объявления" : "Яндекс проверяет объявления",
       text: checked ? "Можно показывать людям" : "Обычно это занимает несколько часов",
     },
-    { state: checked ? "now" : "todo", icon: <EyeOutlined />, title: "Первые показы и переходы", text: "Первые результаты появятся в течение суток" },
+    { state: checked ? "now" : "todo", icon: <EyeOutlined />, title: "Первые просмотры рекламы", text: "Первые результаты появятся в течение суток" },
     { state: "todo", icon: <LineChartOutlined />, title: "Первые выводы", text: "Сервис разбирает рекламу каждое утро; через 7 дней он начнёт убирать то, что не приносит клиентов, и добавлять денег тому, что приносит" },
   ] as const;
 
 /** The same steps in a simulation: no Yandex moderation, and the first decisions come in real seconds. */
 const simulationSteps = (secondsPerDay: number) =>
   [
-    { state: "done", icon: <CheckOutlined />, title: "Реклама запущена в симуляции", text: "Кампании созданы в симуляторе рынка, Яндекс Директ не нужен" },
-    { state: "now", icon: <EyeOutlined />, title: "Первые показы и переходы", text: "Уже в первый виртуальный день" },
+    { state: "done", icon: <CheckOutlined />, title: "Реклама запущена в симуляции", text: "Реклама создана в симуляторе рынка, Яндекс Директ не нужен" },
+    { state: "now", icon: <EyeOutlined />, title: "Первые просмотры рекламы", text: "Уже в первый виртуальный день" },
     { state: "todo", icon: <LineChartOutlined />, title: "Первые выводы", text: `На 7-й день — ${realTimeText(secondsPerDay * 6)} при текущей скорости` },
   ] as const;
 
@@ -221,7 +221,7 @@ export function SummaryView({ model }: { model: SummaryModel }) {
                     {d.status === "paused" ? <Chip>на паузе</Chip> : <Chip tone="success">работает</Chip>}
                   </div>
                   <span className="t-small">
-                    {d.ads} {plural(d.ads, "объявление", "объявления", "объявлений")} · лимит {formatRub(d.weeklyLimit)} в неделю
+                    {d.ads} {plural(d.ads, "объявление", "объявления", "объявлений")} · до {formatRub(d.weeklyLimit)} в неделю
                   </span>
                 </div>
                 <div className="stack t-num" style={{ "--gap": "2px", textAlign: "right" } as React.CSSProperties}>

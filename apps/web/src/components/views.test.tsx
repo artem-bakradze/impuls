@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ExperimentItem } from "@/lib/experiments-model";
 import type { HistoryItem } from "@/lib/history-view";
@@ -102,9 +102,15 @@ describe("SummaryView", () => {
     const day = screen.getByTestId("day-review");
     expect(plain(day)).toContain("Разбор 27 октября");
     expect(plain(day)).toContain("Отключили одно объявление: оно тратило деньги без обращений.");
-    const insight = plain(screen.getByTestId("insight"));
-    for (const part of ["Сервис", "Что заметили", "На каких данных", "Объявление «Маникюр без записи»: расход за 14 дней", "1 530 ₽", "Что решили", "Применено", "Что дальше"]) {
-      expect(insight).toContain(part);
+    const insight = screen.getByTestId("insight");
+    for (const part of ["Сервис", "Что заметили", "Что решили", "Применено"]) {
+      expect(plain(insight)).toContain(part);
+    }
+    // Evidence and forecast are one click away, so a feed of many insights stays readable.
+    expect(plain(insight)).not.toContain("Объявление «Маникюр без записи»: расход за 14 дней");
+    fireEvent.click(within(insight).getByRole("button", { name: /На каких данных и что дальше/ }));
+    for (const part of ["Объявление «Маникюр без записи»: расход за 14 дней", "1 530 ₽", "Что дальше"]) {
+      expect(plain(insight)).toContain(part);
     }
     expect(screen.getByRole("button", { name: /Вернуть как было/ })).toBeTruthy();
     expect(container).toMatchSnapshot();
@@ -114,7 +120,7 @@ describe("SummaryView", () => {
     const { container } = render(<SummaryView model={summary()} />);
     expect(plain(container)).not.toContain("Где показываем рекламу");
     fireEvent.click(screen.getByRole("button", { name: /Цифры по площадкам/ }));
-    expect(plain(screen.getByTestId("platforms"))).toContain("3 объявления · лимит 2 100 ₽ в неделю");
+    expect(plain(screen.getByTestId("platforms"))).toContain("3 объявления · до 2 100 ₽ в неделю");
     expect(plain(screen.getByTestId("platforms"))).toContain("Поиск Яндекса");
   });
 

@@ -101,7 +101,7 @@ function BudgetDay({ group, timeZone, monthlyBudgetRub, onRollback }: { group: B
             <span className="t-small">{formatLocalDate(group.date)}</span>
           </div>
           <p className="t-body">
-            Лимиты подстроены {group.entries.length} {plural(group.entries.length, "раз", "раза", "раз")}, чтобы не выйти за {formatRub(monthlyBudgetRub * 100)} в месяц.
+            Сколько тратить в день, уменьшали {group.entries.length} {plural(group.entries.length, "раз", "раза", "раз")} — чтобы не выйти за {formatRub(monthlyBudgetRub * 100)} в месяц.
           </p>
           <ul className="diff">
             {group.limits.map((limit) => (
