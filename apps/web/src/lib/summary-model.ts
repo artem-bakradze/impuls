@@ -1,4 +1,4 @@
-import { addDays } from "@impuls/core";
+import { addDays, daysBetween } from "@impuls/core";
 import type { Kopecks, LocalDate } from "@impuls/core";
 import { formatRub, plural } from "./format";
 import type { InsightFeedModel } from "./insights-model";
@@ -33,6 +33,8 @@ export interface SummaryModel {
   moderation: { pending: number; accepted: number; rejected: number };
   monthBudget: Kopecks;
   spentMonth: Kopecks;
+  /** What an even pace would have spent of the month budget by the data date: the «план» mark on the budget bar. */
+  budgetPlan: Kopecks;
   /** From 80% of the month budget: what is left and when it runs out at the last 7 days' pace (budget-guard spec). */
   budgetForecast: { left: Kopecks; exhaustOn: string | null } | null;
   spend: Compared<Kopecks>;
@@ -74,6 +76,47 @@ export const budgetForecast = (monthBudget: Kopecks, spentMonth: Kopecks, spendL
   const left = Math.max(0, monthBudget - spentMonth);
   const perDay = spendLast7 / 7;
   return { left, exhaustOn: perDay <= 0 ? null : addDays(today, Math.ceil(left / perDay)) };
+};
+
+/**
+ * An even pace through the budget period: the month, or from the launch day in the month of the launch, as the prorated
+ * budget is. The data date counts as spent.
+ */
+export const budgetPlan = (monthBudget: Kopecks, periodStart: LocalDate, periodEnd: LocalDate, date: LocalDate): Kopecks => {
+  const days = daysBetween(periodStart, periodEnd) + 1;
+  const passed = Math.min(days, Math.max(0, daysBetween(periodStart, date) + 1));
+  return days <= 0 ? 0 : Math.round((monthBudget * passed) / days);
+};
+
+/** The state line over the answer (analytics spec «Сводка»): running, paused, Yandex reviewing, or nothing shown. */
+export type AdsState = { kind: "running"; shown: number } | { kind: "paused" } | { kind: "review" } | { kind: "idle" };
+
+export const adsState = (input: { state: SummaryModel["state"]; simulation: boolean; moderationPending: number; shown: number }): AdsState => {
+  if (input.state === "paused") return { kind: "paused" };
+  if (input.shown > 0) return { kind: "running", shown: input.shown };
+  // Yandex reviews ads only in the Direct mode; a simulated market has no moderation queue to wait for.
+  if (!input.simulation && input.moderationPending > 0) return { kind: "review" };
+  return { kind: "idle" };
+};
+
+export const adsStateText = (state: AdsState): string => {
+  switch (state.kind) {
+    case "running":
+      return `идёт · ${state.shown} ${plural(state.shown, "объявление", "объявления", "объявлений")}`;
+    case "paused":
+      return "на паузе";
+    case "review":
+      return "на проверке Яндекса";
+    case "idle":
+      return "объявления не показываются";
+  }
+};
+
+/** The green mark by a goal the price meets: none for a reference, a price above the goal or no leads yet. */
+export const goalBadge = (goal: SummaryModel["goal"]): string | null => {
+  if (!goalComparable(goal) || goal.current === null || goal.cso <= 0 || goal.current > goal.cso) return null;
+  const cheaper = Math.floor(((goal.cso - goal.current) / goal.cso) * 100);
+  return cheaper >= 5 ? `дешевле цели на ${cheaper}%` : "в цели";
 };
 
 /** Whether the goal line compares with a goal: never with the starting value of the automatic goal. */

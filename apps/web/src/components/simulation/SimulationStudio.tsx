@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreOutlined } from "@ant-design/icons";
+import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import Link from "next/link";
@@ -36,19 +36,24 @@ const latestReview = (work: AdsWork): JournalEntry | null =>
     .filter((entry) => entry.kind === "agent" || entry.kind === "rules" || entry.kind === "quiet")
     .at(-1) ?? null;
 
-function StudioAd({ ad, before }: { ad: ShownAd; before: ShownAd | null }) {
+function StudioAd({ ad, before, maxSpend }: { ad: ShownAd; before: ShownAd | null; maxSpend: number }) {
   const leads = useCountUp(ad.leads);
   const cost = useCountUp(ad.costPerLead ?? 0);
   const leadDelta = before === null ? 0 : ad.leads - before.leads;
   const costDelta = before !== null && ad.costPerLead !== null && before.costPerLead !== null ? ad.costPerLead - before.costPerLead : 0;
   const impressionsDelta = before === null ? 0 : ad.impressions - before.impressions;
+  const share = maxSpend > 0 ? Math.max(2, Math.round((ad.spend / maxSpend) * 100)) : 0;
   return (
     <div className="studio-ad" data-testid="studio-ad">
       <div className="studio-ad-main">
         <span className="studio-ad-name">{ad.title}</span>
         <span className="studio-ad-sub">
-          {channelName(ad.channel)}
+          {channelName(ad.channel)} · потрачено {formatRub(ad.spend)}
           {impressionsDelta > 0 ? ` · показы +${formatCount(impressionsDelta)}` : ""}
+        </span>
+        {/* The ad's share of the 7 days' money against the most spending one: where the money goes, at a glance. */}
+        <span className="studio-ad-bar" aria-hidden="true">
+          <i style={{ width: `${share}%` }} data-verdict={ad.verdict} />
         </span>
       </div>
       <div className="studio-ad-stats">
@@ -56,8 +61,8 @@ function StudioAd({ ad, before }: { ad: ShownAd; before: ShownAd | null }) {
           {formatCount(leads)} {leadsWord(leads)}
           {leadDelta !== 0 ? <b className={leadDelta > 0 ? "studio-delta good" : "studio-delta bad"}>{leadDelta > 0 ? "+" : "−"}{Math.abs(leadDelta)}</b> : null}
         </span>
-        <span>
-          {ad.costPerLead === null ? "—" : formatRub(cost)}
+        <span className="studio-ad-cost">
+          {ad.costPerLead === null ? "—" : `по ${formatRub(cost)}`}
           {costDelta !== 0 ? <b className={costDelta < 0 ? "studio-delta good" : "studio-delta bad"}>{signedRub(costDelta)}</b> : null}
         </span>
       </div>
@@ -130,7 +135,7 @@ function Review({
       {why.length > 0 && why !== review.headline ? <p className="studio-why">{why}</p> : null}
       {change !== null && !change.reverted ? (
         <div className="studio-review-actions">
-          {acknowledged ? <span className="studio-ack">Оставлено</span> : <button type="button" className="studio-small-primary" onClick={onAcknowledge}>Оставить как есть</button>}
+          {acknowledged ? <span className="studio-ack">Оставлено</span> : <button type="button" className="studio-secondary" onClick={onAcknowledge}>Оставить как есть</button>}
           {canUndo ? <button type="button" className="studio-link" onClick={() => onRollback(change.item as HistoryItem)}>Вернуть как было</button> : null}
         </div>
       ) : null}
@@ -206,16 +211,12 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
     });
 
   const menu: MenuProps = {
-    items: [
-      { key: "restart", label: "Начать заново", disabled: stepping },
-      { type: "divider" },
-      { key: "go_real", label: "Запустить по-настоящему" },
-    ],
+    items: [{ key: "restart", label: "Начать заново", disabled: stepping }],
     onClick: ({ key }) => {
       if (key === "restart") setRestartOpen(true);
-      else if (key === "go_real") confirmGoReal();
     },
   };
+  const maxSpend = Math.max(0, ...work.shown.map((ad) => ad.spend));
 
   const stageActions = !review || stepping || status.ended || status.failed;
   const primaryLabel = status.ended
@@ -246,12 +247,17 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : status.ended ? "done" : firstDay ? "muted" : "done"}`} data-testid="studio-status">{tag}</span>
         </div>
         <span className="studio-scenario">{work.sim?.scenarioTitle ?? "Симуляция"}</span>
+        <Button className="studio-go-real" onClick={() => void confirmGoReal()} disabled={stepping}>
+          Запустить по-настоящему
+        </Button>
         <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново и запустить по-настоящему" className="studio-menu" />
+          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново" className="studio-menu" />
         </Dropdown>
       </div>
       <DayStrip total={status.totalDays} done={done} now={stepping} />
-      <p className="studio-disclaimer">Реклама не показывается</p>
+      <p className="studio-disclaimer" data-testid="studio-disclaimer">
+        <ExperimentOutlined aria-hidden="true" /> Учебный рынок · деньги не списываются
+      </p>
       {status.replay.diverged ? <Alert className="studio-alert" type="info" showIcon title={DIVERGED_TEXT} /> : null}
       {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
 
@@ -265,7 +271,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           <p className="studio-stage-caption">по объявлениям — за 7 дней</p>
           {work.shown.length === 0 ? <p className="studio-empty">Сейчас ни одно объявление не показывается.</p> : null}
           {work.shown.map((ad) => (
-            <StudioAd key={ad.id} ad={ad} before={before?.shown.find((item) => item.id === ad.id) ?? null} />
+            <StudioAd key={ad.id} ad={ad} maxSpend={maxSpend} before={before?.shown.find((item) => item.id === ad.id) ?? null} />
           ))}
           {stageActions ? (
             <div className="studio-actions">

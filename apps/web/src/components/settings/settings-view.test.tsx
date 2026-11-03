@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const model: SettingsModel = {
   timeZone: "Europe/Moscow", card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1800 }], advantages: [] },
-  city: "Москва", schedule: { raw: "Пн–Вс 10:00–20:00", days: "Пн–Вс", from: "10:00", to: "20:00" }, monthlyBudgetRub: 15000, goal: { mode: "auto", rub: 500 },
+  city: "Москва", schedule: { raw: "Пн–Вс 10:00–20:00", days: "Пн–Вс", from: "10:00", to: "20:00" }, monthlyBudgetRub: 15000, goal: { mode: "auto", rub: 500, learned: false },
   paused: false, supportEmail: "support@impuls.test", siteUrl: "https://example.test", directions: [],
   miniSite: { published: false, slug: "", businessName: "", phone: "", address: "", hours: "", telegram: "", metrikaCounterId: null, advertiserName: "", advertiserInn: "", services: [] },
   goals: ["Заявка или запись с сайта"], budgetAdjustments: [],
@@ -45,5 +45,22 @@ describe("settings disclosure", () => {
     expect(container.textContent).not.toMatch(/учебном рынке/);
     fireEvent.click(screen.getByText("Для специалистов"));
     expect(screen.getByTestId("budget-adjustments")).toHaveTextContent("Реклама в поиске: было 2 700 ₽ в неделю → стало 2 574 ₽ в неделю");
+  });
+
+  it("shows services and advantages as chips with one «Изменить» by the section title", () => {
+    render(<SettingsView model={{ ...model, card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1800 }, { name: "Педикюр", priceRub: null }], advantages: ["Без выходных", "У метро", "Стерильные инструменты"] } }} />);
+    const card = screen.getByTestId("card-section");
+    expect([...card.querySelectorAll(".settings-chips li")].map((li) => li.textContent?.replace(/\u00a0/g, " "))).toEqual(["Маникюр — 1 800 ₽", "Педикюр", "Без выходных", "У метро", "Стерильные инструменты"]);
+    expect(card.textContent).not.toContain(";");
+    fireEvent.click(screen.getByRole("button", { name: "Изменить: что рекламируем" }));
+    expect(screen.getByLabelText("Чем вы занимаетесь")).toHaveValue("Маникюр");
+  });
+
+  it("calls the automatic goal a reference with the main screen's number", () => {
+    const { unmount } = render(<SettingsView model={{ ...model, goal: { mode: "auto", rub: 1000, learned: false } }} />);
+    expect(document.body.textContent?.replace(/\u00a0/g, " ")).toContain("Подбираем сами · ориентир 1 000 ₽");
+    unmount();
+    render(<SettingsView model={{ ...model, goal: { mode: "auto", rub: 600, learned: true } }} />);
+    expect(document.body.textContent?.replace(/\u00a0/g, " ")).toContain("Подбираем сами · сейчас до 600 ₽");
   });
 });

@@ -91,6 +91,7 @@ const model = (overrides: Partial<SummaryModel> = {}): SummaryModel => ({
   moderation: { pending: 0, accepted: 2, rejected: 0 },
   monthBudget: 3_000_000,
   spentMonth: 690_000,
+  budgetPlan: 1_100_000,
   spend: { value: 690_000, previous: 500_000 },
   leads: { value: 14, previous: 12 },
   clients: { value: null, previous: null },
@@ -111,6 +112,8 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
   journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [review] }],
   brief: null,
   lastChange: null,
+  recentChanges: [],
+  changesLast7: 1,
   site: "goulash.tech",
   history: [item],
   names: { directions: {}, channels: {}, ads: {}, strategies: {} },
@@ -129,6 +132,34 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(screen.getByRole("button", { name: "Оставить как есть" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Вернуть как было" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Прожить следующий день" })).toBeTruthy();
+  });
+
+  it("keeps one main button: agreement is an outline, the next day is the step", () => {
+    const { container } = render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    expect(screen.getByRole("button", { name: "Оставить как есть" })).toHaveClass("studio-secondary");
+    expect([...container.querySelectorAll(".studio-primary")].map((b) => b.textContent)).toEqual(["Прожить следующий день"]);
+  });
+
+  it("says the market is a training one without sounding like a failure", () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    expect(screen.getByTestId("studio-disclaimer")).toHaveTextContent("Учебный рынок · деньги не списываются");
+    expect(screen.queryByText("Реклама не показывается")).toBeNull();
+  });
+
+  it("shows «Запустить по-настоящему» without opening a menu, behind the same confirmation", async () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Запустить по-настоящему" }));
+    expect((await screen.findAllByText("Запустить настоящую рекламу?")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Данные симуляции удалятся без возможности вернуть/)).toBeTruthy();
+  });
+
+  it("labels each ad's cost per lead and shows its share of the money", () => {
+    const { container } = render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    const [first, second] = screen.getAllByTestId("studio-ad");
+    expect(first?.textContent?.replace(/\u00a0/g, " ")).toContain("по 346 ₽");
+    expect(first?.textContent?.replace(/\u00a0/g, " ")).toContain("потрачено 1 730 ₽");
+    expect(second?.querySelector(".studio-ad-bar i")).toHaveStyle({ width: "93%" });
+    expect(container.querySelector(".studio-ad-bar i")).toHaveAttribute("data-verdict", "effective");
   });
 
   it("acknowledges a decision without pretending it needed permission", () => {

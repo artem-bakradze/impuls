@@ -64,6 +64,7 @@ const summary = (overrides: Partial<SummaryModel> = {}): SummaryModel => ({
   moderation: { pending: 0, accepted: 3, rejected: 0 },
   monthBudget: 1_500_000,
   spentMonth: 630_000,
+  budgetPlan: 1_306_452,
   spend: { value: 630_000, previous: 500_000 },
   leads: { value: 11, previous: 8 },
   clients: { value: 7, previous: 5 },
@@ -105,6 +106,8 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
   journal: [],
   brief: null,
   lastChange: null,
+  recentChanges: [],
+  changesLast7: 0,
   site: "nogotok.example",
   history: [],
   names: { directions: {}, channels: {}, ads: {}, strategies: {} },
@@ -150,6 +153,29 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
       />,
     );
     expect(screen.getByTestId("cost-chart")).toBeTruthy();
+    expect(screen.queryAllByTestId("chart-no-leads")).toHaveLength(0);
+  });
+
+  it("marks days that spent without leads instead of hiding them, up to the last reported day", () => {
+    const { container } = render(
+      <SummaryView
+        model={summary({
+          daily: [
+            { date: "2026-10-23", leads: null, spend: 0, decision: false },
+            { date: "2026-10-24", leads: 2, spend: 120_000, decision: false },
+            { date: "2026-10-25", leads: 0, spend: 50_000, decision: false },
+            { date: "2026-10-26", leads: 3, spend: 120_000, decision: false },
+            { date: "2026-10-27", leads: 0, spend: 40_000, decision: false },
+          ],
+        })}
+        work={work()}
+      />,
+    );
+    expect(screen.getAllByTestId("chart-no-leads")).toHaveLength(2);
+    expect(plain(container.querySelector(".spark-axis"))).toBe("24 октября без обращений27 октября");
+    // Two single days with leads around a day without them: no line drawn across the gap.
+    expect(container.querySelectorAll(".spark-line")).toHaveLength(0);
+    expect(container.querySelectorAll(".spark-point")).toHaveLength(1);
   });
 
   it("hides the trend until there are two days with leads", () => {
@@ -166,17 +192,67 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(container.querySelector(".brief-number")).toHaveTextContent("450 ₽");
   });
 
-  it("puts the last change in one line with its day and an undo", () => {
-    render(
-      <SummaryView
-        model={summary()}
-        work={work({ lastChange: { text: "Цена клика +10%", date: "2026-10-26", entryId: "e1", historyId: "c1", item: rollbackItem } })}
-      />,
-    );
+  it("puts the last change in one line with its day, its reason and an undo", () => {
+    const last = { text: "Цена перехода +10%", date: "2026-10-26", reason: "С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.", entryId: "e1", historyId: "c1", item: rollbackItem };
+    render(<SummaryView model={summary()} work={work({ lastChange: last, recentChanges: [last] })} />);
     const line = screen.getByTestId("last-change");
-    expect(plain(line)).toContain("вчераЦена клика +10%Вернуть");
-    fireEvent.click(screen.getByRole("button", { name: "Вернуть" }));
+    expect(plain(line)).toContain("вчераЦена перехода +10%Вернуть");
+    expect(plain(line)).toContain("С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.");
+    expect(plain(line)).not.toMatch(/клик/i);
+    fireEvent.click(within(line).getByRole("button", { name: "Вернуть как было: Цена перехода +10%" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("lists up to three service changes in «Что сделал сервис» beside the answer", () => {
+    const change = (id: string, text: string, date: string) => ({ text, date, reason: `Причина ${id}.`, entryId: null, historyId: id, item: { ...rollbackItem, id } });
+    const recent = [change("c1", "Цена перехода +10%", "2026-10-27"), change("c2", "Лимит 1 077 ₽", "2026-10-26"), change("c3", "Пауза объявления", "2026-10-20")];
+    render(<SummaryView model={summary()} work={work({ lastChange: recent[0] ?? null, recentChanges: recent, changesLast7: 2 })} />);
+    const side = screen.getByTestId("service-changes");
+    expect(within(side).getByRole("heading", { name: "Что сделал сервис" })).toBeTruthy();
+    expect(within(side).getAllByTestId("service-change").map((c) => plain(c.querySelector(".brief-what")))).toEqual(["Цена перехода +10%", "Лимит 1 077 ₽", "Пауза объявления"]);
+    expect(plain(within(side).getAllByTestId("service-change")[2] ?? null)).toContain("20 октября");
+    fireEvent.click(within(side).getByRole("button", { name: /Вся история/ }));
+    expect(screen.getByTestId("agent-journal")).toBeTruthy();
+  });
+
+  it("has no «Что сделал сервис» before the first change", () => {
+    render(<SummaryView model={summary()} work={work()} />);
+    expect(screen.queryByTestId("service-changes")).toBeNull();
+    expect(screen.queryByTestId("last-change")).toBeNull();
+  });
+
+  it("counts the service's changes of the week on the «История» row", () => {
+    render(<SummaryView model={summary()} work={work({ changesLast7: 3 })} />);
+    expect(plain(screen.getByTestId("history-count"))).toContain("3 изменения за неделю");
+  });
+
+  it("says whether the ads run, with how many are shown", () => {
+    render(<SummaryView model={summary()} work={work({ shown: [ad(), ad({ id: "a3" })] })} />);
+    expect(plain(screen.getByTestId("ads-state"))).toBe("идёт · 2 объявления");
+  });
+
+  it("says the ads are paused or wait for Yandex", () => {
+    const { unmount } = render(<SummaryView model={summary({ state: "paused" })} work={work({ shown: [ad()] })} />);
+    expect(plain(screen.getByTestId("ads-state"))).toBe("на паузе");
+    unmount();
+    render(<SummaryView model={summary({ state: "first_day", moderation: { pending: 2, accepted: 0, rejected: 0 } })} work={work()} />);
+    expect(plain(screen.getByTestId("ads-state"))).toBe("на проверке Яндекса");
+  });
+
+  it("marks a price under one's own goal green and leaves a reference without a mark", () => {
+    const { unmount } = render(<SummaryView model={summary({ goal: { mode: "user", cso: 100_000, learned: false, current: 51_200, status: "within" } })} work={work()} />);
+    expect(plain(screen.getByTestId("goal-badge"))).toBe("дешевле цели на 48%");
+    unmount();
+    render(<SummaryView model={summary({ goal: { mode: "auto", cso: 100_000, learned: false, current: 51_200, status: "within" } })} work={work()} />);
+    expect(screen.queryByTestId("goal-badge")).toBeNull();
+  });
+
+  it("marks the even pace of the month on the budget bar", () => {
+    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000 })} work={work()} />);
+    const plan = screen.getByTestId("budget-plan");
+    expect(plan).toHaveStyle({ left: "30%" });
+    expect(plain(plan)).toContain("9 000 ₽");
+    expect(screen.getByTestId("budget-bar").querySelector("i")).toHaveStyle({ width: "20.486666666666668%" });
   });
 
   it("shows the first day as a word and a promise, without the old timeline", () => {
@@ -227,11 +303,21 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     const sheet = screen.getByTestId("shown-ads");
     expect(within(sheet).getAllByTestId("shown-ad")).toHaveLength(2);
     expect(sheet).toHaveTextContent("Приводят клиентов · 2");
-    expect(plain(sheet)).toContain("1 200 ₽ · 6 обращений · 200 ₽");
+    expect(plain(within(sheet).getAllByTestId("ad-stats")[0] ?? null)).toBe("потрачено 1 200 ₽ · 6 обращений по 200 ₽");
+    expect(plain(within(sheet).getAllByTestId("shown-ad")[0] ?? null)).toContain("nogotok.example · поиск");
     expect(screen.getByTestId("hidden-ads")).toHaveTextContent("Маникюр без записи");
+    // A touch screen opens the actions from one button.
     fireEvent.click(screen.getAllByRole("button", { name: "Маникюр у метро: действия" })[0] as HTMLElement);
-    fireEvent.click(await screen.findByText("Изменить текст"));
+    expect(await screen.findByRole("menuitem", { name: "Изменить текст" })).toBeTruthy();
+    // A mouse has them in the card itself.
+    fireEvent.click(screen.getAllByRole("button", { name: "Маникюр у метро: изменить текст" })[0] as HTMLElement);
     expect(screen.getByLabelText("Маникюр у метро: заголовок")).toBeTruthy();
+  });
+
+  it("says when an ad brought no leads", () => {
+    render(<SummaryView model={summary()} work={work({ shown: [ad({ leads: 0, spend: 61_000, costPerLead: null, verdict: "learning" })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Объявления/ }));
+    expect(plain(screen.getByTestId("ad-stats"))).toBe("потрачено 610 ₽ · обращений нет");
   });
 
   it("opens the history sheet with changes, rollback, facts and the turn", () => {
@@ -240,17 +326,31 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     const journal = screen.getByTestId("agent-journal");
     expect(plain(within(journal).getByTestId("client-cost"))).toBe("Клиенты · 7 · 900 ₽ за клиента");
     const changes = within(journal).getAllByTestId("journal-change");
+    // Newest first: the owner's change of 28 October above the decision of 27 October.
     expect(changes.map((c) => plain(c.querySelector(".log-change-text")))).toEqual([
-      "Отключил объявление «Маникюр без записи»",
       "Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00",
+      "Отключил объявление «Маникюр без записи»",
     ]);
     expect(within(journal).getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(2);
     expect(within(journal).getByRole("region", { name: "Неделя 2" })).toBeTruthy();
     fireEvent.click(within(journal).getByText("Факты"));
-    expect(plain(changes[0] ?? null)).toContain("Объявление «Маникюр без записи»: расход за 14 дней1 530 ₽");
+    expect(plain(changes[1] ?? null)).toContain("Объявление «Маникюр без записи»: расход за 14 дней1 530 ₽");
     expect(within(journal).getByRole("link", { name: "Как сервис принял это решение" })).toHaveAttribute("href", "/history/turn/t1");
     fireEvent.click(within(journal).getAllByRole("button", { name: "Вернуть как было" })[0] as HTMLElement);
     expect(screen.getByText("Вернуть как было?")).toBeTruthy();
+  });
+
+  it("reads the history newest first, with «Раньше» at the bottom", () => {
+    const section = (week: number, from: string) => ({ week, from, to: from, entries: [{ ...decisionEntry, id: `${from}:day`, date: from }] });
+    const journal = Array.from({ length: 10 }, (_, i) => section(i + 1, `2026-10-${String(i + 1).padStart(2, "0")}`));
+    render(<SummaryView model={summary()} work={work({ journal })} />);
+    fireEvent.click(screen.getByRole("button", { name: /История/ }));
+    const sheet = screen.getByTestId("agent-journal");
+    const weeks = within(sheet).getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+    expect(weeks).toEqual(["Неделя 10", "Неделя 9", "Неделя 8", "Неделя 7", "Неделя 6", "Неделя 5", "Неделя 4", "Неделя 3"]);
+    expect(sheet.lastElementChild).toHaveTextContent("Раньше");
+    fireEvent.click(within(sheet).getByRole("button", { name: "Раньше" }));
+    expect(within(sheet).getAllByRole("region").at(-1)).toHaveAttribute("aria-label", "Неделя 1");
   });
 
   it("keeps the comparison with the control run in the history, not on the brief", () => {

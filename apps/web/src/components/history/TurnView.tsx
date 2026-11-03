@@ -39,7 +39,7 @@ const TRIGGERS: Record<string, string> = {
 export function TurnView({ turn, timeZone }: { turn: TurnViewModel; timeZone: string }) {
   return (
     <div className="page page-narrow">
-      <Link href="/history" style={{ fontSize: 14, fontWeight: 550, textDecoration: "none" }}>
+      <Link href="/history" style={{ fontSize: "var(--fs-sm)", fontWeight: 550, textDecoration: "none" }}>
         <ArrowLeftOutlined style={{ marginRight: 6 }} />К истории
       </Link>
       <div style={{ height: 16 }} />

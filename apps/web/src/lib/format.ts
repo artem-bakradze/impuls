@@ -4,6 +4,10 @@ export const formatRub = (kopecks: number): string =>
 
 export const formatCount = (value: number): string => value.toLocaleString("ru-RU").replace(/\s/g, "\u00a0");
 
+/** \u00ab1000 \u20bd\u00bb \u2192 \u00ab1 000 \u20bd\u00bb inside free text (the agent's and the rules' words), so money reads as on the numbers around it. */
+export const groupRub = (text: string): string =>
+  text.replace(/(?<![\d.,])(\d{4,})[ \u00a0]?\u20bd/g, (_, digits: string) => `${digits.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0")}\u00a0\u20bd`);
+
 const DATE = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" });
 
 export const formatDateTime = (iso: string, timeZone: string): string =>

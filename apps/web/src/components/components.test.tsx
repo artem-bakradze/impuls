@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { emptyDraft } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import type { HistoryItem, Names } from "@/lib/history-view";
+import { LoginCard } from "./LoginCard";
 import { RollbackDialog } from "./history/RollbackDialog";
 import type { RollbackOutput } from "./history/RollbackDialog";
 import { BudgetStep } from "./wizard/BudgetStep";
@@ -30,6 +31,14 @@ const scheduleChange: HistoryItem = {
   rollback: { kind: "available", consequences: ["вернётся прежнее расписание показов"] },
   budgetAdjustment: false,
 };
+
+describe("LoginCard", () => {
+  it("describes the simulation by days, as the studio lives it", () => {
+    render(<LoginCard errorText={null} testLogin={false} signInWithGoogle={() => Promise.resolve()} signInForTests={() => Promise.resolve()} />);
+    expect(screen.getByText(/месяц рекламы по дням/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/по неделям|после каждой недели/);
+  });
+});
 
 describe("BudgetStep", () => {
   const withBudget = (amount: number) => {

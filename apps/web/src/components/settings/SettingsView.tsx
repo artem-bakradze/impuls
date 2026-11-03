@@ -3,7 +3,6 @@
 import {
   CodeOutlined,
   DeleteOutlined,
-  EditOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -63,6 +62,31 @@ const tidyCard = (card: CardDraft): CardDraft => ({
   advantages: card.advantages.map((a) => a.trim()).filter((a) => a !== ""),
 });
 
+/** A label and its value, the same row in every section; lists are chips, not a line of semicolons. */
+function ValueRow({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="settings-row">
+      <span className="t-small">{title}</span>
+      <div className="settings-row-value">{children}</div>
+    </div>
+  );
+}
+
+function Chips({ items, empty }: { items: string[]; empty: string }) {
+  if (items.length === 0) return <span className="settings-empty">{empty}</span>;
+  return (
+    <ul className="settings-chips">
+      {items.map((item, i) => (
+        <li key={`${item}-${i}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** «Подбираем сами · ориентир 1 000 ₽»: the same number the main screen calls the reference (campaign-settings spec). */
+const goalText = (goal: SettingsModel["goal"]): string =>
+  goal.mode === "user" ? `До ${formatRub(goal.rub * 100)}` : `Подбираем сами · ${goal.learned ? "сейчас до" : "ориентир"} ${formatRub(goal.rub * 100)}`;
+
 /** «Что рекламируем» in edit mode: the facts new ad variants are written from (campaign-settings spec). */
 function CardEditor({ card, onChange }: { card: CardDraft; onChange: (card: CardDraft) => void }) {
   const setService = (index: number, patch: Partial<CardDraft["services"][number]>) =>
@@ -121,7 +145,7 @@ function CardEditor({ card, onChange }: { card: CardDraft; onChange: (card: Card
   );
 }
 
-function Section({ id, title, lead, children, testId }: { id: string; title: string; lead?: ReactNode; children: ReactNode; testId?: string }) {
+function Section({ id, title, lead, action, children, testId }: { id: string; title: string; lead?: ReactNode; action?: ReactNode; children: ReactNode; testId?: string }) {
   return (
     <section id={id} className="surface settings-section" data-testid={testId}>
       <div className="surface-head">
@@ -129,6 +153,7 @@ function Section({ id, title, lead, children, testId }: { id: string; title: str
           <h2 className="t-h3">{title}</h2>
           {lead ? <span className="t-small">{lead}</span> : null}
         </div>
+        {action}
       </div>
       <div className="surface-body">{children}</div>
     </section>
@@ -137,7 +162,7 @@ function Section({ id, title, lead, children, testId }: { id: string; title: str
 
 function EditableValue({ title, value, editing, onEdit, onCancel, busy, children }: { title: string; value: ReactNode; editing: boolean; onEdit: () => void; onCancel: () => void; busy: boolean; children: ReactNode }) {
   return <div className="settings-value">
-    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}><div className="stack" style={{ gap: 4 }}><span className="t-small">{title}</span>{editing ? null : <strong>{value}</strong>}</div><Button onClick={editing ? onCancel : onEdit} disabled={busy} aria-label={`${editing ? "Отмена" : "Изменить"}: ${title}`}>{editing ? "Отмена" : "Изменить"}</Button></div>
+    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}><div className="stack" style={{ gap: 4 }}><span className="t-small">{title}</span>{editing ? null : <strong>{value}</strong>}</div><Button className="settings-edit" onClick={editing ? onCancel : onEdit} disabled={busy} aria-label={`${editing ? "Отмена" : "Изменить"}: ${title}`}>{editing ? "Отмена" : "Изменить"}</Button></div>
     {editing ? <div className="settings-editor">{children}</div> : null}
   </div>;
 }
@@ -222,24 +247,35 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
 
       <div className="settings-layout">
         <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
-          <Section id="business" title="Что рекламируем" lead="По этим фактам мы пишем новые варианты объявлений" testId="card-section">
-            {cardEdit === null ? (
-              <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
-                <dl className="kv">
-                  <dt>Чем занимаетесь</dt>
-                  <dd>{model.card.category || "не указано"}</dd>
-                  <dt>Услуги</dt>
-                  <dd>{model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`)).join("; ")}</dd>
-                  <dt>Преимущества</dt>
-                  <dd>{model.card.advantages.join("; ") || "не указаны"}</dd>
-                </dl>
+          <Section
+            id="business"
+            title="Что рекламируем"
+            lead="По этим фактам мы пишем новые варианты объявлений"
+            testId="card-section"
+            action={
+              cardEdit === null ? (
+                // The description is edited as a whole, so its one «Изменить» stands by the section title.
                 <Button
-                  icon={<EditOutlined aria-hidden="true" />}
+                  className="settings-edit"
                   onClick={() => setCardEdit({ ...model.card, services: model.card.services.length > 0 ? model.card.services : [{ name: "", priceRub: null }], advantages: model.card.advantages.length > 0 ? model.card.advantages : [""] })}
-                  style={{ alignSelf: "flex-start" }}
+                  aria-label="Изменить: что рекламируем"
                 >
-                  Изменить описание
+                  Изменить
                 </Button>
+              ) : null
+            }
+          >
+            {cardEdit === null ? (
+              <div className="settings-rows">
+                <ValueRow title="Чем занимаетесь">
+                  <strong>{model.card.category || "не указано"}</strong>
+                </ValueRow>
+                <ValueRow title="Услуги">
+                  <Chips items={model.card.services.map((s) => (s.priceRub === null ? s.name : `${s.name} — ${formatRub(s.priceRub * 100)}`))} empty="не указаны" />
+                </ValueRow>
+                <ValueRow title="Преимущества">
+                  <Chips items={model.card.advantages} empty="не указаны" />
+                </ValueRow>
               </div>
             ) : (
               <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
@@ -332,7 +368,7 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
             </EditableValue>
             <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
             <hr className="divider" style={{ margin: "18px 0" }} />
-            <EditableValue title="Цена обращения" value={model.goal.mode === "user" ? `До ${formatRub(model.goal.rub * 100)}` : "Подбираем сами по результатам"} editing={fieldEdit === "goal"} onEdit={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit("goal"); }} onCancel={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit(null); }} busy={busy === "goal"}>
+            <EditableValue title="Цена обращения" value={goalText(model.goal)} editing={fieldEdit === "goal"} onEdit={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit("goal"); }} onCancel={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit(null); }} busy={busy === "goal"}>
             <div className="field" data-testid="goal-section">
               <div className="field-label">Сколько готовы платить за одно обращение</div>
               <div className="presets" role="radiogroup" aria-label="Цена обращения">

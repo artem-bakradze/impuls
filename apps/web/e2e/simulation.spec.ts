@@ -71,6 +71,8 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await expect(page.getByTestId("simulation-bar")).toHaveCount(0);
   await expect(page.getByTestId("cost-chart")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Симуляция", "Настройки"]);
+  await expect(page.getByTestId("ads-state")).toContainText("идёт");
+  await expect(page.getByTestId("budget-plan")).toBeVisible();
 
   // The history is the journal of the brief, with the comparison at its top.
   await page.getByRole("button", { name: /История/ }).click();
@@ -89,6 +91,7 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   // The ads are a sheet too.
   await page.getByRole("button", { name: /Объявления/ }).click();
   await expect(page.getByTestId("shown-ad").first()).toBeVisible();
+  await expect(page.getByTestId("ad-stats").first()).toContainText("потрачено");
   for (const width of [320, 360, 390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await overflow()).toBeLessThanOrEqual(0);
@@ -119,12 +122,12 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await expect(page.getByTestId("agent-journal").getByTestId("journal-change").filter({ hasText: "отменено" })).toHaveCount(1);
   await page.getByRole("button", { name: "Закрыть" }).click();
 
-  // Back to the studio: the real launch is in its menu, not on every screen.
+  // Back to the studio: the real launch is a visible button of its head, not a menu item and not on every screen.
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("link", { name: "Симуляция" }).click();
   await page.waitForURL("**/simulation");
-  await page.getByRole("button", { name: /Ещё: начать заново/ }).click();
-  await page.getByRole("menuitem", { name: "Запустить по-настоящему" }).click();
+  await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
+  await page.locator(".studio-head").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");
   await expectStep(page, 3, "Объявления и запуск");

@@ -152,9 +152,11 @@ function Section({ section, children }: { section: JournalSection; children: Rea
 export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRollback }: { work: AdsWork; clientCost: SummaryModel["clientCost"]; focusWeek?: number | null; onClose: () => void; onRollback: (item: HistoryItem) => void }) {
   const body = useRef<HTMLDivElement>(null);
   const [all, setAll] = useState(false);
+  // The journal is kept oldest first; the sheet reads newest first (insights spec «Лента инсайтов и связь с историей»).
   const sections = useMemo(() => {
     const focused = focusWeek === null ? -1 : work.journal.findIndex((s) => s.week === focusWeek);
-    return all || (focused !== -1 && focused < work.journal.length - SHOWN_WEEKS) ? work.journal : work.journal.slice(-SHOWN_WEEKS);
+    const shown = all || (focused !== -1 && focused < work.journal.length - SHOWN_WEEKS) ? work.journal : work.journal.slice(-SHOWN_WEEKS);
+    return [...shown].reverse().map((section) => ({ ...section, entries: [...section.entries].reverse() }));
   }, [work.journal, all, focusWeek]);
   const earlier = !all && work.journal.length > sections.length;
 
@@ -175,11 +177,6 @@ export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRo
           </p>
         ) : null}
         {work.sim ? <ComparisonNote sim={work.sim} /> : null}
-        {earlier ? (
-          <button type="button" className="j-earlier" onClick={() => setAll(true)}>
-            Раньше
-          </button>
-        ) : null}
         {sections.length === 0 ? (
           <p className="sheet-empty">Записей пока нет.</p>
         ) : (
@@ -191,6 +188,11 @@ export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRo
             </Section>
           ))
         )}
+        {earlier ? (
+          <button type="button" className="j-earlier" onClick={() => setAll(true)}>
+            Раньше
+          </button>
+        ) : null}
       </div>
     </Drawer>
   );

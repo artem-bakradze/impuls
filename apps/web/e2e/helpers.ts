@@ -74,6 +74,12 @@ export const finishWizard = async (page: Page): Promise<void> => {
   await next(page);
   await expectStep(page, 3, "Объявления и запуск");
   await expect(page.getByTestId("ad-search").first()).toBeVisible();
+  // The type scale reads no smaller than 13px; the ads step still fits a narrow phone.
+  for (const width of [320, 390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  }
+  await page.setViewportSize({ width: 360, height: 900 });
   await page.getByRole("button", { name: "Продолжить в тестовом режиме" }).click();
   // Connected: the launch summary appears on the same step, with the goals chosen in advance.
   await expectStep(page, 3, "Объявления и запуск");

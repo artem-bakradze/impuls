@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapJobState } from "./job-state";
 import { loginErrorMessage } from "./login-error";
-import { compareText, observedDaily, goalLine, moderationText } from "./summary-model";
+import { adsState, adsStateText, budgetPlan, compareText, goalBadge, observedDaily, goalLine, moderationText } from "./summary-model";
 import { formatRub } from "./format";
 
 const plain = (text: string) => text.replace(/ /g, " ");
@@ -50,5 +50,31 @@ describe("observed daily results", () => {
     const days = observedDaily("2026-12-01", "2026-12-04", [{ date: "2026-12-01", leads: 2, spend: 1_000 }, { date: "2026-12-01", leads: 3, spend: 2_000 }, { date: "2026-12-02", leads: 0, spend: 0 }], new Set(["2026-12-02"]));
     expect(days).toEqual([{ date: "2026-12-01", leads: 5, spend: 3_000, decision: false }, { date: "2026-12-02", leads: 0, spend: 0, decision: true }, { date: "2026-12-03", leads: null, spend: 0, decision: false }, { date: "2026-12-04", leads: null, spend: 0, decision: false }]);
     expect(days.reduce((sum, d) => sum + (d.leads ?? 0), 0)).toBe(5);
+  });
+});
+
+describe("the answer's state, goal and budget pace (analytics spec «Сводка»)", () => {
+  it("marks an even pace of the month budget by the data date", () => {
+    expect(budgetPlan(3_000_000, "2026-11-01", "2026-11-30", "2026-11-09")).toBe(900_000);
+    // The month of the launch counts from the launch day, like its prorated budget.
+    expect(budgetPlan(96_700, "2026-10-30", "2026-10-31", "2026-10-30")).toBe(48_350);
+    expect(budgetPlan(3_000_000, "2026-11-01", "2026-11-30", "2026-12-02")).toBe(3_000_000);
+  });
+
+  it("says whether the ads run, wait for Yandex or are not shown", () => {
+    expect(adsStateText(adsState({ state: "running", simulation: true, moderationPending: 0, shown: 8 }))).toBe("идёт · 8 объявлений");
+    expect(adsStateText(adsState({ state: "paused", simulation: false, moderationPending: 0, shown: 8 }))).toBe("на паузе");
+    expect(adsStateText(adsState({ state: "first_day", simulation: false, moderationPending: 3, shown: 0 }))).toBe("на проверке Яндекса");
+    expect(adsStateText(adsState({ state: "first_day", simulation: true, moderationPending: 3, shown: 0 }))).toBe("объявления не показываются");
+    expect(adsStateText(adsState({ state: "running", simulation: false, moderationPending: 0, shown: 1 }))).toBe("идёт · 1 объявление");
+  });
+
+  it("marks a met goal green and never a reference", () => {
+    expect(goalBadge({ mode: "user", cso: 100_000, learned: false, current: 51_200, status: "within" })).toBe("дешевле цели на 48%");
+    expect(goalBadge({ mode: "user", cso: 100_000, learned: false, current: 97_000, status: "within" })).toBe("в цели");
+    expect(goalBadge({ mode: "user", cso: 30_000, learned: false, current: 34_000, status: "above" })).toBeNull();
+    expect(goalBadge({ mode: "auto", cso: 100_000, learned: false, current: 51_200, status: "within" })).toBeNull();
+    expect(goalBadge({ mode: "auto", cso: 60_000, learned: true, current: 30_000, status: "within" })).toBe("дешевле цели на 50%");
+    expect(goalBadge({ mode: "user", cso: 30_000, learned: false, current: null, status: "no_data" })).toBeNull();
   });
 });

@@ -1,8 +1,10 @@
 import { rubles } from "@impuls/core";
+import type { ChangeEntry } from "@impuls/worker";
 import { describe, expect, it } from "vitest";
+import { groupRub } from "./format";
 import type { HistoryItem } from "./history-view";
-import type { DayReviewModel } from "./insights-model";
-import { buildServiceWork } from "./service-work";
+import type { DayReviewModel, InsightCardModel } from "./insights-model";
+import { briefChange, buildServiceWork } from "./service-work";
 
 const item = (overrides: Partial<HistoryItem>): HistoryItem => ({
   id: "c1",
@@ -31,7 +33,7 @@ const review: DayReviewModel = {
   weekly: null,
 };
 
-const build = (history: HistoryItem[], reviews: DayReviewModel[] = [review]) =>
+const build = (history: HistoryItem[], reviews: DayReviewModel[] = [review], changes: ChangeEntry[] = []) =>
   buildServiceWork({
     ads: [],
     directions: [],
@@ -42,7 +44,7 @@ const build = (history: HistoryItem[], reviews: DayReviewModel[] = [review]) =>
     cso: rubles(500),
     reviews,
     history,
-    changes: [],
+    changes,
     openChecks: [],
     weeks: [{ week: 1, from: "2026-11-01", reviewedOn: "2026-11-08" }, { week: 2, from: "2026-11-08", reviewedOn: "2026-11-15" }],
   });
@@ -82,5 +84,77 @@ describe("the journal is the history (insights spec «Лента инсайто�
   it("has no scenario truth without a simulation", () => {
     const work = build([]);
     expect(work.journal.flatMap((s) => s.entries).every((e) => e.truths.length === 0)).toBe(true);
+  });
+});
+
+const change = (overrides: Partial<ChangeEntry>): ChangeEntry => ({
+  id: "d1",
+  businessId: "b1",
+  actor: "agent",
+  author: "service",
+  action: { type: "SetDeviceAdjustment", directionId: "dir1", device: "desktop", percent: 10 },
+  objectKind: "direction",
+  objectId: "dir1",
+  before: {},
+  after: {},
+  status: "applied",
+  reasonCode: "AGENT",
+  explanation: "Поднял цену перехода. Подробности в истории.",
+  turnId: null,
+  insightId: null,
+  createdAt: new Date("2026-11-08T07:00:00Z"),
+  error: null,
+  revertedById: null,
+  outcome: null,
+  ...overrides,
+});
+
+const card = (overrides: Partial<InsightCardModel>): InsightCardModel => ({
+  id: "i1",
+  author: "agent",
+  at: "2026-11-08T07:00:00Z",
+  observation: "с компьютеров получено 3 обращения по 414 ₽ при цели 1000 ₽",
+  facts: [],
+  decision: { text: "Поднял цену перехода с компьютеров на 10%", status: "applied" },
+  next: "",
+  rollback: null,
+  truth: null,
+  objectIds: [],
+  ...overrides,
+});
+
+describe("money in the service's own words (analytics spec «Сводка»)", () => {
+  it("groups the digits of rubles in free text and leaves other numbers alone", () => {
+    expect(groupRub("при цели 1000 ₽, в поиске — 1334₽")).toBe("при цели 1\u00a0000\u00a0₽, в поиске — 1\u00a0334\u00a0₽");
+    expect(groupRub("в 2026 году 403 показа за 12 345 ₽")).toBe("в 2026 году 403 показа за 12 345 ₽");
+  });
+
+  it("groups the rubles of the agent's review in the journal", () => {
+    const work = build([], [{ ...review, summary: "Стоимость обращения 1334 ₽ при цели 1000 ₽." }]);
+    expect(work.journal[0]?.entries[0]?.headline).toBe("Стоимость обращения 1\u00a0334\u00a0₽ при цели 1\u00a0000\u00a0₽.");
+  });
+});
+
+describe("the latest changes on the main screen (change-history spec «Последнее изменение на главном экране»)", () => {
+  it("names the price of a visit in the history's words, never «клик»", () => {
+    expect(briefChange(change({}))).toBe("Цена перехода +10%");
+    expect(briefChange(change({ action: { type: "SetDeviceAdjustment", directionId: "dir1", device: "mobile", percent: -30 } }))).toBe("Цена перехода −30%");
+  });
+
+  it("keeps up to three decisions not reverted, newest first, each with its reason", () => {
+    const reviews: DayReviewModel[] = [{ ...review, date: "2026-11-08", summary: null, insights: [card({})] }];
+    const work = build([], reviews, [
+      change({ id: "d1", insightId: "i1", createdAt: new Date("2026-11-08T07:00:00Z") }),
+      change({ id: "d2", createdAt: new Date("2026-11-07T07:00:00Z"), action: { type: "PauseAd", adId: "a1" }, objectKind: "ad", objectId: "a1", explanation: "Отключил объявление: за 10 дней 2400 ₽ без обращений. Деньги пойдут другим." }),
+      change({ id: "d3", createdAt: new Date("2026-11-06T07:00:00Z"), revertedById: "r1" }),
+      change({ id: "d4", createdAt: new Date("2026-11-05T07:00:00Z") }),
+      change({ id: "d5", createdAt: new Date("2026-11-04T07:00:00Z") }),
+      change({ id: "g1", createdAt: new Date("2026-11-09T07:00:00Z"), actor: "budget_guard", reasonCode: "BUDGET_FIT", action: { type: "SetSpendLimit", directionId: "dir1", weeklyLimit: rubles(1_000) } }),
+    ]);
+    expect(work.recentChanges.map((c) => c.historyId)).toEqual(["d1", "d2", "d4"]);
+    expect(work.recentChanges[0]?.reason).toBe("С компьютеров получено 3 обращения по 414 ₽ при цели 1\u00a0000\u00a0₽.");
+    expect(work.recentChanges[1]?.reason).toBe("Отключил объявление: за 10 дней 2\u00a0400\u00a0₽ без обращений.");
+    expect(work.lastChange?.historyId).toBe("d1");
+    expect(work.changesLast7).toBe(5);
   });
 });

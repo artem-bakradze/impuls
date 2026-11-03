@@ -3,7 +3,7 @@ import type { EffectivenessClass, Kopecks, LocalDate, PerformanceStats } from "@
 import type { DailyStatRow } from "@impuls/platforms";
 import type { AdRecord, ChangeEntry, DirectionRecord } from "@impuls/worker";
 import { isBudgetAdjustment } from "@impuls/worker/change-kinds";
-import { formatRub } from "./format";
+import { formatRub, groupRub } from "./format";
 import type { HistoryItem } from "./history-view";
 import type { DayReviewModel, InsightCardModel, TruthLine } from "./insights-model";
 import { QUIET_DAY, QUIET_DAYS } from "./insights-model";
@@ -39,10 +39,12 @@ export interface ShownAd {
   change: ChangeMark | null;
 }
 
-/** The one change on the main screen: a two- or three-word label, its day and the history behind an undo. */
+/** A change on the main screen: a two- or three-word label, its day, why in one line and the history behind an undo. */
 export interface LastChange {
   text: string;
   date: LocalDate;
+  /** The decision's observation with its numbers, or the first sentence of the history's explanation. */
+  reason: string | null;
   entryId: string | null;
   historyId: string | null;
   item: HistoryItem | null;
@@ -133,6 +135,10 @@ export interface ServiceWorkModel {
   brief: WeekBrief | null;
   /** The latest service decision, for the one line between the numbers and the sheets. */
   lastChange: LastChange | null;
+  /** Up to three latest decisions not reverted, newest first: «Что сделал сервис» on a wide screen. */
+  recentChanges: LastChange[];
+  /** The service's decisions of the last 7 days, for the «История» row. */
+  changesLast7: number;
 }
 
 /** Words the owner does not use, in the agent's own text: the stop-list of `change-history`, for the journal. */
@@ -152,7 +158,7 @@ export const speech = (summary: string): string[] =>
     .filter((p) => p.length > 0)
     .map((p) => `${p[0]?.toUpperCase() ?? ""}${p.slice(1)}`);
 
-const plain = (text: string): string => PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text);
+const plain = (text: string): string => groupRub(PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text));
 
 /** An insight's observation as a sentence of the journal, in the same plain words. */
 const sentenceCase = (text: string): string => `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
@@ -218,7 +224,7 @@ export const briefChange = (c: ChangeEntry): string => {
   const action = c.action;
   switch (action.type) {
     case "SetDeviceAdjustment":
-      return action.percent === 0 ? "Клик 0%" : `Цена клика ${action.percent > 0 ? "+" : "−"}${Math.abs(action.percent)}%`;
+      return action.percent === 0 ? "Цена перехода 0%" : `Цена перехода ${action.percent > 0 ? "+" : "−"}${Math.abs(action.percent)}%`;
     case "SetSpendLimit": {
       const after = Number(c.after.weeklyLimit);
       return Number.isFinite(after) ? `Лимит ${formatRub(after)}` : "Лимит";
@@ -265,7 +271,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
     const entries = byInsight.get(card.id) ?? [];
     if (entries.length === 0) {
       const item = reverted.get(card.id) ?? card.rollback;
-      return [{ text: card.decision.text, reverted: item?.reverted ?? false, historyId: item?.id ?? null, item, facts: card.facts, turnId: item?.turnId ?? null }];
+      return [{ text: plain(card.decision.text), reverted: item?.reverted ?? false, historyId: item?.id ?? null, item, facts: card.facts, turnId: item?.turnId ?? null }];
     }
     return entries.map((c) => {
       const item = historyById.get(c.id) ?? null;
@@ -297,8 +303,8 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       if (paragraphs.length > 0 || checking.length > 0 || found.length > 0) {
         entries.push({
           ...base, id: `${review.date}:week`, kind: "agent", weekly: true, ...gist(paragraphs, changes), changes,
-          checking: checking.map((h) => ({ statement: h.statement, checkOn: h.checkOn })),
-          found: found.map((h) => ({ statement: h.statement, outcome: h.outcome ?? "", result: h.result })),
+          checking: checking.map((h) => ({ statement: plain(h.statement), checkOn: h.checkOn })),
+          found: found.map((h) => ({ statement: plain(h.statement), outcome: plain(h.outcome ?? ""), result: h.result === null ? null : plain(h.result) })),
           truths: truthsOf(w.insights),
           objectIds: [...new Set(w.insights.flatMap((i) => i.objectIds))],
         });
@@ -380,18 +386,27 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
   };
   const newest = [...decisions].filter((c) => c.revertedById === null).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const adOf = (c: ChangeEntry): string | null => ("adId" in c.action ? c.action.adId : c.action.type === "FinishExperiment" ? c.action.keepAdId : null);
-  const last = newest[0];
-  const lastChange: LastChange | null = last
-    ? {
-        text: briefChange(last),
-        date: toLocalDate(last.createdAt, input.timeZone),
-        entryId: entryOf.get(last.id) ?? null,
-        historyId: last.id,
-        item: historyById.get(last.id) ?? null,
-      }
-    : null;
+  // Why, in one line: the decision's own observation, or the first sentence of its explanation.
+  const observations = new Map<string, string>();
+  for (const review of input.reviews) for (const card of [...review.insights, ...(review.weekly?.insights ?? [])]) observations.set(card.id, card.observation);
+  const reasonOf = (c: ChangeEntry): string | null => {
+    const observation = c.insightId ? observations.get(c.insightId) : undefined;
+    if (observation) return withStop(sentenceCase(observation));
+    const explanation = c.explanation.replace(/\s+/g, " ").trim();
+    return explanation === "" ? null : withStop(firstSentence(explanation)[0]);
+  };
+  const recentChanges: LastChange[] = newest.slice(0, 3).map((c) => ({
+    text: briefChange(c),
+    date: toLocalDate(c.createdAt, input.timeZone),
+    reason: reasonOf(c),
+    entryId: entryOf.get(c.id) ?? null,
+    historyId: c.id,
+    item: historyById.get(c.id) ?? null,
+  }));
+  const lastChange = recentChanges[0] ?? null;
 
   const since7 = addDays(input.today, -7);
+  const changesLast7 = decisions.filter((c) => toLocalDate(c.createdAt, input.timeZone) >= since7).length;
   const since14 = addDays(input.today, -14);
   const order: Record<EffectivenessClass, number> = { effective: 0, borderline: 1, learning: 2, ineffective: 3 };
   const shown: ShownAd[] = input.ads
@@ -447,5 +462,5 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       goal: input.cso,
     };
   }
-  return { shown, hidden, directionChanges, journal, brief, lastChange };
+  return { shown, hidden, directionChanges, journal, brief, lastChange, recentChanges, changesLast7 };
 };

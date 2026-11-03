@@ -59,7 +59,7 @@ export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & 
             <span className="t-eyebrow">
               Сколько потратим
             </span>
-            <div style={{ fontWeight: 650, fontSize: 22 }} data-testid="budget-ceiling">
+            <div style={{ fontWeight: 650, fontSize: "var(--fs-lg)" }} data-testid="budget-ceiling">
               {plan.headline}
             </div>
             {plan.detail ? <div className="t-small">{plan.detail}</div> : null}

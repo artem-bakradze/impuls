@@ -42,7 +42,7 @@ test("the owner sets an own cost per lead, edits the business card and sees how 
   await page.getByRole("link", { name: "Настройки" }).click();
   await expect(page.getByText("Спрашивать перед крупными изменениями")).toHaveCount(0);
   const goal = page.locator("#budget");
-  await expect(goal).toContainText("Подбираем сами по результатам");
+  await expect(goal).toContainText("Подбираем сами · ориентир");
   await page.getByRole("button", { name: "Изменить: Цена обращения" }).click();
   await goal.getByRole("radio", { name: "Укажу сумму" }).click();
   await page.getByLabel("Цена одного обращения").fill("500");
@@ -53,7 +53,7 @@ test("the owner sets an own cost per lead, edits the business card and sees how 
 
   // «Что рекламируем» is editable; the running ads stay as they are.
   const card = page.getByTestId("card-section");
-  await card.getByRole("button", { name: "Изменить описание" }).click();
+  await card.getByRole("button", { name: "Изменить: что рекламируем" }).click();
   await card.getByLabel("Преимущество 1").fill("Работаем без выходных");
   await card.getByRole("button", { name: "Сохранить описание" }).click();
   await expect(card).toContainText("Описание сохранено");

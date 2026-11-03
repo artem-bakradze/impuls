@@ -12,6 +12,11 @@ import type { ShownAd } from "@/lib/service-work";
 import { useCommands } from "./useCommands";
 
 const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
+
+/** «потрачено 693 ₽ · 5 обращений по 138 ₽»: every number of the 7 days says what it is. */
+export const adStatsText = (ad: Pick<ShownAd, "spend" | "leads" | "costPerLead">): string =>
+  `потрачено ${formatRub(ad.spend)} · ${ad.leads === 0 ? "обращений нет" : `${ad.leads} ${leadsWord(ad.leads)}${ad.costPerLead === null ? "" : ` по ${formatRub(ad.costPerLead)}`}`}`;
+
 const shortDate = (date: string): string => formatLocalDate(date).replace(/(\S+) (\S{3})\S*/, "$1 $2");
 
 /** Plain names of the rules' estimate; the sheet groups ads by them. */
@@ -24,29 +29,34 @@ const GROUPS: Record<EffectivenessClass, string> = {
 
 const ORDER: EffectivenessClass[] = ["effective", "borderline", "learning", "ineffective"];
 
-function AdRow({ ad, commands }: { ad: ShownAd; commands: ReturnType<typeof useCommands> }) {
+function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: ReturnType<typeof useCommands> }) {
   const [edit, setEdit] = useState<{ title: string; text: string } | null>(null);
   const changed = edit !== null && (edit.title.trim() !== ad.title || edit.text.trim() !== ad.text);
   const feedback = commands.feedback && (commands.feedback.id === `text-${ad.id}` || commands.feedback.id === `status-${ad.id}`) ? commands.feedback : null;
   const labels = [ad.checking ? "В проверке" : null, ad.fresh ? "Новое" : null, ad.pending ? "На проверке" : null].filter((x): x is string => x !== null);
+  const startEdit = () => setEdit({ title: ad.title, text: ad.text });
+  const switchOff = () => void commands.run(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: false }, "Объявление отключено");
   const menu: MenuProps = {
     items: [
       { key: "edit", label: "Изменить текст" },
       { key: "off", label: "Отключить" },
     ],
-    onClick: ({ key }) => {
-      if (key === "edit") setEdit({ title: ad.title, text: ad.text });
-      else void commands.run(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: false }, "Объявление отключено");
-    },
+    onClick: ({ key }) => (key === "edit" ? startEdit() : switchOff()),
   };
   return (
     <article className="ad-row" data-testid="shown-ad">
       <div className="ad-row-head">
         <div className="ad-row-main">
+          <div className="ad-row-meta">
+            <span className="ad-row-favicon" aria-hidden="true">
+              {site.slice(0, 1).toUpperCase()}
+            </span>
+            {site} · {ad.channel === "search" ? "поиск" : "сайты-партнёры"}
+          </div>
           <h3 className="ad-row-title">{ad.title}</h3>
           <p className="ad-row-text">{ad.text}</p>
-          <p className="ad-row-stats">
-            {formatRub(ad.spend)} · {ad.leads} {leadsWord(ad.leads)} · {ad.costPerLead === null ? "—" : formatRub(ad.costPerLead)}
+          <p className="ad-row-stats" data-testid="ad-stats">
+            {adStatsText(ad)}
           </p>
           {labels.length > 0 ? <p className="ad-row-labels">{labels.join(" · ")}</p> : null}
           {ad.change ? (
@@ -56,9 +66,22 @@ function AdRow({ ad, commands }: { ad: ShownAd; commands: ReturnType<typeof useC
           ) : null}
         </div>
         {edit === null ? (
-          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button type="text" size="small" icon={<MoreOutlined aria-hidden="true" />} aria-label={`${ad.title}: действия`} />
-          </Dropdown>
+          <>
+            {/* A mouse sees both actions on hover or focus; a touch screen opens them from one button (analytics spec «Сводка»). */}
+            <div className="ad-row-hover">
+              <button type="button" className="ad-row-action" onClick={startEdit} aria-label={`${ad.title}: изменить текст`}>
+                Изменить текст
+              </button>
+              <button type="button" className="ad-row-action" onClick={switchOff} disabled={commands.busy === `status-${ad.id}`} aria-label={`${ad.title}: отключить`}>
+                Отключить
+              </button>
+            </div>
+            <div className="ad-row-touch">
+              <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+                <Button type="text" size="small" icon={<MoreOutlined aria-hidden="true" />} aria-label={`${ad.title}: действия`} />
+              </Dropdown>
+            </div>
+          </>
         ) : null}
       </div>
       {edit !== null ? (
@@ -107,7 +130,7 @@ export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void
               {GROUPS[g.verdict]} · {g.ads.length}
             </h3>
             {g.ads.map((ad) => (
-              <AdRow key={ad.id} ad={ad} commands={commands} />
+              <AdRow key={ad.id} ad={ad} site={work.site} commands={commands} />
             ))}
           </section>
         ))}

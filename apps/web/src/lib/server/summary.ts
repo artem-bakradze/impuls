@@ -1,10 +1,10 @@
 import "server-only";
-import { addDays, costPerLead, daysBetween, emptyStats, monthKey, toLocalDate, weekStart } from "@impuls/core";
+import { addDays, costPerLead, daysBetween, emptyStats, endOfMonth, monthKey, toLocalDate, weekStart } from "@impuls/core";
 import type { LocalDate, PerformanceStats } from "@impuls/core";
 import { measurementFromCard } from "../measurement";
 import { isStepComplete } from "@impuls/worker/simulation-report";
 import { aggregate, isAdDecision, loadBusinessView, weeklyClientCost } from "@impuls/worker";
-import { budgetForecast, observedDaily } from "../summary-model";
+import { budgetForecast, budgetPlan, observedDaily } from "../summary-model";
 import { buildInsightFeed } from "./insights";
 import type { SummaryModel, SummaryPeriod } from "../summary-model";
 import { businessClock, platformCapabilities, readOnlyContext } from "./read-context";
@@ -100,6 +100,7 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
     moderation,
     monthBudget: view.monthBudget,
     spentMonth: view.spentMonth,
+    budgetPlan: budgetPlan(view.monthBudget, monthKey(launchedOn) === monthKey(today) ? launchedOn : `${monthKey(today)}-01`, endOfMonth(today), today),
     budgetForecast: budgetForecast(view.monthBudget, view.spentMonth, [...view.spendLast7.values()].reduce((sum, v) => sum + v, 0), today),
     spend: { value: current.spend, previous: previous.spend },
     leads: { value: current.leads, previous: previous.leads },

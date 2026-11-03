@@ -12,7 +12,8 @@ export interface SettingsModel {
   city: string;
   schedule: { raw: string; days: (typeof DAY_OPTIONS)[number]; from: string; to: string } | { raw: string; days: null; from: null; to: null };
   monthlyBudgetRub: number;
-  goal: { mode: "user" | "auto"; rub: number };
+  /** For the automatic goal, `rub` is the reference until it is refined by own leads (`learned`), then the refined goal. */
+  goal: { mode: "user" | "auto"; rub: number; learned: boolean };
   paused: boolean;
   /** Where the owner asks to delete the account (auth spec: deletion by request to support). */
   supportEmail: string;

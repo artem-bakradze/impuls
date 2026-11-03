@@ -1,4 +1,5 @@
 import "server-only";
+import { loadBusinessView } from "@impuls/worker";
 import { GOAL_OPTIONS } from "../onboarding";
 import { buildHistory } from "./history";
 import { measurementFromCard } from "../measurement";
@@ -6,7 +7,7 @@ import type { SettingsModel } from "../settings-model";
 import { parseSchedule } from "../settings-model";
 import { readDraft } from "./business";
 import type { BusinessRow } from "./business";
-import { platformCapabilities } from "./read-context";
+import { businessClock, platformCapabilities, readOnlyContext } from "./read-context";
 import { store, supportEmail } from "./runtime";
 
 type Card = { businessName: string; phone: string; address: string; openingHours: { days: string; hours: string }[]; messengers: { telegram?: string }; services: { name: string; price: number }[] };
@@ -48,6 +49,8 @@ const miniSiteModel = (business: Awaited<ReturnType<ReturnType<typeof store>["ge
 export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> => {
   const s = store();
   const [business, directions, ads, history] = await Promise.all([s.getBusiness(row.id), s.directions(row.id), s.ads(row.id), buildHistory(row.id)]);
+  // The same goal the main screen shows: the reference until the automatic goal is refined, then the refined one.
+  const view = await loadBusinessView(s, row.id, readOnlyContext(await businessClock(row.id)).clock, platformCapabilities(business.mode));
   const draft = readDraft(row);
   const strategies = new Map(platformCapabilities(business.mode).strategies.map((st) => [st.id, st.title]));
   const names = new Map(directions.map((d) => [d.id, d.name]));
@@ -61,7 +64,10 @@ export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> =>
     city: first?.city || draft.card.city,
     schedule: parseSchedule(first?.schedule ?? business.card.hours),
     monthlyBudgetRub: business.monthlyBudgetRub,
-    goal: business.csoSource.kind === "user" ? { mode: "user", rub: business.csoSource.goal / 100 } : { mode: "auto", rub: business.csoSource.reference / 100 },
+    goal:
+      business.csoSource.kind === "user"
+        ? { mode: "user", rub: business.csoSource.goal / 100, learned: false }
+        : { mode: "auto", rub: Math.floor(view.cso / 100), learned: view.cso !== business.csoSource.reference },
     paused: directions.length > 0 && directions.every((d) => d.status === "paused"),
     supportEmail: supportEmail(),
     ads: ads.map((a) => ({ id: a.id, title: a.title, text: a.text, status: a.status, moderation: a.moderation, direction: names.get(a.directionId) ?? "" })),
