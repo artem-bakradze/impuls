@@ -21,11 +21,11 @@ export function AdPreview({ ad, channel, domain, label, onChange, onRemove }: Pr
   const actions = (
     <div className="ad-actions">
       <Tooltip title={editing ? "Готово" : "Изменить текст"}>
-        <Button size="small" type={editing ? "primary" : "default"} icon={editing ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditing(!editing)} aria-label={editing ? `${label}: готово` : `${label}: изменить`} />
+        <Button size="small" type={editing ? "primary" : "default"} icon={editing ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditing(!editing)} aria-label={editing ? `${label}: готово` : `${label}: изменить`}>{editing ? "Готово" : "Изменить"}</Button>
       </Tooltip>
       {onRemove ? (
         <Tooltip title="Убрать объявление">
-          <Button size="small" icon={<DeleteOutlined aria-hidden="true" />} onClick={onRemove} aria-label={`${label}: убрать`} />
+          <Button size="small" icon={<DeleteOutlined aria-hidden="true" />} onClick={onRemove} aria-label={`${label}: убрать`}>Убрать</Button>
         </Tooltip>
       ) : null}
     </div>

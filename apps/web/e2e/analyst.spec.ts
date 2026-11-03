@@ -3,8 +3,8 @@ import { expectStep, fillBudget, fillFirstSteps, login, next, uniqueEmail } from
 
 /**
  * The analyst levers end to end with the test agent (add-agent-analyst-stage1): in «Обычный месяц» people also search
- * for photos and ideas and do not book, so the agent cuts those queries — the history shows the negative phrase with
- * «Почему» and «Вернуть как было» — and on Monday the feed shows «Разбор недели».
+ * for photos and ideas and do not book, so the agent cuts those queries — the journal of «Реклама» shows it with its facts
+ * and «Вернуть как было» — and on Monday the journal has «Разбор недели».
  */
 test("the test agent cuts a junk query with an insight and reviews the week", async ({ page }) => {
   test.setTimeout(300_000);
@@ -13,8 +13,7 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
   await fillFirstSteps(page);
   await fillBudget(page);
   await next(page);
-  await expectStep(page, 5, "Как увидят ваши объявления");
-  await next(page);
+  await expectStep(page, 3, "Объявления и запуск");
   await page.getByLabel("Симуляция").check();
   await expect(page.getByLabel("Обычный месяц")).toBeChecked();
   await page.getByRole("button", { name: "Запустить симуляцию" }).click();
@@ -27,19 +26,16 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
     const step = bar.getByTestId("simulation-step-week");
     await expect(step).not.toHaveClass(/ant-btn-loading/);
     await step.click();
-    await page.waitForURL(`**/simulation?week=${week}`, { timeout: 150_000 });
+    await page.waitForURL(`**/summary?week=${week}`, { timeout: 150_000 });
   }
 
-  await page.getByRole("link", { name: "История" }).click();
-  const negative = page.getByTestId("history-entry").filter({ hasText: /Минус-фразы: было .* → стало .*«идеи»|Минус-фразы: было .* → стало .*«форум»/ }).first();
+  const journal = page.getByTestId("agent-journal");
+  const negative = journal.getByTestId("journal-change").filter({ hasText: /Убрал показы по запросам .*«(идеи|форум)»/ }).first();
   await expect(negative).toBeVisible();
   await expect(negative.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
-  await negative.getByRole("button", { name: /Почему/ }).click();
-  await expect(negative.getByTestId("insight")).toContainText("Добавили минус-фразу");
-  // The insight names the query: «По запросу «…» …» when it brought no leads, «Запрос «…» …» otherwise.
-  await expect(negative.getByTestId("insight")).toContainText(/[Зз]апрос[уа]? «/);
-
-  await page.goto("/summary?period=month");
-  await expect(page.getByTestId("weekly-review").first()).toContainText("Разбор недели");
-  await expect(page.getByTestId("weekly-checking").first()).toBeVisible();
+  await negative.getByText("Факты").click();
+  // The facts name the query's segment of the turn.
+  await expect(negative.locator("dl")).toContainText(/запрос/i);
+  await expect(journal.getByText("разбор недели").first()).toBeVisible();
+  await expect(journal.locator(".log-hypothesis").first()).toBeVisible();
 });

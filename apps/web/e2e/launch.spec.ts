@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectStep, fillBudget, fillFirstSteps, finishWizard, login, next, uniqueEmail } from "./helpers";
 
-test("new owner signs in, goes through the wizard and launches ads on the simulator", async ({ page }) => {
+test("new owner signs in, goes through the three wizard steps and launches ads on the simulator", async ({ page }) => {
   const email = uniqueEmail("launch");
   await login(page, email);
   await page.waitForURL("**/wizard");
@@ -10,30 +10,31 @@ test("new owner signs in, goes through the wizard and launches ads on the simula
   await fillFirstSteps(page);
   await fillBudget(page);
 
-  // «Назад» keeps the answers of this and later steps.
-  await page.getByRole("button", { name: "Назад" }).click();
-  await expectStep(page, 3, "Что для вас клиент?");
-  await expect(page.getByLabel("Звонок по номеру с сайта")).toBeChecked();
+  // «Назад» from the ads keeps the card and the budget, and the ads written from them.
   await next(page);
-  await expectStep(page, 4, "Бюджет");
+  await expectStep(page, 3, "Объявления и запуск");
+  await page.getByRole("button", { name: "Назад" }).click();
+  await expectStep(page, 2, "Вот как мы вас поняли");
   await expect(page.getByLabel("Бюджет в месяц")).toHaveValue("15 000");
 
   // Progress is saved: a new visit opens the same step with the same data.
-  await page.getByRole("button", { name: "Назад" }).click();
-  await next(page);
   await page.reload();
-  await expectStep(page, 4, "Бюджет");
+  await expectStep(page, 2, "Вот как мы вас поняли");
   await expect(page.getByTestId("auto-goal")).toBeVisible();
 
   await finishWizard(page);
   await expect(page.getByTestId("first-day")).toContainText("Первые результаты появятся в течение суток");
 
-  await page.getByRole("link", { name: "История" }).click();
-  await expect(page.getByText("Реклама запущена.", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("Запуск нельзя отменить, но рекламу можно поставить на паузу в настройках.")).toBeVisible();
+  // Two sections only; the history is the journal of «Реклама».
+  await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);
+  await expect(page.getByTestId("agent-journal")).toContainText("Вы: реклама запущена");
+  await page.goto("/history");
+  await page.waitForURL("**/summary");
 
-  // A returning owner lands on the summary, not on the wizard.
+  // A returning owner lands on «Реклама», not on the wizard; the old example's address leads home.
   await page.goto("/");
+  await page.waitForURL("**/summary");
+  await page.goto("/demo");
   await page.waitForURL("**/summary");
 });
 
@@ -44,7 +45,8 @@ test("logout returns to the start page and protected pages ask to sign in again"
   await page.waitForURL((url) => url.pathname === "/");
   await page.goto("/wizard");
   await page.waitForURL((url) => url.pathname === "/");
-  await expect(page.getByRole("button", { name: "Войти через Google" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Попробовать на своём бизнесе/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Посмотреть на примере" })).toHaveCount(0);
 });
 
 test("a cancelled Google login shows the plain message", async ({ page }) => {

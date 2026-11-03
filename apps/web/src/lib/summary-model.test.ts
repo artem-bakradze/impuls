@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapJobState } from "./job-state";
 import { loginErrorMessage } from "./login-error";
-import { compareText, goalLine, moderationText } from "./summary-model";
+import { compareText, observedDaily, goalLine, moderationText } from "./summary-model";
 import { formatRub } from "./format";
 
 const plain = (text: string) => text.replace(/ /g, " ");
@@ -42,5 +42,13 @@ describe("login errors", () => {
   it("explains a cancelled Google login", () => {
     expect(loginErrorMessage("OAuthCallbackError")).toBe("Вход отменён. Чтобы продолжить, войдите через Google ещё раз");
     expect(loginErrorMessage(undefined)).toBeNull();
+  });
+});
+
+describe("observed daily results", () => {
+  it("adds campaigns from the same day, preserves reported zero and leaves missing reports unknown", () => {
+    const days = observedDaily("2026-12-01", "2026-12-04", [{ date: "2026-12-01", leads: 2 }, { date: "2026-12-01", leads: 3 }, { date: "2026-12-02", leads: 0 }], new Set(["2026-12-02"]));
+    expect(days).toEqual([{ date: "2026-12-01", leads: 5, decision: false }, { date: "2026-12-02", leads: 0, decision: true }, { date: "2026-12-03", leads: null, decision: false }, { date: "2026-12-04", leads: null, decision: false }]);
+    expect(days.reduce((sum, d) => sum + (d.leads ?? 0), 0)).toBe(5);
   });
 });

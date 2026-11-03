@@ -1,18 +1,15 @@
 "use client";
 
 import {
-  ClockCircleOutlined,
+  AimOutlined,
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
   EnvironmentOutlined,
-  GlobalOutlined,
-  NotificationOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ShopOutlined,
-  UserOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Collapse, Input, InputNumber, Select } from "antd";
@@ -21,13 +18,12 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult, JobOutcome } from "@/lib/client-api";
-import { formatRub, sentence } from "@/lib/format";
-import { AD_TEXT_MAX, AD_TITLE_MAX, DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } from "@/lib/onboarding";
-import { MODERATION_WORDS } from "@/lib/settings-model";
+import { formatDateTime, formatRub, sentence } from "@/lib/format";
+import { DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } from "@/lib/onboarding";
 import type { SettingsModel } from "@/lib/settings-model";
 import { channelLabel } from "@/lib/summary-model";
-import { Chip, Note, PageHead } from "../ui/primitives";
-import type { Tone } from "../ui/primitives";
+import { Note, PageHead } from "../ui/primitives";
+import { MeasurementNotice } from "../MeasurementNotice";
 
 type Feedback = { section: string; type: "success" | "error" | "info" | "warning"; text: string; confirmBudget?: number } | null;
 type BudgetResult = { kind: "ok" | "will_stop"; monthBudgetRub: number; message: string; applied: boolean };
@@ -133,9 +129,7 @@ const SECTIONS = [
   { id: "business", label: "Что рекламируем", icon: <ShopOutlined /> },
   { id: "where", label: "Где и когда", icon: <EnvironmentOutlined /> },
   { id: "budget", label: "Бюджет и цель", icon: <WalletOutlined /> },
-  { id: "ads", label: "Объявления", icon: <NotificationOutlined /> },
-  { id: "site", label: "Сайт", icon: <GlobalOutlined /> },
-  { id: "account", label: "Аккаунт", icon: <UserOutlined /> },
+  { id: "leads", label: "Что считаем обращением", icon: <AimOutlined /> },
 ];
 
 function Section({ id, title, lead, children, testId }: { id: string; title: string; lead?: ReactNode; children: ReactNode; testId?: string }) {
@@ -152,13 +146,12 @@ function Section({ id, title, lead, children, testId }: { id: string; title: str
   );
 }
 
-/** One status per ad instead of two badges: off, being checked, rejected or showing. */
-const adState = (ad: SettingsModel["ads"][number]): { tone: Tone; text: string } => {
-  if (ad.status !== "active") return { tone: "neutral", text: "Отключено" };
-  if (ad.moderation === "rejected") return { tone: "danger", text: MODERATION_WORDS.rejected };
-  if (ad.moderation === "pending") return { tone: "accent", text: MODERATION_WORDS.pending };
-  return { tone: "success", text: "Показывается" };
-};
+function EditableValue({ title, value, editing, onEdit, onCancel, busy, children }: { title: string; value: ReactNode; editing: boolean; onEdit: () => void; onCancel: () => void; busy: boolean; children: ReactNode }) {
+  return <div className="settings-value">
+    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}><div className="stack" style={{ gap: 4 }}><span className="t-small">{title}</span>{editing ? null : <strong>{value}</strong>}</div><Button onClick={editing ? onCancel : onEdit} disabled={busy} aria-label={`${editing ? "Отмена" : "Изменить"}: ${title}`}>{editing ? "Отмена" : "Изменить"}</Button></div>
+    {editing ? <div className="settings-editor">{children}</div> : null}
+  </div>;
+}
 
 /** The section in view, for the side navigation: the topmost one that crossed the upper third of the screen. */
 function useActiveSection(ids: readonly string[]): string | null {
@@ -185,7 +178,7 @@ function useActiveSection(ids: readonly string[]): string | null {
   return active;
 }
 
-export function SettingsView({ model, simulated = false }: { model: SettingsModel; simulated?: boolean }) {
+export function SettingsView({ model }: { model: SettingsModel; simulated?: boolean }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const active = useActiveSection(SECTIONS.map((section) => section.id));
@@ -195,15 +188,15 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
   const [from, setFrom] = useState(model.schedule.from ?? "10:00");
   const [to, setTo] = useState(model.schedule.to ?? "20:00");
   const [budget, setBudget] = useState<number | null>(model.monthlyBudgetRub);
-  const [adEdits, setAdEdits] = useState<Record<string, { title: string; text: string }>>({});
-  const [editing, setEditing] = useState<string | null>(null);
   const [goalMode, setGoalMode] = useState(model.goal.mode);
   const [goalRub, setGoalRub] = useState<number | null>(model.goal.mode === "user" ? model.goal.rub : null);
+  const [fieldEdit, setFieldEdit] = useState<string | null>(null);
   const [cardEdit, setCardEdit] = useState<CardDraft | null>(null);
 
   const done = (next: NonNullable<Feedback>) => {
     setFeedback(next);
     setBusy(null);
+    if (next.type === "success") setFieldEdit(null);
     if (next.type === "success" || next.type === "warning") router.refresh();
   };
 
@@ -225,7 +218,7 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
 
   const saveCard = async (card: CardDraft) => {
     setBusy("card");
-    const next = commandsFeedback("card", await runWebJobs<CommandResult>("/api/commands", { action: "card", card }), "Описание сохранено. Работающие объявления сами не меняются — проверьте их тексты в разделе «Объявления».");
+    const next = commandsFeedback("card", await runWebJobs<CommandResult>("/api/commands", { action: "card", card }), "Описание сохранено. Работающие объявления сами не меняются — проверьте их тексты на экране «Реклама».");
     if (next.type === "success") setCardEdit(null);
     done(next);
   };
@@ -239,14 +232,10 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
   const cardChanged = cardTidy !== null && JSON.stringify(cardTidy) !== JSON.stringify(tidyCard(model.card));
 
   return (
-    <div className="page">
+    <div className="page settings-page">
       <PageHead
         title="Настройки"
-        lead={
-          simulated
-            ? "Меняйте простым языком — изменения сразу применятся в симуляции, в той же истории и с тем же откатом."
-            : "Меняйте простым языком — сервис сам перенесёт изменения в Яндекс Директ за несколько минут."
-        }
+        lead="Текущие условия работы рекламы"
         extra={
           model.paused ? (
             <Button type="primary" size="large" icon={<PlayCircleOutlined aria-hidden="true" />} onClick={() => void commands("pause", { action: "resumeAll" }, "Реклама снова работает")} loading={busy === "pause"}>
@@ -317,13 +306,10 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
             <SectionFeedback feedback={feedback} section="card" />
           </Section>
 
-          <Section id="where" title="Где и когда" lead="Реклама показывается людям в вашем городе">
+          <Section id="where" title="Где и когда">
             <div className="stack" style={{ "--gap": "22px" } as React.CSSProperties}>
+              <EditableValue title="Город" value={model.city} editing={fieldEdit === "city"} onEdit={() => { setCity(model.city); setFieldEdit("city"); }} onCancel={() => { setCity(model.city); setFieldEdit(null); }} busy={busy === "city"}>
               <div className="field">
-                <div className="field-label">
-                  <EnvironmentOutlined />
-                  Город
-                </div>
                 <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
                   <Input value={city} maxLength={100} onChange={(e) => setCity(e.target.value)} aria-label="Город показа" style={{ width: 240 }} />
                   {cityChanged ? (
@@ -337,15 +323,12 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                     </Button>
                   ) : null}
                 </div>
-                <SectionFeedback feedback={feedback} section="city" />
               </div>
+              </EditableValue>
+            <SectionFeedback feedback={feedback} section="city" />
               <hr className="divider" />
+              <EditableValue title="Когда показываем" value={model.schedule.raw || "Не задано"} editing={fieldEdit === "schedule"} onEdit={() => { setDays(model.schedule.days ?? DAY_OPTIONS[0]); setFrom(model.schedule.from ?? "10:00"); setTo(model.schedule.to ?? "20:00"); setFieldEdit("schedule"); }} onCancel={() => { setDays(model.schedule.days ?? DAY_OPTIONS[0]); setFrom(model.schedule.from ?? "10:00"); setTo(model.schedule.to ?? "20:00"); setFieldEdit(null); }} busy={busy === "schedule"}>
               <div className="field" data-testid="schedule-section">
-                <div className="field-label">
-                  <ClockCircleOutlined />
-                  Когда показываем
-                </div>
-                <span className="t-small">Сейчас: {model.schedule.raw || "не задано"}</span>
                 <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
                   <Select value={days} onChange={setDays} options={DAY_OPTIONS.map((d) => ({ value: d, label: d }))} style={{ width: 120 }} aria-label="Дни показа" />
                   <Select value={from} onChange={setFrom} options={HOUR_OPTIONS.slice(0, 24).map((h) => ({ value: h, label: `с ${h}` }))} style={{ width: 112 }} aria-label="Показывать с" virtual={false} />
@@ -361,15 +344,17 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                     </Button>
                   ) : null}
                 </div>
-                <SectionFeedback feedback={feedback} section="schedule" />
               </div>
+              </EditableValue>
+            <SectionFeedback feedback={feedback} section="schedule" />
             </div>
           </Section>
 
-          <Section id="budget" title="Бюджет и цель" lead="Месячный бюджет — потолок: больше этой суммы мы не потратим никогда">
+          <Section id="budget" title="Бюджет и цель">
+            <EditableValue title="Бюджет в месяц" value={`${formatRub(model.monthlyBudgetRub * 100)} · с НДС`} editing={fieldEdit === "budget"} onEdit={() => { setBudget(model.monthlyBudgetRub); setFieldEdit("budget"); }} onCancel={() => { setBudget(model.monthlyBudgetRub); setFieldEdit(null); setFeedback(null); }} busy={busy === "budget"}>
             <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
               <div className="field">
-                <div className="field-label">Сколько тратить в месяц, с НДС</div>
+
                 <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
                   <InputNumber<number>
                     min={MIN_BUDGET_RUB}
@@ -390,13 +375,12 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                 </div>
               </div>
             </div>
+            </EditableValue>
             <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
             <hr className="divider" style={{ margin: "18px 0" }} />
+            <EditableValue title="Цена обращения" value={model.goal.mode === "user" ? `До ${formatRub(model.goal.rub * 100)}` : "Подбираем сами по результатам"} editing={fieldEdit === "goal"} onEdit={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit("goal"); }} onCancel={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit(null); }} busy={busy === "goal"}>
             <div className="field" data-testid="goal-section">
               <div className="field-label">Сколько готовы платить за одно обращение</div>
-              <span className="t-small">
-                Сейчас: {model.goal.mode === "user" ? `до ${formatRub(model.goal.rub * 100)} за обращение` : "подбираем сами по результатам рекламы"}
-              </span>
               <div className="presets" role="radiogroup" aria-label="Цена обращения">
                 {(
                   [
@@ -436,79 +420,16 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                   </Button>
                 ) : null}
               </div>
-              <SectionFeedback feedback={feedback} section="goal" />
             </div>
+            </EditableValue>
+            <SectionFeedback feedback={feedback} section="goal" />
           </Section>
 
-          <Section id="ads" title="Объявления" lead="Новый текст Яндекс проверит заново — обычно за несколько часов">
-            {model.ads.map((ad) => {
-              const edit = adEdits[ad.id] ?? { title: ad.title, text: ad.text };
-              const changed = edit.title !== ad.title || edit.text !== ad.text;
-              const state = adState(ad);
-              const open = editing === ad.id;
-              return (
-                <div key={ad.id} className="ad-row">
-                  <div className="row" style={{ "--gap": "8px", marginBottom: 8 } as React.CSSProperties}>
-                    <Chip tone={state.tone}>{state.text}</Chip>
-                    <span className="t-small">{ad.direction}</span>
-                    <span className="spacer" />
-                    <Button size="small" type="text" icon={<EditOutlined aria-hidden="true" />} onClick={() => setEditing(open ? null : ad.id)}>
-                      {open ? "Свернуть" : "Изменить"}
-                    </Button>
-                    <Button
-                      size="small"
-                      loading={busy === `status-${ad.id}`}
-                      onClick={() => void commands(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: ad.status !== "active" }, ad.status === "active" ? "Объявление отключено" : "Объявление включено")}
-                    >
-                      {ad.status === "active" ? "Отключить" : "Включить"}
-                    </Button>
-                  </div>
-                  {open ? (
-                    <div className="ad-edit fade-in">
-                      <Input value={edit.title} maxLength={AD_TITLE_MAX} showCount onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, title: e.target.value } })} aria-label="Заголовок объявления" />
-                      <Input.TextArea value={edit.text} maxLength={AD_TEXT_MAX} showCount autoSize onChange={(e) => setAdEdits({ ...adEdits, [ad.id]: { ...edit, text: e.target.value } })} aria-label="Текст объявления" />
-                      {changed ? (
-                        <Button type="primary" loading={busy === `text-${ad.id}`} onClick={() => void commands(`text-${ad.id}`, { action: "adText", adId: ad.id, ...edit }, "Текст изменён — Яндекс проверит объявление заново")} style={{ alignSelf: "flex-start" }}>
-                          Сохранить текст
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="stack" style={{ "--gap": "2px" } as React.CSSProperties}>
-                      <span style={{ fontWeight: 600, color: "#2a20b8" }}>{edit.title}</span>
-                      <span className="t-body t-muted">{edit.text}</span>
-                    </div>
-                  )}
-                  <SectionFeedback feedback={feedback} section={`text-${ad.id}`} />
-                  <SectionFeedback feedback={feedback} section={`status-${ad.id}`} />
-                </div>
-              );
-            })}
-          </Section>
-
-          <Section id="site" title="Сайт">
-            {model.siteUrl ? (
-              <div className="stack" style={{ "--gap": "6px" } as React.CSSProperties}>
-                <span className="t-body">
-                  Объявления ведут на ваш сайт:{" "}
-                  <a href={model.siteUrl} target="_blank" rel="noreferrer">
-                    {model.siteUrl}
-                  </a>
-                </span>
-                <span className="t-small" data-testid="site-change">
-                  Сменили сайт? Напишите нам на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a> — заменим ссылку во всех объявлениях. Яндекс проверит их заново.
-                </span>
-              </div>
-            ) : (
-              // Launch requires the owner's site; the mini-site form is out of the MVP (replace-direct-sandbox decision 7).
-              <span className="t-small">Адрес сайта не указан</span>
-            )}
-          </Section>
-
-          <Section id="account" title="Аккаунт">
-            <span className="t-body" data-testid="account-deletion">
-              Чтобы удалить аккаунт, напишите нам на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a> — мы остановим рекламу и удалим ваши данные в течение 30 дней.
-            </span>
+          <Section id="leads" title="Что считаем обращением" testId="leads-section">
+            <div className="stack" style={{ "--gap": "12px" } as React.CSSProperties}>
+              <span className="t-body">{model.goals.join(", ") || "Не выбрано"}</span>
+              {model.measurement ? <MeasurementNotice model={model.measurement} compact /> : null}
+            </div>
           </Section>
 
           <Collapse
@@ -524,6 +445,15 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
                 children: (
                   <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
                     <span className="t-small">Только для просмотра. Эти параметры сервис настраивает сам.</span>
+                    {model.budgetAdjustments.length > 0 ? (
+                      <div className="stack" style={{ "--gap": "6px" } as React.CSSProperties} data-testid="budget-adjustments">
+                        <span style={{ fontWeight: 600 }}>Защита бюджета: подстройки недельных лимитов · {model.budgetAdjustments.length}</span>
+                        <span className="t-small">Лимит пересчитывается сам по остатку бюджета месяца, поэтому вернуть подстройку нельзя.</span>
+                        <ul className="t-small" style={{ margin: 0, paddingLeft: 18 }}>
+                          {model.budgetAdjustments.slice(-30).reverse().map((b) => <li key={b.id}>{formatDateTime(b.at, model.timeZone)} — {b.text}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
                     {model.directions.map((d) => (
                       <div key={d.id} className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
                         <span style={{ fontWeight: 600 }}>{d.name}</span>
@@ -548,6 +478,10 @@ export function SettingsView({ model, simulated = false }: { model: SettingsMode
               },
             ]}
           />
+          <p className="t-small" data-testid="site-change">
+            {model.siteUrl ? <>Объявления ведут на <a href={model.siteUrl} target="_blank" rel="noreferrer">{model.siteUrl.replace(/^https?:\/\//, "")}</a>. </> : null}
+            Сменить сайт или <span data-testid="account-deletion">удалить аккаунт</span> — напишите на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a>.
+          </p>
         </div>
       </div>
     </div>

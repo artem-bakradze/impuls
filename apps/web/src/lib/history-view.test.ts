@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDiff, foldBudgetAdjustments, newestFirst, objectName } from "./history-view";
+import { actualActionText, describeDiff, foldBudgetAdjustments, newestFirst, objectName } from "./history-view";
 import type { HistoryItem, Names } from "./history-view";
 
 const plain = (text: string) => text.replace(/[  ]/g, " ");
@@ -31,6 +31,11 @@ const cut = (id: string, at: string, from: string, to: string): HistoryItem => (
 });
 
 describe("history view", () => {
+  it("describes device settings as percentages rather than a zero ruble price", () => {
+    const action = { type: "SetDeviceAdjustment" as const, directionId: "d1", device: "mobile" as const, percent: -20 };
+    expect(actualActionText({ action, status: "applied", before: { mobileAdjustment: 0 }, after: { mobileAdjustment: -20 } })).toBe("Настройка цены для телефонов: снижение на 20%");
+    expect(actualActionText({ action, status: "applied", before: { mobileAdjustment: -20 }, after: { mobileAdjustment: 0 } })).toBe("Настройка цены для телефонов: без повышения или снижения");
+  });
   it("shows a business card change as services and prices, not JSON", () => {
     const before = { category: "Маникюр", services: JSON.stringify([{ name: "Маникюр с покрытием", priceRub: null }]), advantages: "[]" };
     const after = { ...before, services: JSON.stringify([{ name: "Маникюр с покрытием", priceRub: 1_800 }]) };
@@ -57,9 +62,9 @@ describe("history view", () => {
       after: "«бесплатно»; «вакансии»",
     });
     expect(describeDiff({ ...base, negativeKeywords: "[]" }, { ...base, negativeKeywords: "[]", mobileAdjustment: -25 }, names)).toEqual([
-      { label: "Цена перехода с телефонов", before: "0%", after: "−25%" },
+      { label: "Настройка цены для телефонов", before: "0%", after: "−25%" },
     ]);
-    expect(describeDiff({ desktopAdjustment: 0 }, { desktopAdjustment: 20 }, names)).toEqual([{ label: "Цена перехода с компьютеров и планшетов", before: "0%", after: "+20%" }]);
+    expect(describeDiff({ desktopAdjustment: 0 }, { desktopAdjustment: 20 }, names)).toEqual([{ label: "Настройка цены для компьютеров и планшетов", before: "0%", after: "+20%" }]);
   });
 
   it("names advertising by its channel, without the internal word «направление»", () => {

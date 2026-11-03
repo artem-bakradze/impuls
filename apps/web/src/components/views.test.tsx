@@ -1,25 +1,13 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ExperimentItem } from "@/lib/experiments-model";
 import type { HistoryItem } from "@/lib/history-view";
 import type { InsightCardModel, InsightFeedModel } from "@/lib/insights-model";
+import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { SummaryModel } from "@/lib/summary-model";
 import { SummaryView } from "./summary/SummaryView";
 import { AdvertiserDataNotice } from "./wizard/LaunchStep";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/summary", useSearchParams: () => new URLSearchParams() }));
-
-const running: ExperimentItem = {
-  id: "e1",
-  hypothesis: "Проверяем, приведёт ли «−15% на первый визит» больше записей, чем цена",
-  direction: "Маникюр — Поиск",
-  startedOn: "2026-10-20",
-  day: 8,
-  status: "running",
-  outcome: null,
-  control: { title: "Маникюр у метро", text: "Маникюр с покрытием от 1 800 ₽", clicks: 120, leads: 6, spend: 300_000, active: true },
-  variant: { title: "Маникюр у метро", text: "Маникюр с покрытием: −15% на первый визит", clicks: 110, leads: 9, spend: 280_000, active: true },
-};
 
 const rollbackItem: HistoryItem = {
   id: "c1",
@@ -87,69 +75,69 @@ const summary = (overrides: Partial<SummaryModel> = {}): SummaryModel => ({
   ...overrides,
 });
 
-const plain = (node: { textContent: string | null } | null): string => node?.textContent?.replace(/[\u00a0\u202f]/g, " ") ?? "";
+const plain = (node: { textContent: string | null } | null): string => node?.textContent?.replace(/[  ]/g, " ") ?? "";
 
-describe("SummaryView", () => {
-  it("shows three numbers without charts or a ring, then the insight feed instead of the week's actions", () => {
-    const { container } = render(<SummaryView model={summary()} />);
-    const text = plain(container);
-    expect(text).toContain("Цель: до 300 ₽ за обращение · Сейчас: 340 ₽");
-    expect(text).toContain("дороже цели");
-    expect(container.querySelectorAll(".kpi")).toHaveLength(3);
-    expect(container.querySelector(".ring, svg[role=img]")).toBeNull();
-    expect(text).not.toContain("Что сервис сделал за неделю");
-    expect(text).toMatch(/клиентами/);
-    // The day's review with its insight in four parts.
-    const day = screen.getByTestId("day-review");
-    expect(plain(day)).toContain("Разбор 27 октября");
-    expect(plain(day)).toContain("Отключили одно объявление: оно тратило деньги без обращений.");
-    const insight = screen.getByTestId("insight");
-    for (const part of ["Сервис", "Что заметили", "Что решили", "Применено"]) {
-      expect(plain(insight)).toContain(part);
-    }
-    // Evidence and forecast are one click away, so a feed of many insights stays readable.
-    expect(plain(insight)).not.toContain("Объявление «Маникюр без записи»: расход за 14 дней");
-    fireEvent.click(within(insight).getByRole("button", { name: /На каких данных и что дальше/ }));
-    for (const part of ["Объявление «Маникюр без записи»: расход за 14 дней", "1 530 ₽", "Что дальше"]) {
-      expect(plain(insight)).toContain(part);
-    }
-    expect(screen.getByRole("button", { name: /Вернуть как было/ })).toBeTruthy();
-    expect(container).toMatchSnapshot();
+/** «Реклама» without ads and journal records unless a test gives them. */
+const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
+  shown: [],
+  hidden: [],
+  directionChanges: [],
+  journal: [],
+  brief: null,
+  site: "nogotok.example",
+  history: [],
+  names: { directions: {}, channels: {}, ads: {}, strategies: {} },
+  sim: null,
+  ...overrides,
+});
+
+const ownerEntry = {
+  id: "h:c2", date: "2026-10-28", from: null, day: 10, kind: "owner" as const, weekly: false, headline: null, paragraphs: [],
+  changes: [{ text: "Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00", reverted: false, historyId: "c2", item: { ...rollbackItem, id: "c2", author: "user" as const }, facts: [], turnId: null }],
+  checking: [], found: [], truths: [], objectIds: [],
+};
+const decisionEntry = {
+  id: "2026-10-27:day", date: "2026-10-27", from: null, day: 9, kind: "agent" as const, weekly: false, headline: null, paragraphs: ["Объявление тратило деньги без обращений."],
+  changes: [{ text: "Отключил объявление «Маникюр без записи»", reverted: false, historyId: "c1", item: rollbackItem, facts: pauseCard.facts, turnId: "t1" }],
+  checking: [], found: [], truths: [], objectIds: ["a2"],
+};
+
+describe("«Реклама» (analytics spec «Главный экран «Реклама»»)", () => {
+  it("labels the confirmed client's week and does not mix its count with the selected period", () => {
+    render(<SummaryView model={summary({ clients: { value: 20, previous: 10 } })} work={work()} />);
+    expect(screen.getByText("Клиентов: 7 · 19 октября — 25 октября")).toBeInTheDocument();
   });
 
-  it("opens the numbers by platform by a link, not on the first screen", () => {
-    const { container } = render(<SummaryView model={summary()} />);
-    expect(plain(container)).not.toContain("Где показываем рекламу");
-    fireEvent.click(screen.getByRole("button", { name: /Цифры по площадкам/ }));
-    expect(plain(screen.getByTestId("platforms"))).toContain("3 объявления · до 2 100 ₽ в неделю");
-    expect(plain(screen.getByTestId("platforms"))).toContain("Поиск Яндекса");
+  it("shows the month's three numbers with the budget as the third, without a period switch, graph or platforms", () => {
+    const { container } = render(<SummaryView model={summary({ daily: [{ date: "2026-10-27", leads: 11, decision: true }] })} work={work()} />);
+    expect(container.querySelectorAll(".summary-kpis .kpi")).toHaveLength(3);
+    expect(plain(container.querySelector(".summary-kpis"))).toContain("Цена обращения340 ₽");
+    expect(plain(screen.getByTestId("budget-tile"))).toContain("6 300 ₽из 15 000 ₽ · сервис сам держит расход в бюджете месяца");
+    expect(screen.queryByRole("region", { name: "Обращения по дням" })).toBeNull();
+    expect(screen.queryByText("Неделя")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Цифры по площадкам/ })).toBeNull();
+    expect(screen.queryByText(/О бюджете и сравнении/)).toBeNull();
+    expect(screen.getByTestId("shown-ads")).toBeTruthy();
+    expect(screen.getByTestId("agent-journal")).toBeTruthy();
   });
 
   it("shows the hint instead of an invented cost per client", () => {
     const { container } = render(
-      <SummaryView model={summary({ clientCost: { kind: "unknown", costPerLead: 57_273, hint: "Ответьте, сколько обращений стали клиентами, чтобы видеть стоимость клиента", week: "2026-10-19" } })} />,
+      <SummaryView model={summary({ clientCost: { kind: "unknown", costPerLead: 57_273, hint: "Ответьте, сколько обращений стали клиентами, чтобы видеть стоимость клиента", week: "2026-10-19" } })} work={work()} />,
     );
-    expect(container.textContent).toContain("Ответьте, сколько обращений стали клиентами, чтобы видеть стоимость клиента");
+    expect(screen.getByTestId("clients-question")).toBeTruthy();
+    expect(container.textContent).not.toContain("Стоимость клиента:");
   });
 
   it("shows the cost per lead with the goal and its status when there are no clients answers", () => {
-    render(<SummaryView model={summary({ clientCost: { kind: "unknown", costPerLead: 34_000, hint: "", week: "2026-10-19" }, attention: { notifications: [], clientsQuestion: null } })} />);
+    render(<SummaryView model={summary({ clientCost: { kind: "unknown", costPerLead: 34_000, hint: "", week: "2026-10-19" }, attention: { notifications: [], clientsQuestion: null } })} work={work()} />);
     expect(plain(screen.getByTestId("goal-line"))).toBe("Цель: до 300 ₽");
     expect(screen.getByText("Дороже цели")).toBeTruthy();
   });
 
-  it("asks about clients in the cost tile only while the question is open", () => {
-    const hint = "Ответьте, сколько обращений стали клиентами, чтобы видеть стоимость клиента";
-    const { container } = render(
-      <SummaryView model={summary({ clientCost: { kind: "unknown", costPerLead: 17_700, hint, week: "2026-10-19" }, attention: { notifications: [], clientsQuestion: null } })} />,
-    );
-    expect(container.textContent).not.toContain(hint);
-    expect(container.textContent).toContain("за 7 дней");
-  });
-
   it("explains a short launch month and does not compare with the time before the launch", () => {
     const { container } = render(
-      <SummaryView model={summary({ compare: false, launchedDays: 3, launchMonth: { budget: 96_700, monthName: "октября", nextMonthName: "ноября" }, monthBudget: 96_700 })} />,
+      <SummaryView model={summary({ compare: false, launchedDays: 3, launchMonth: { budget: 96_700, monthName: "октября", nextMonthName: "ноября" }, monthBudget: 96_700 })} work={work()} />,
     );
     const text = plain(container);
     expect(text).toContain("До конца октября — 967 ₽, с 1 ноября — 15 000 ₽ в месяц");
@@ -157,127 +145,64 @@ describe("SummaryView", () => {
     expect(text).not.toContain("в прошлом периоде");
   });
 
-  it("keeps offering to live a week in a simulation until the service has decided something", () => {
-    const quiet = feed({ days: [{ date: "2026-11-02", from: null, summary: "Данных пока мало.", quiet: true, rulesReason: null, insights: [], weekly: null }] });
-    render(<SummaryView model={summary({ simulation: { weeks: 1 }, launchedDays: 3, compare: false, decided: false, feed: quiet, attention: { notifications: [], clientsQuestion: null } })} />);
-    expect(screen.getByRole("button", { name: /Прожить неделю/ })).toBeTruthy();
-    expect(plain(screen.getByTestId("quiet-day"))).toBe("Посмотрели рекламу — менять ничего не нужноДанных пока мало.");
-    expect(document.body.textContent).not.toContain("Яндекс иногда пересчитывает");
-  });
-
-  it("reads a day that only observed as one line, with its insights one click away", () => {
-    const watchCard: InsightCardModel = { ...pauseCard, id: "i3", decision: { text: "Пока ничего не меняю: данных мало.", status: "none" }, rollback: null };
-    const day = { date: "2026-12-01", from: null, summary: "Реклама только начала собирать данные.", quiet: false, rulesReason: null, insights: [watchCard], weekly: null };
-    render(<SummaryView model={summary({ feed: feed({ days: [day] }) })} />);
-    expect(plain(screen.getByTestId("observation-day"))).toContain("Посмотрели рекламу — менять ничего не нужно");
-    expect(plain(screen.getByTestId("observation-day"))).toContain("Реклама только начала собирать данные.");
-    expect(screen.queryByTestId("insight")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Что заметили (1)" }));
-    expect(plain(screen.getByTestId("insight"))).toContain("Пока ничего не меняю: данных мало.");
-  });
-
-  it("reads quiet days in a row as one line", () => {
-    const quietDays = { date: "2026-12-06", from: "2026-12-03", summary: null, quiet: true, rulesReason: null, insights: [], weekly: null };
-    render(<SummaryView model={summary({ feed: feed({ days: [quietDays] }) })} />);
-    expect(plain(screen.getByTestId("quiet-days"))).toBe("С 3 по 6 декабря — посмотрели рекламу, менять ничего не нужно");
-  });
-
-  it("says that the rules decided alone that day and why", () => {
-    const ruleCard: InsightCardModel = { ...pauseCard, id: "i2", author: "rule", rollback: null };
-    const day = { date: "2026-10-27", from: null, summary: null, quiet: false, rulesReason: "Сегодня решения принимали страховочные правила: помощник был недоступен", insights: [ruleCard], weekly: null };
-    render(<SummaryView model={summary({ feed: feed({ days: [day] }) })} />);
-    expect(screen.getByTestId("rules-day").textContent).toBe("Сегодня решения принимали страховочные правила: помощник был недоступен");
-    expect(screen.getByTestId("insight").textContent).toContain("Сервис, страховочное правило");
-    expect(screen.queryByRole("button", { name: /Вернуть как было/ })).toBeNull();
-  });
-
-  it("says when the first review comes while there are no reviews yet, and not later on", () => {
-    const { unmount } = render(<SummaryView model={summary({ launchedDays: 1, compare: false, feed: feed({ days: [] }), decided: false })} />);
-    expect(plain(screen.getByTestId("summary-feed"))).toContain("первый разбор — завтра утром");
-    unmount();
-    render(<SummaryView model={summary({ feed: feed({ days: [] }) })} />);
-    expect(plain(screen.getByTestId("summary-feed"))).toContain("За этот период разборов не было");
-    expect(plain(screen.getByTestId("summary-feed"))).not.toContain("первый разбор");
-  });
-
-  it("shows «Разбор недели» with «Выяснили» and «Проверяем» (insights spec «Разбор недели в ленте»)", () => {
-    const monday = {
-      date: "2026-11-09",
-      from: null,
-      summary: null,
-      quiet: true,
-      rulesReason: null,
-      insights: [],
-      weekly: {
-        summary: "За неделю подтвердили, что с телефонов клиенты обходятся дороже.",
-        found: [{ id: "h1", statement: "С телефонов клиенты обходятся дороже", check: "Сравним цену обращения", checkOn: "2026-11-09", outcome: "подтвердилась", result: "Цена обращения снизилась." }],
-        checking: [{ id: "h2", statement: "Запросы со словом «обучение» не приводят клиентов", check: "Сравним цену обращения", checkOn: "2026-11-18", outcome: null, result: null }],
-        insights: [],
-      },
-    };
-    render(<SummaryView model={summary({ feed: feed({ days: [monday] }) })} />);
-    const weekly = plain(screen.getByTestId("weekly-review"));
-    expect(weekly).toContain("Разбор недели");
-    expect(weekly).toContain("За неделю подтвердили, что с телефонов клиенты обходятся дороже.");
-    expect(plain(screen.getByTestId("weekly-found"))).toBe("С телефонов клиенты обходятся дорожеПодтвердилась: Цена обращения снизилась.");
-    expect(plain(screen.getByTestId("weekly-checking"))).toBe("Запросы со словом «обучение» не приводят клиентовСравним цену обращения — к 18 ноября");
-  });
-
-  it("shows the days the rules decided alone as one line with the reason", () => {
-    const line = { date: "2026-11-30", from: "2026-11-04", summary: null, quiet: false, rulesReason: "Решения принимали страховочные правила: лимит расходов на помощника исчерпан", insights: [], weekly: null };
-    render(<SummaryView model={summary({ feed: feed({ days: [line] }) })} />);
-    const day = plain(screen.getByTestId("day-review"));
-    expect(day).toContain("С 4 по 30 ноября");
-    expect(day).toContain("Решения принимали страховочные правила: лимит расходов на помощника исчерпан");
-  });
-
   it("speaks of the simulation, not of Yandex, and offers to live the first week", () => {
     const { container } = render(
-      <SummaryView model={summary({ state: "first_day", simulation: { weeks: 0 }, spentMonth: 0, decided: false, feed: feed({ days: [] }), attention: { notifications: [], clientsQuestion: null } })} />,
+      <SummaryView model={summary({ state: "first_day", simulation: { weeks: 0 }, spentMonth: 0, decided: false, feed: feed({ days: [] }), attention: { notifications: [], clientsQuestion: null } })} work={work()} />,
     );
     const text = container.textContent ?? "";
     expect(text).toContain("Симуляция запущена");
     expect(text).toContain("в первую неделю");
     expect(text).not.toMatch(/Яндекс проверяет|проверку Яндекса|в вашем Яндекс Директе|в течение суток|пересчитывает/);
     expect(screen.getByRole("button", { name: /Прожить первую неделю/ })).toBeTruthy();
-    // The speed is gone with the running clock: the summary names no seconds or minutes.
-    expect(document.body.textContent).not.toMatch(/при текущей скорости|около минуты/);
   });
 
-  it("shows the launch state and the month budget on the first day, without the period switch and empty blocks", () => {
+  it("shows the launch state and the month budget on the first day, without empty blocks", () => {
     const { container } = render(
-      <SummaryView model={summary({ state: "first_day", spentMonth: 0, monthBudget: 145_100, feed: feed({ days: [] }), moderation: { pending: 3, accepted: 0, rejected: 0 }, attention: { notifications: [], clientsQuestion: null } })} />,
+      <SummaryView model={summary({ state: "first_day", spentMonth: 0, monthBudget: 145_100, feed: feed({ days: [] }), moderation: { pending: 3, accepted: 0, rejected: 0 }, attention: { notifications: [], clientsQuestion: null } })} work={work()} />,
     );
     const text = plain(container);
     expect(text).toContain("Первые результаты появятся в течение суток");
     expect(plain(screen.getByTestId("first-day-budget"))).toBe("Потрачено 0 ₽ из 1 451 ₽ в этом месяце — больше не потратим");
-    expect(screen.queryByText("Неделя")).toBeNull();
     expect(text).not.toContain("Нужно ваше участие");
+    expect(plain(screen.getByTestId("agent-journal"))).toContain("Записей пока нет");
   });
 
   it("does not compare with the starting value of the automatic goal", () => {
-    const { container } = render(<SummaryView model={summary({ goal: { mode: "auto", cso: 150_000, learned: false, current: 45_000, status: "within" } })} />);
+    const { container } = render(<SummaryView model={summary({ goal: { mode: "auto", cso: 150_000, learned: false, current: 45_000, status: "within" } })} work={work()} />);
     const text = plain(container);
-    expect(text).toContain("Цену обращения подбираем сами по вашим результатам · Сейчас: 450 ₽ за обращение");
+    expect(text).toContain("Цена обращения450 ₽Цену подбираем сами по вашим результатам");
     expect(text).not.toContain("1 500");
     expect(screen.queryByText("В цели")).toBeNull();
   });
 
-  it("shows the running check first in the feed as «Сейчас проверяем» in plain words", () => {
-    render(<SummaryView model={summary({ feed: feed({ check: { item: running, minDays: 7, maxDays: 21, minClicks: 100 } }) })} />);
-    expect(screen.getByTestId("insight-feed").firstElementChild?.getAttribute("data-testid")).toBe("experiment");
-    expect(screen.getByText("Сейчас проверяем")).toBeTruthy();
-    expect(screen.getByText(/Проверяем, приведёт ли «−15% на первый визит»/)).toBeTruthy();
-    // Both texts are shown, with what differs highlighted.
-    expect([...document.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(expect.arrayContaining(["−15%", "визит"]));
-    expect(document.body.textContent).not.toMatch(/CTR|конверси|ставк|CPC|CPA/i);
-    expect(screen.queryByText(/отключено/)).toBeNull();
+  it("keeps the history in the journal: the owner's change and a decision, each with «Вернуть как было», the facts behind one disclosure", () => {
+    render(<SummaryView model={summary()} work={work({ journal: [{ week: 2, from: "2026-10-26", to: "2026-11-01", entries: [decisionEntry, ownerEntry] }] })} />);
+    const changes = screen.getAllByTestId("journal-change");
+    expect(changes.map((c) => plain(c.querySelector(".log-change-text")))).toEqual(["Отключил объявление «Маникюр без записи»", "Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00"]);
+    expect(screen.getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(2);
+    expect(changes[1]?.querySelector("details")).toBeNull();
+    fireEvent.click(screen.getByText("Факты"));
+    expect(plain(changes[0] ?? null)).toContain("Объявление «Маникюр без записи»: расход за 14 дней1 530 ₽");
+    expect(screen.getByRole("link", { name: "Как сервис принял это решение" })).toHaveAttribute("href", "/history/turn/t1");
+    fireEvent.click(screen.getAllByRole("button", { name: "Вернуть как было" })[0] as HTMLElement);
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("marks a side of the check that was paused during it because it brought no clients", () => {
-    const paused = { ...running, control: { ...running.control, leads: 0, active: false } };
-    render(<SummaryView model={summary({ feed: feed({ check: { item: paused, minDays: 7, maxDays: 21, minClicks: 100 } }) })} />);
-    expect(screen.getByTestId("experiment").textContent).toContain("отключено — не приводило клиентов");
+  it("marks both sides of the running check and offers to switch a paused ad back on", () => {
+    const ad = { id: "a1", directionId: "d1", title: "Маникюр у метро", text: "Маникюр с покрытием от 1 800 ₽", channel: "search" as const, verdict: "effective" as const, fresh: false, pending: false, checking: true, clicks: 120, leads: 6, change: null };
+    render(<SummaryView model={summary()} work={work({ shown: [ad, { ...ad, id: "a3", text: "Маникюр с покрытием: −15% на первый визит" }], hidden: [{ id: "a2", title: "Маникюр без записи", paused: true }] })} />);
+    expect(screen.getAllByText("В проверке")).toHaveLength(2);
+    expect(screen.getByTestId("ads-effective").textContent).toContain("Приводят клиентов · 2");
+    expect(screen.getAllByRole("button", { name: /изменить текст/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /: отключить/ })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Маникюр без записи: включить" })).toBeTruthy();
+  });
+
+  it("names the training market only in the comparison line of a simulation", () => {
+    const sim = { comparison: { service: [3, 6], baseline: [3, 5], serviceNow: { spend: 100_000, leads: 6, costPerLead: 16_667 }, baselineNow: { spend: 100_000, leads: 5, costPerLead: 20_000 } }, result: null, decisionDays: [2], day: 3, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
+    const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
+    expect(plain(screen.getByTestId("sim-comparison"))).toContain("За 2 дня: с сервисом 6 обращений, без него было бы 5пока рано сравнивать");
+    expect(plain(container).match(/учебн/gi)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { toLocalDate } from "@impuls/core";
 import { SCENARIO_IDS, SCENARIOS, scenarioStartDate } from "@impuls/worker/scenarios";
 import { z } from "zod";
-import { buildLaunchPlan, firstIncompleteStep, hasOwnSite, STEP_COUNT } from "@/lib/onboarding";
+import { buildLaunchPlan, firstIncompleteStep, hasOwnSite, STEP_COUNT, stepProblems } from "@/lib/onboarding";
 import { findBusiness, readDraft } from "@/lib/server/business";
 import { ApiError, handleApi } from "@/lib/server/errors";
 import { enqueueWebJob } from "@/lib/server/jobs";
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       throw new ApiError(409, "ALREADY_LAUNCHED", "Реклама уже запущена");
     }
     const draft = readDraft(business);
-    if (firstIncompleteStep(draft) < STEP_COUNT || business.onboardingStep < STEP_COUNT) {
+    if (firstIncompleteStep(draft) < STEP_COUNT || stepProblems(STEP_COUNT, draft).length > 0 || business.onboardingStep < STEP_COUNT) {
       throw new ApiError(400, "STEP_INCOMPLETE", "Заполните все шаги перед запуском");
     }
     // Every ad must lead to a landing page (platform-integration spec); the mini-site can only be made after launch yet.

@@ -1,4 +1,4 @@
-import { addDays, toLocalDate } from "@impuls/core";
+import { addDays, daysBetween, toLocalDate } from "@impuls/core";
 import type { InsightFact, InsightMetric, InsightPeriod, LocalDate } from "@impuls/core";
 import type { HypothesisRecord, InsightRecord, TurnDigest } from "@impuls/worker";
 import { QUIET_DAY_CODE, RULES_DAY_CODE } from "@impuls/worker/change-kinds";
@@ -16,7 +16,7 @@ export const INSIGHT_AUTHORS: Record<InsightAuthor, string> = {
 
 export const DECISION_LABELS: Record<Exclude<InsightRecord["decision"]["status"], "none">, { text: string; tone: "success" | "warning" | "danger" }> = {
   applied: { text: "Применено", tone: "success" },
-  clamped: { text: "Урезано", tone: "warning" },
+  clamped: { text: "Применено с ограничением", tone: "warning" },
   rejected: { text: "Отклонено", tone: "danger" },
 };
 
@@ -37,6 +37,8 @@ export interface InsightCardModel {
   author: InsightAuthor;
   at: string;
   observation: string;
+  originalObservation?: string;
+  originalDecision?: string;
   facts: InsightFactView[];
   decision: { text: string; status: InsightRecord["decision"]["status"] };
   next: string;
@@ -147,6 +149,12 @@ export const factLabel = (fact: Pick<InsightFact, "object" | "metric" | "period"
   return SELF_NAMED.has(fact.metric) ? sentence(what) : `${sentence(fact.object)}: ${what}`;
 };
 
+export const factLabelForAge = (fact: Pick<InsightFact, "object" | "metric" | "period">, workingDays?: number): string => {
+  const label = factLabel(fact);
+  return workingDays !== undefined && ((fact.period === "14d" && workingDays < 14) || (fact.period === "7d" && workingDays < 7))
+    ? `${label} (окно расчёта; дней работы: ${workingDays})` : label;
+};
+
 /** «1 530 ₽», «0», «500 ₽ за обращение» */
 export const factValue = (fact: Pick<InsightFact, "metric" | "unit" | "value">): string => {
   if (fact.unit === "count") return formatCount(fact.value);
@@ -173,6 +181,7 @@ export const feedDays = (input: {
   turns: readonly TurnDigest[];
   timeZone: string;
   since: LocalDate | null;
+  launchedOn?: LocalDate | null;
   /** History entries by id, for «Вернуть как было». */
   entries: ReadonlyMap<string, HistoryItem>;
   truthOf?: TruthOf;
@@ -223,9 +232,11 @@ export const feedDays = (input: {
       continue;
     }
     const card = (record: InsightRecord): InsightCardModel => {
-      const rollback = record.decision.changeIds.map((id) => input.entries.get(id)).find((item) => item?.rollback.kind === "available") ?? null;
+      const entry = record.decision.changeIds.map((id) => input.entries.get(id)).find((item) => item !== undefined) ?? null;
+      const rollback = entry?.rollback.kind === "available" ? entry : null;
       const goal = record.facts.find((f) => f.metric === "goal");
-      return toInsightCard(record, rollback, record.objectRef && input.truthOf ? input.truthOf(record.objectRef, goal ? goal.value * 100 : null) : null);
+      const workingDays = input.launchedOn ? Math.max(1, daysBetween(input.launchedOn, toLocalDate(record.createdAt, input.timeZone)) + 1) : undefined;
+      return toInsightCard(record, rollback, record.objectRef && input.truthOf ? input.truthOf(record.objectRef, goal ? goal.value * 100 : null) : null, entry, workingDays);
     };
     // The weekly review is a group of its own; the day's review and insights are the other turns' (insights spec).
     const weeklyTurn = [...d.turns].reverse().find((t) => t.trigger === "weekly_review");
@@ -263,13 +274,14 @@ const rangeReason = (reason: string): string => reason.replace(/^Сегодня 
 const sameReason = (a: string, b: string): boolean => rangeReason(a) === rangeReason(b);
 
 /** A stored insight as its card; the values of the facts are the snapshot's, never the agent's text. */
-export const toInsightCard = (record: InsightRecord, rollback: HistoryItem | null, truth: TruthLine | null): InsightCardModel => ({
+export const toInsightCard = (record: InsightRecord, rollback: HistoryItem | null, truth: TruthLine | null, entry: Pick<HistoryItem, "decisionText"> | null = rollback, workingDays?: number): InsightCardModel => ({
   id: record.id,
   author: record.source,
   at: record.createdAt.toISOString(),
   observation: record.observation,
-  facts: record.facts.map((f) => ({ label: factLabel(f), value: factValue(f) })),
-  decision: { text: record.decision.text, status: record.decision.status },
+  originalDecision: record.decision.text,
+  facts: record.facts.map((f) => ({ label: factLabelForAge(f, workingDays), value: factValue(f) })),
+  decision: { text: record.decision.status === "rejected" ? `Изменение не применено: ${record.decision.text}` : entry?.decisionText ?? record.decision.text, status: record.decision.status },
   next: record.next,
   rollback,
   truth,

@@ -1,15 +1,18 @@
 "use client";
 
-import { ClockCircleOutlined, PhoneOutlined, RocketOutlined, SafetyCertificateOutlined, ShopOutlined, WalletOutlined, WarningOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, PhoneOutlined, RocketOutlined, SafetyCertificateOutlined, ShopOutlined, WalletOutlined } from "@ant-design/icons";
 import { Alert, Button } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
 import { formatLocalDate } from "@/lib/format";
-import { advertisedText, budgetCeilingText, COUNTER_MISSING_WARNING, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
+import { advertisedText, budgetCeilingText, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
+import { measurementState } from "@/lib/measurement";
+import { MeasurementNotice } from "../MeasurementNotice";
 import { Note } from "../ui/primitives";
+import { checkOnServer, CounterCheckBlock, GoalsStep } from "./GoalsStep";
 
 /** Shown when Direct refuses to start ads because the advertiser data for marking is missing. */
 export function AdvertiserDataNotice({ onDone }: { onDone: () => void }) {
@@ -37,12 +40,16 @@ interface Props {
   today: string;
   /** Opens the wizard step where this line of the summary is changed. */
   onEdit: (step: number) => void;
+  /** What counts as a lead is changed right here, and the counter check writes its result into the draft. */
+  onChange?: (draft: OnboardingDraft) => void;
+  errors?: Record<string, string>;
   /** «Запустить в симуляции» with this scenario instead of Direct. */
   simulation?: { scenario: string };
 }
 
-export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
+export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors = {} }: Props) {
   const router = useRouter();
+  const [goalsOpen, setGoalsOpen] = useState(errors.goals !== undefined);
   const [state, setState] = useState<{ kind: "idle" | "running" | "pending" | "advertiser_data" } | { kind: "error"; message: string }>({ kind: "idle" });
   const budget = draft.budget.monthlyBudgetRub ?? 0;
   const counter = counterOf(draft);
@@ -63,7 +70,7 @@ export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
   };
 
   // Four lines, each changed on its own step; technical details stay in the settings (business-onboarding spec).
-  const items: { icon: ReactNode; title: string; text: string; step: number }[] = [
+  const items: { icon: ReactNode; title: string; text: string; step: number | "goals" }[] = [
     { icon: <ShopOutlined />, title: "Что рекламируем", text: advertisedText(draft.card), step: 2 },
     { icon: <ClockCircleOutlined />, title: "Где и когда", text: `Город «${draft.card.city}», ${hoursWords(draft.card)}`, step: 2 },
     {
@@ -71,9 +78,10 @@ export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
       title: "Бюджет",
       // The simulated month starts on its own date, not today, so the owner sees why it differs from the budget step.
       text: simulation ? `Симуляция начнётся ${formatLocalDate(today)}. ${budgetCeilingText(budget, today)}` : budgetCeilingText(budget, today),
-      step: 4,
+      step: 2,
     },
-    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label).join(", "), step: 3 },
+    // Chosen in advance and changed in place: there is no step of its own (business-onboarding «Определение клиента»).
+    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label.toLowerCase()).join(", ") || "ничего не выбрано", step: "goals" },
   ];
 
   return (
@@ -86,21 +94,19 @@ export function LaunchStep({ draft, today, onEdit, simulation }: Props) {
               <span className="t-small">{item.title}</span>
               <span className="t-body">{item.text}</span>
             </div>
-            <button type="button" className="link-button" onClick={() => onEdit(item.step)} aria-label={`${item.title}: изменить`}>
+            <button type="button" className="link-button" onClick={() => (item.step === "goals" ? setGoalsOpen(!goalsOpen) : onEdit(item.step))} aria-label={`${item.title}: изменить`} aria-expanded={item.step === "goals" ? goalsOpen : undefined}>
               изменить
             </button>
           </li>
         ))}
       </ul>
-      {hasOwnSite(draft) && counter?.status !== "found" && !simulation ? (
-        <Note tone="warning" icon={<WarningOutlined aria-hidden="true" />} data-testid="launch-counter-warning">
-          <strong>Счётчика Метрики на сайте пока нет.</strong> {COUNTER_MISSING_WARNING}
-        </Note>
-      ) : null}
-      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис будет менять, вы увидите в истории простыми словами и сможете вернуть одной кнопкой.</Note>
+      {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
+      {/* One notice about counting leads: the check itself for a real launch, the training data's note in a simulation. */}
+      {simulation === undefined && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation !== undefined)} />}
+      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис меняет, видно в журнале, и почти любое изменение можно вернуть одной кнопкой.</Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
-      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть сводку</Button>} /> : null}
+      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть рекламу</Button>} /> : null}
       <Button
         type="primary"
         size="large"

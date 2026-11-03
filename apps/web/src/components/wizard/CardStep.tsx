@@ -23,8 +23,7 @@ export function CardStep({ draft, onChange, errors = {} }: StepProps) {
   const setService = (index: number, patch: Partial<Card["services"][number]>) =>
     set({ services: card.services.map((s, i) => (i === index ? { ...s, ...patch } : s)) });
   const setAdvantage = (index: number, value: string) => set({ advantages: card.advantages.map((a, i) => (i === index ? value : a)) });
-  const extrasFilled = !empty(card.phone) || !empty(card.typicalClient) || card.advantages.some((a) => !empty(a));
-  const [extras, setExtras] = useState(extrasFilled);
+  const [extras, setExtras] = useState(false);
   const [zoneOpen, setZoneOpen] = useState(false);
   const allDay = card.openFrom === ALL_DAY.openFrom && card.openTo === ALL_DAY.openTo;
   /** The city decides the time zone, unless the owner picked one by hand. */
@@ -40,23 +39,6 @@ export function CardStep({ draft, onChange, errors = {} }: StepProps) {
           </Note>
         </div>
       ) : null}
-      <div className="form-section">
-        <h2 className="t-eyebrow">О бизнесе</h2>
-        {/* Bottom-aligned: a «Не нашли» mark may wrap one label to two lines, the inputs still line up. */}
-        <div className="row" style={{ "--gap": "16px", alignItems: "flex-end" } as React.CSSProperties}>
-          <div style={{ flex: "1 1 220px" }}>
-            <Field label="Название" missing={optionalMissing(card.name)} optional>
-              <Input value={card.name} onChange={(e) => set({ name: e.target.value })} placeholder="Например: Ноготок" aria-label="Название" maxLength={100} />
-            </Field>
-          </div>
-          <div style={{ flex: "1 1 220px" }}>
-            <Field label="Чем вы занимаетесь" missing={optionalMissing(card.category)} optional>
-              <Input value={card.category} onChange={(e) => set({ category: e.target.value })} placeholder="Например: маникюрная студия" aria-label="Чем вы занимаетесь" maxLength={100} />
-            </Field>
-          </div>
-        </div>
-      </div>
-
       <div className="form-section">
         <h2 className="t-eyebrow">Услуги и цены</h2>
         <Field id="services" label="Что вы продаёте" error={errors.services} missing={!card.services.some((s) => !empty(s.name))} help={priceMissing ? undefined : "Цены необязательны, но точная цена в объявлении привлекает больше людей."}>
@@ -94,28 +76,31 @@ export function CardStep({ draft, onChange, errors = {} }: StepProps) {
       </div>
 
       <div className="form-section">
-        <h2 className="t-eyebrow">Где и когда</h2>
-        <Field label="Адрес" missing={optionalMissing(card.address)} optional help="Если принимаете в студии — по нему мы напишем, где вас найти. Работаете на выезде или онлайн — оставьте пустым.">
-          <Input
-            value={card.address}
-            onChange={(e) => {
-              const address = e.target.value;
-              // The city follows the address until the owner sets it by hand.
-              if (card.city === "" || card.city === cityOf(card.address)) setCity(cityOf(address), address);
-              else set({ address });
-            }}
-            placeholder="Москва, ул. Профсоюзная, 1"
-            aria-label="Адрес"
-            maxLength={200}
-          />
-        </Field>
         <Field id="city" label="Город" error={errors.city} missing={empty(card.city)} help="Реклама будет показываться людям в этом городе.">
           <Input value={card.city} onChange={(e) => setCity(e.target.value)} placeholder="Москва" aria-label="Город" maxLength={100} style={{ maxWidth: 320 }} />
+        </Field>
+        <button type="button" className="link-button" aria-expanded={extras || Boolean(errors.hours)} onClick={() => setExtras(!extras)}>
+          {extras ? <UpOutlined aria-hidden="true" /> : <DownOutlined aria-hidden="true" />} Дополнительные сведения
+        </button>
+        <p className="t-small">Название, адрес, часы работы и преимущества — проверьте, если нужно уточнить объявления.</p>
+        {extras || errors.hours ? <>
+        <Field label="Название" missing={optionalMissing(card.name)} optional>
+          <Input value={card.name} onChange={(e) => set({ name: e.target.value })} placeholder="Например: Ноготок" aria-label="Название" maxLength={100} />
+        </Field>
+        <Field label="Чем вы занимаетесь" missing={optionalMissing(card.category)} optional>
+          <Input value={card.category} onChange={(e) => set({ category: e.target.value })} placeholder="Например: маникюрная студия" aria-label="Чем вы занимаетесь" maxLength={100} />
+        </Field>
+        <Field label="Адрес" missing={optionalMissing(card.address)} optional help="Работаете на выезде или онлайн — оставьте пустым.">
+          <Input value={card.address} onChange={(e) => {
+            const address = e.target.value;
+            if (card.city === "" || card.city === cityOf(card.address)) setCity(cityOf(address), address);
+            else set({ address });
+          }} placeholder="Москва, ул. Профсоюзная, 1" aria-label="Адрес" maxLength={200} />
         </Field>
         <Field id="hours" label="Часы работы" error={errors.hours} help={card.openTo < card.openFrom && !allDay ? "Закрываетесь после полуночи — так и покажем рекламу." : undefined}>
           <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
             {/* Narrow enough for one line on a phone; «Круглосуточно» may wrap below. */}
-            <div className="row" style={{ "--gap": "8px", flexWrap: "nowrap" } as React.CSSProperties}>
+            <div className="row" style={{ "--gap": "8px", flexWrap: "wrap" } as React.CSSProperties}>
               <Select value={card.days} onChange={(days) => set({ days })} options={DAY_OPTIONS.map((d) => ({ value: d, label: d }))} style={{ width: 96 }} aria-label="Дни работы" />
               {allDay ? null : (
                 <>
@@ -143,22 +128,10 @@ export function CardStep({ draft, onChange, errors = {} }: StepProps) {
         {zoneOpen ? (
           <Select value={card.timeZone} onChange={(timeZone) => set({ timeZone })} options={TIME_ZONES.map((t) => ({ value: t.value, label: t.label }))} style={{ width: 260 }} aria-label="Часовой пояс" />
         ) : null}
+        </> : null}
       </div>
 
       <div className="form-section">
-        <button
-          type="button"
-          onClick={() => setExtras(!extras)}
-          aria-expanded={extras}
-          className="row"
-          style={{ background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit", color: "var(--text)", justifyContent: "space-between", width: "100%" }}
-        >
-          <span className="stack" style={{ "--gap": "4px", textAlign: "left" } as React.CSSProperties}>
-            <span className="t-h3">Подробности</span>
-            <span className="t-small">Телефон, ваш клиент и преимущества — с ними объявления получаются точнее</span>
-          </span>
-          {extras ? <UpOutlined /> : <DownOutlined />}
-        </button>
         {extras ? (
           <>
             <Field label="Телефон" missing={optionalMissing(card.phone)} optional>

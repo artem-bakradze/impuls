@@ -34,6 +34,12 @@ export interface SimulationStep {
   kind: "week" | "day";
   from: Date;
   to: Date;
+  /** Absent only for runs saved before explicit step completion existed. */
+  state?: "pending" | "running" | "completed" | "failed" | undefined;
+  completedAt?: Date | undefined;
+  errorCode?: string | undefined;
+  /** Versioned JSON snapshot; dates are restored by readWeekReport. */
+  report?: string | undefined;
 }
 
 /** A recorded agent turn of the run being repeated, with the virtual time it started at. */
@@ -120,6 +126,8 @@ export interface BusinessRecord {
     city: string;
     /** The owner's site every ad leads to. */
     siteUrl: string;
+    /** Latest code-presence check, not proof of goal delivery. */
+    measurement?: { siteUrl: string; status: "found" | "not_found" | "unreachable"; counterId: number | null };
   };
 }
 

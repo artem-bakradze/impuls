@@ -1,4 +1,7 @@
 import "server-only";
+import { GOAL_OPTIONS } from "../onboarding";
+import { buildHistory } from "./history";
+import { measurementFromCard } from "../measurement";
 import type { SettingsModel } from "../settings-model";
 import { parseSchedule } from "../settings-model";
 import { readDraft } from "./business";
@@ -44,13 +47,14 @@ const miniSiteModel = (business: Awaited<ReturnType<ReturnType<typeof store>["ge
 
 export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> => {
   const s = store();
-  const [business, directions, ads] = await Promise.all([s.getBusiness(row.id), s.directions(row.id), s.ads(row.id)]);
+  const [business, directions, ads, history] = await Promise.all([s.getBusiness(row.id), s.directions(row.id), s.ads(row.id), buildHistory(row.id)]);
   const draft = readDraft(row);
   const strategies = new Map(platformCapabilities(business.mode).strategies.map((st) => [st.id, st.title]));
   const names = new Map(directions.map((d) => [d.id, d.name]));
   const first = directions[0];
   return {
     timeZone: business.timeZone,
+    measurement: measurementFromCard(business.card, business.mode === "simulation"),
     card: { category: business.card.category, services: business.card.services, advantages: business.card.advantages },
     siteUrl: draft.sources.siteUrl === "" ? null : draft.sources.siteUrl,
     miniSite: miniSiteModel(business, draft),
@@ -61,6 +65,10 @@ export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> =>
     paused: directions.length > 0 && directions.every((d) => d.status === "paused"),
     supportEmail: supportEmail(),
     ads: ads.map((a) => ({ id: a.id, title: a.title, text: a.text, status: a.status, moderation: a.moderation, direction: names.get(a.directionId) ?? "" })),
+    goals: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label),
+    budgetAdjustments: history.items
+      .filter((h) => h.budgetAdjustment)
+      .map((h) => ({ id: h.id, at: h.at, text: `${h.object}: ${h.diff.map((d) => `было ${d.before} → стало ${d.after}`).join("; ")}` })),
     directions: directions.map((d) => ({
       id: d.id,
       name: d.name,

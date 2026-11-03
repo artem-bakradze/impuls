@@ -15,7 +15,6 @@ import { CardStep } from "./CardStep";
 import { DirectStep } from "./DirectStep";
 import { GenerationProgress } from "./GenerationProgress";
 import type { GenerationKind } from "./GenerationProgress";
-import { GoalsStep } from "./GoalsStep";
 import { LaunchStep } from "./LaunchStep";
 import { PreviewStep } from "./PreviewStep";
 import { defaultScenario, ModeChoice, ScenarioPicker } from "./SimulationChoice";
@@ -40,18 +39,15 @@ export interface StepProps {
 }
 
 const LEADS: Record<number, string> = {
-  1: "Ссылка на сайт обязательна — на него будет вести реклама. Карты, ВКонтакте и пара слов о вас помогут нам точнее понять бизнес.",
-  2: "Проверьте карточку — по ней мы напишем объявления. Чего не нашли, мы не придумываем: допишите сами.",
-  3: "Что считать обращением — действием, после которого человек может стать вашим клиентом. По этому мы будем судить, какая реклама работает.",
-  4: "Больше этой суммы мы не потратим никогда, а цену обращения подберём сами.",
-  5: "Мы написали объявления по вашей карточке. Поправьте текст или уберите лишнее — до запуска их никто не увидит.",
-  6: "Реклама будет работать в вашем аккаунте Яндекс Директа: деньги списываются с его баланса. Подключите его, проверьте итог и запускайте.",
+  1: "На ваш сайт будет вести реклама. По нему мы поймём, чем вы занимаетесь.",
+  2: "По этой карточке мы напишем объявления. Чего не нашли, не придумываем — допишите сами.",
+  3: "Поправьте объявления, если нужно, и выберите, как запустить: в своём Яндекс Директе или сначала в симуляции, без денег.",
 };
 
-/** Step 6 when the simulation is chosen: nothing about the Direct balance (business-onboarding spec). */
-const SIMULATION_LEAD = "Тот же сервис на симуляторе рынка, без денег и без Директа: время идёт по неделям, и после каждой видно, что он заметил и решил. Проверьте итог и запускайте.";
+/** The last step when the simulation is chosen: nothing about the Direct balance (business-onboarding spec). */
+const SIMULATION_LEAD = "Месяц рекламы на симуляторе рынка, без денег и без Директа: после каждой недели видно, что сервис заметил и решил.";
 
-/** One progress indicator: six segments, read together with «Шаг N из 6». */
+/** One progress indicator: three segments, read together with «Шаг N из 3». */
 function Progress({ step }: { step: number }) {
   return (
     <div className="steps-bar" aria-hidden="true">
@@ -93,7 +89,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
     setDraft(next);
     setStep(target);
     setAttempted(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
 
   /** Saves the current step without moving, so the worker reads what the owner sees. */
@@ -149,9 +145,11 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
     const found = stepIssues(step, draft);
     if (found.length > 0) {
       setAttempted(true);
-      const first = document.getElementById(`field-${found[0]?.field ?? ""}`);
-      first?.scrollIntoView({ behavior: "smooth", block: "center" });
-      first?.querySelector<HTMLElement>("input, textarea, [role=combobox], button")?.focus({ preventScroll: true });
+      requestAnimationFrame(() => {
+        const first = document.getElementById(`field-${found[0]?.field ?? ""}`);
+        first?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+        first?.querySelector<HTMLElement>("input, textarea, [role=combobox], button")?.focus({ preventScroll: true });
+      });
       return;
     }
     const next = step === 1 ? withNormalizedLinks(draft) : draft;
@@ -160,10 +158,11 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
       await extractCard(next);
       return;
     }
-    if (step === 4 && (next.ads === null || next.keywords === null)) {
+    // The ads are written from the confirmed card when the owner leaves step 2.
+    if (step === 2 && (next.ads === null || next.keywords === null)) {
       const generated = await generateCreatives(next);
       if (generated !== null) {
-        void goTo(5, generated);
+        void goTo(3, generated);
       }
       return;
     }
@@ -180,7 +179,15 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   const stepProps: StepProps = { draft, onChange: setDraft, errors };
   const working = saving || busy !== null;
   const showNext = step < STEP_COUNT;
-  const simulating = step === 6 && mode === "simulation";
+  const simulating = step === STEP_COUNT && mode === "simulation";
+  /** «изменить» of the summary: the card and the budget are on step 2; the ads are on this very step. */
+  const edit = (target: number) => {
+    if (target >= STEP_COUNT) {
+      document.getElementById("field-ads")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      return;
+    }
+    void goTo(target, draft);
+  };
   const chooseMode = (next: LaunchMode) => {
     setMode(next);
     // The recommended scenario is selected in advance, so «Запустить симуляцию» is there right away.
@@ -204,42 +211,53 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
             {notice}
           </Note>
         ) : null}
-        {busy !== null && step !== 5 ? (
+        {busy !== null && step !== STEP_COUNT ? (
           <GenerationProgress kind={busy} />
         ) : (
-          <div className="surface surface-pad">
-            {step === 1 ? <SourcesStep {...stepProps} /> : null}
-            {step === 2 ? <CardStep {...stepProps} /> : null}
-            {step === 3 ? <GoalsStep {...stepProps} /> : null}
-            {step === 4 ? <BudgetStep {...stepProps} today={todayIn(draft.card.timeZone)} /> : null}
-            {step === 5 ? <PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} /> : null}
-            {step === 6 ? (
-              <div className="stack" style={{ "--gap": "24px" } as React.CSSProperties}>
-                <ModeChoice mode={mode} onChange={chooseMode} />
-                {mode === "direct" ? (
-                  <>
-                    <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(6, { ...draft, directConnected: true })} />
-                    {draft.directConnected ? <LaunchStep draft={draft} today={todayIn(draft.card.timeZone)} onEdit={(target) => void goTo(target, draft)} /> : null}
-                  </>
-                ) : (
-                  <>
-                    <ScenarioPicker draft={draft} scenario={scenario} onChange={setScenario} onEdit={(target) => void goTo(target, draft)} />
-                    {scenario !== null ? (
-                      <LaunchStep
-                        draft={draft}
-                        // The simulated month starts on its own date, so the budget line is for that month.
-                        today={scenarioStartDate(SCENARIOS[scenario], todayIn(draft.card.timeZone))}
-                        onEdit={(target) => void goTo(target, draft)}
-                        simulation={{ scenario }}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </div>
+          <>
+            {step === 1 ? <div className="surface surface-pad"><SourcesStep {...stepProps} /></div> : null}
+            {step === 2 ? (
+              <>
+                <div className="surface surface-pad"><CardStep {...stepProps} /></div>
+                <div className="surface surface-pad" data-testid="budget-step">
+                  <BudgetStep {...stepProps} today={todayIn(draft.card.timeZone)} />
+                </div>
+              </>
             ) : null}
-          </div>
+            {step === STEP_COUNT ? (
+              <>
+                <div className="surface surface-pad"><PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} /></div>
+                {busy !== null ? <GenerationProgress kind={busy} /> : null}
+                <div className="surface surface-pad">
+                  <div className="stack" style={{ "--gap": "24px" } as React.CSSProperties}>
+                    <ModeChoice mode={mode} onChange={chooseMode} />
+                    {mode === "direct" ? (
+                      <>
+                        <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(STEP_COUNT, { ...draft, directConnected: true })} />
+                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} /> : null}
+                      </>
+                    ) : (
+                      <>
+                        <ScenarioPicker draft={draft} scenario={scenario} onChange={setScenario} onEdit={edit} />
+                        {scenario !== null ? (
+                          <LaunchStep
+                            draft={draft}
+                            onChange={setDraft}
+                            errors={errors}
+                            // The simulated month starts on its own date, so the budget line is for that month.
+                            today={scenarioStartDate(SCENARIOS[scenario], todayIn(draft.card.timeZone))}
+                            onEdit={edit}
+                            simulation={{ scenario }}
+                          />
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </>
         )}
-        {busy !== null && step === 5 ? <GenerationProgress kind={busy} /> : null}
         {error ? <Alert type="error" showIcon title={error} /> : null}
       </div>
 

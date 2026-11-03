@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./scenarios": "./src/scenarios.ts",
-    "./change-kinds": "./src/change-kinds.ts"
+    "./change-kinds": "./src/change-kinds.ts",
+    "./simulation-report": "./src/simulation-report.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json",

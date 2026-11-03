@@ -1,9 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyDraft } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import type { HistoryItem, Names } from "@/lib/history-view";
-import { HistoryEntry } from "./history/HistoryView";
 import { RollbackDialog } from "./history/RollbackDialog";
 import type { RollbackOutput } from "./history/RollbackDialog";
 import { BudgetStep } from "./wizard/BudgetStep";
@@ -63,61 +62,6 @@ describe("BudgetStep", () => {
   });
 });
 
-describe("history entry", () => {
-  it("shows «было → стало» and the rollback button", () => {
-    render(<HistoryEntry item={scheduleChange} timeZone="Europe/Moscow" onRollback={() => undefined} />);
-    expect(screen.getByText("Вы")).toBeInTheDocument();
-    expect(screen.getByText("Время показа: было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Вернуть как было" })).toBeInTheDocument();
-  });
-
-  it("shows a negative phrase of the agent with its rollback (add-agent-analyst-stage1)", () => {
-    const negative: HistoryItem = {
-      ...scheduleChange,
-      author: "service",
-      diff: [{ label: "Минус-фразы", before: "нет", after: "«бесплатно»" }],
-      explanation: "По запросу «маникюр бесплатно» за 14 дней потратили 640 ₽ и не получили ни одного обращения.",
-      rollback: { kind: "available", consequences: ["реклама снова будет показываться по этим запросам", "минус-фразы других изменений останутся"] },
-    };
-    render(<HistoryEntry item={negative} timeZone="Europe/Moscow" onRollback={() => undefined} />);
-    expect(screen.getByText("Минус-фразы: было нет → стало «бесплатно»")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Вернуть как было" })).toBeInTheDocument();
-  });
-
-  it("explains why an irreversible change has no button", () => {
-    const irreversible: HistoryItem = { ...scheduleChange, rollback: { kind: "unavailable", reason: "Это нельзя вернуть: итог проверки уже посчитан по фактическим данным." } };
-    render(<HistoryEntry item={irreversible} timeZone="Europe/Moscow" onRollback={() => undefined} />);
-    expect(screen.queryByRole("button", { name: "Вернуть как было" })).toBeNull();
-    expect(screen.getByText(/итог проверки уже посчитан/)).toBeInTheDocument();
-  });
-
-  it("opens the insight of the decision by «Почему», with its facts", () => {
-    const decision: HistoryItem = {
-      ...scheduleChange,
-      author: "service",
-      insight: {
-        id: "i1",
-        author: "agent",
-        at: "2026-10-28T03:00:00Z",
-        observation: "Объявление «Маникюр без записи» тратит деньги и не приводит клиентов.",
-        facts: [{ label: "Объявление «Маникюр без записи»: расход за 14 дней", value: "1 530 ₽" }],
-        decision: { text: "Отключили объявление «Маникюр без записи»", status: "applied" },
-        next: "Через 7 дней сравним цену обращения с прежней.",
-        rollback: null,
-        truth: null,
-        objectIds: [],
-      },
-    };
-    render(<HistoryEntry item={decision} timeZone="Europe/Moscow" onRollback={() => undefined} />);
-    expect(screen.queryByTestId("insight")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Почему/ }));
-    fireEvent.click(within(screen.getByTestId("insight")).getByRole("button", { name: /На каких данных и что дальше/ }));
-    expect(screen.getByTestId("insight").textContent).toContain("Объявление «Маникюр без записи»: расход за 14 дней");
-    // The entry keeps its own «Вернуть как было»; the insight under it has none.
-    expect(screen.getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(1);
-  });
-});
-
 describe("RollbackDialog", () => {
   it("shows consequences, then offers to roll back later changes together", async () => {
     const run = vi
@@ -174,7 +118,7 @@ describe("GoalsStep", () => {
     const check = vi.fn().mockResolvedValue({ kind: "done", output: { status: "found", counterId: 12345678 } });
     const { rerender } = render(<GoalsStep draft={withSite()} onChange={(d) => (saved = d)} checkCounter={check} />);
     expect(screen.getByRole("checkbox", { name: /Заявка или запись с сайта/ })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Звонок по номеру с сайта/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Нажатие на номер телефона/ })).toBeChecked();
     await waitFor(() => expect(saved?.counter).toEqual({ siteUrl: "https://nogotok.example", status: "found", counterId: 12345678 }));
     expect(check).toHaveBeenCalledOnce();
     rerender(<GoalsStep draft={saved ?? withSite()} onChange={() => undefined} checkCounter={check} />);
@@ -221,8 +165,8 @@ describe("LaunchStep", () => {
     expect(screen.queryByText(/в неделю/)).toBeNull();
     expect(screen.queryByText(/Цена обращения/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Бюджет: изменить" }));
-    expect(onEdit).toHaveBeenCalledWith(4);
-    expect(screen.getByTestId("launch-counter-warning")).toHaveTextContent("Счётчика Метрики на сайте пока нет");
+    expect(onEdit).toHaveBeenCalledWith(2);
+    expect(screen.getByTestId("measurement-status")).toHaveTextContent("Учёт обращений ещё не проверен");
   });
 
   it("names what is advertised without repeating the category", () => {
@@ -231,9 +175,10 @@ describe("LaunchStep", () => {
     expect(screen.queryByText("Маникюр: Маникюр с покрытием")).toBeNull();
   });
 
-  it("speaks of the chosen way on step 6: the simulation has its own title and a scenario selected in advance", () => {
-    render(<Wizard initialDraft={ready()} initialStep={6} directApiMode="simulator" directOutcome={null} />);
-    expect(screen.getByRole("heading", { name: "Подключите Яндекс Директ и запустите" })).toBeInTheDocument();
+  it("speaks of the chosen way on the last step: the simulation has its own title and a scenario selected in advance", () => {
+    render(<Wizard initialDraft={ready()} initialStep={3} directApiMode="simulator" directOutcome={null} />);
+    expect(screen.getByText("Шаг 3 из 3")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Объявления и запуск" })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Симуляция"));
     expect(screen.getByRole("heading", { name: "Запустите симуляцию" })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("списываются с его баланса");
@@ -243,9 +188,9 @@ describe("LaunchStep", () => {
     expect(document.body.textContent).not.toContain("В этом месяце — до");
   });
 
-  it("has no counter warning when the counter was found", () => {
+  it("distinguishes a found counter from confirmed event delivery", () => {
     const draft = { ...ready(), counter: { siteUrl: "https://nogotok.example", status: "found" as const, counterId: 1 } };
     render(<LaunchStep draft={draft} today="2026-11-01" onEdit={() => undefined} />);
-    expect(screen.queryByTestId("launch-counter-warning")).toBeNull();
+    expect(screen.getByTestId("measurement-status")).toHaveTextContent("получение обращений пока не подтверждено");
   });
 });

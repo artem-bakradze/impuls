@@ -63,20 +63,20 @@ Works in any environment, including production; nothing reaches the Direct API a
 `AGENT_SIMULATION_RUN_LIMIT_RUB`); a week without model calls takes under 30 s, plus the agent's reviews (≈17 s
 each). «Повторить этот прогон» replays a run without the model. `heuristic` shows the same screens for free.
 
-1. Sign in, go through the wizard (budget from 10 000 ₽, keep at least 2 search ads for «Одно объявление не приносит
-   клиентов»).
-2. On step 6 choose «Симуляция»: «Обычный месяц» is selected, the others are under «Другие сценарии». Press
+1. Sign in and go through the three wizard steps: the site, the card with the budget (from 10 000 ₽), the ads and the
+   launch (keep at least 2 search ads for «Одно объявление не приносит клиентов»).
+2. On the last step choose «Симуляция»: «Обычный месяц» is selected, the others are under «Другие сценарии». Press
    «Запустить симуляцию». The simulated month starts on the 1st of the next month; the time stands until you step it.
-3. Press «Прожить неделю» on the pult (or «Прожить первую неделю» on the summary): the pult says which day goes and
-   when the service reviews a day; then «Как решает сервис» opens with the week's story — the ads' numbers with the
-   service's estimate and the scenario's truth, the service's insights one by one, its decisions with the guard's
-   answers and «Вернуть как было», and the comparison «с сервисом / без сервиса». «Показать сразу» skips the scenes.
-4. Below the story: the comparison by day, the checklist of what the scenario shows (with «обычно к N-му дню») and the
-   feed of the run, where every insight about an ad or advertising says «На самом деле: …».
-   «Вы отменили изменение одной кнопкой» is ticked after any rollback, from the history or from a card.
+3. Press «Прожить неделю» on the pult (or «Прожить первую неделю» on the first-day card): the pult says which day goes
+   and when the service reviews a day; then «Реклама» opens on that week: the month's three numbers with one line
+   comparing the run with the run without the service, the ads shown now grouped by the service's estimate, and the
+   agent's journal — its checked reviews in its own words, what it changed, the hypotheses it checks and «На самом
+   деле: …» of the scenario's truth. Hovering a record lights its ads; pressing an ad keeps only its records.
+4. A change in the journal has «Вернуть как было» and «Факты» right in its line; the ad cards have «Изменить текст» and
+   «Отключить». The newest record types itself out once; with less motion it is shown at once.
 5. «Начать заново» offers «Повторить этот прогон» (the same decisions without the model, the same numbers while you
    act the same) and «Прогнать заново» (the agent decides again). The pult's menu (⋯) has «+1 день» and «Запустить
-   по-настоящему»; the latter deletes the simulation and opens step 6 with the same card, budget and ads.
+   по-настоящему»; the latter deletes the simulation and opens the wizard's last step with the same card, budget and ads.
 
 ## Kill switches (no deploy needed)
 

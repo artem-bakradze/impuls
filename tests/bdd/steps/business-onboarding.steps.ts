@@ -1,17 +1,18 @@
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
-import { emptyDraft, hoursWords, normalizeLink, stepIssues, withNormalizedLinks } from "../../../apps/web/src/lib/onboarding";
+import { budgetTooLowMessage, emptyDraft, hoursWords, normalizeLink, STEP_COUNT, stepIssues, wizardStepOf, withNormalizedLinks } from "../../../apps/web/src/lib/onboarding";
 import type { OnboardingDraft } from "../../../apps/web/src/lib/onboarding";
 import { featurePath } from "./world";
 
 const feature = await loadFeature(featurePath("business-onboarding/wizard.feature"), { language: "ru" });
 
-/** The draft with a service and a city: everything else on the card step is optional. */
+/** The draft with a service, a city and the budget: everything else on the card step is optional. */
 const cardStep = (patch: Partial<OnboardingDraft["card"]> = {}): OnboardingDraft => {
   const draft = emptyDraft();
   return {
     ...draft,
     card: { ...draft.card, services: [{ name: "Маникюр с покрытием", priceRub: null }], city: "Казань", ...patch },
+    budget: { monthlyBudgetRub: 15_000 },
   };
 };
 
@@ -112,11 +113,36 @@ describeFeature(feature, ({ Scenario }) => {
     When("владелец салона вводит бюджет 15 000 ₽", () => {
       draft = { ...cardStep(), budget: { monthlyBudgetRub: 15_000 } };
     });
-    Then("шаг 4 не спрашивает цену обращения", () => {
-      expect(messages(4, draft)).toEqual([]);
+    Then("шаг 2 не спрашивает цену обращения", () => {
+      expect(messages(2, draft)).toEqual([]);
     });
     And("в черновике только бюджет месяца", () => {
       expect(Object.keys(draft.budget)).toEqual(["monthlyBudgetRub"]);
+    });
+  });
+
+  Scenario("Бюджет ниже минимума", ({ When, Then }) => {
+    When("владелец на шаге 2 вводит бюджет 2 000 ₽ и нажимает «Дальше»", () => {
+      blocked = messages(2, { ...cardStep(), budget: { monthlyBudgetRub: 2_000 } });
+    });
+    Then("шаг 2 не пропускает дальше и объясняет, что минимальный бюджет — 3 000 ₽", () => {
+      expect(blocked).toEqual([budgetTooLowMessage]);
+    });
+  });
+
+  Scenario("Мастер прежнего формата", ({ Given, When, Then }) => {
+    let step = 0;
+    Given("владелец начал мастер до обновления и остановился на шаге «Бюджет» из шести", () => {
+      draft = cardStep();
+    });
+    When("он снова открывает мастер", () => {
+      // The six-step wizard saved 4 for «Бюджет»; no ads were written yet.
+      step = wizardStepOf(4, draft);
+    });
+    Then("открывается шаг 2 из 3 с его карточкой и бюджетом", () => {
+      expect(step).toBe(2);
+      expect(STEP_COUNT).toBe(3);
+      expect(draft.budget.monthlyBudgetRub).toBe(15_000);
     });
   });
 });

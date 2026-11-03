@@ -66,10 +66,16 @@ business runs the same handlers, executor, guards and history on its own virtual
   (`WEB_JOB_CONCURRENCY`), so a long step does not hold up other owners' jobs. A decision of the service does not
   stop a step (`isAdDecision` in `change-kinds.ts` now only marks decisions on the screens); the end of the 30 days
   stops with an offer to continue.
-- «Как сервис принимает решения» starts with the story of a lived week (`buildWeekStory` in `apps/web`): the ads'
-  numbers of the week with the rules' classes and the scenario's truth, the day reviews of the week, the decisions
-  without budget-guard cuts and the comparison at the week's end. It is read from saved records only, so a past week
-  opens the same; `WeekStory` plays it as three scenes, at once on «Показать сразу» or with less motion.
+- The owner has two screens, «Реклама» (`/summary`) and «Настройки»; `/history`, `/simulation` and `/demo` redirect.
+  «Реклама» is the same in both modes: the month's numbers (`buildSummary`), then the ads and the agent's journal
+  (`loadAdsWork` → `buildServiceWork`). The journal is the history too: the checked turn summaries (or the day's insight
+  observations without one), the applied changes with their rollback and facts, the owner's and the cabinet's changes,
+  hypotheses when they are opened and closed, in sections of the weeks (lived weeks in a simulation, seven days from the
+  launch on Direct). The budget guard's limit cuts are listed in the settings' «Для специалистов» instead. A simulation
+  adds the comparison with the control run and the scenario's truth. The saved week reports and `buildWeekStory` still
+  keep a lived week's numbers frozen.
+- The wizard has three steps (`WIZARD_STEPS`); a draft saved by the six-step wizard opens on the step that holds its
+  place now (`wizardStepOf`).
 - «Начать заново» → «Повторить этот прогон» copies the run's completed turns, owner actions and object ids (by the
   simulator's platform ids, which repeat for the seed) into `replay`; `simulationWorld` then gives both runtimes a
   replay runtime (`simulation-replay.ts`) that plays the recorded calls through the same tools and guards with the

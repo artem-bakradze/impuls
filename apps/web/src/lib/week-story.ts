@@ -2,6 +2,10 @@ import { addDays, classify, costPerLead, daysBetween, toLocalDate } from "@impul
 import type { EffectivenessClass, Kopecks, LocalDate, PerformanceStats } from "@impuls/core";
 import type { AdRecord, ChangeEntry, DirectionRecord, InsightRecord, SimulationRecord } from "@impuls/worker";
 import type { DailyStatRow } from "@impuls/platforms";
+import { isStepComplete, readWeekReport } from "@impuls/worker/simulation-report";
+import { buildDecisionScreen, scenarioTruth } from "./simulation-screen";
+import { actualActionText, describeDiff, objectName } from "./history-view";
+import { feedDays, toInsightCard } from "./insights-model";
 import { isBudgetAdjustment } from "@impuls/worker/change-kinds";
 import type { HistoryItem } from "./history-view";
 import type { DayReviewModel, InsightCardModel, TruthLine } from "./insights-model";
@@ -38,6 +42,9 @@ export interface WeekDecision {
 
 /** One lived week as three scenes: what happened, how the service reviewed it, what it decided. */
 export interface WeekStoryModel {
+  savedAt?: string | undefined;
+  reconstructed?: boolean;
+  quietDays?: number;
   week: number;
   from: LocalDate;
   to: LocalDate;
@@ -84,23 +91,48 @@ const add = (a: PerformanceStats, r: DailyStatRow): PerformanceStats => ({ impre
 export const livedWeeks = (
   simulation: SimulationRecord,
   timeZone: string,
-): { week: number; from: LocalDate; to: LocalDate; reviewedOn: LocalDate; start: Date; end: Date }[] =>
+): { week: number; from: LocalDate; to: LocalDate; reviewedOn: LocalDate; start: Date; end: Date; report?: string | undefined }[] =>
   simulation.steps
-    .filter((s) => s.kind === "week" && s.to.getTime() > s.from.getTime())
+    .filter((s) => s.kind === "week" && isStepComplete(s, simulation))
     .map((s, index) => {
       const from = toLocalDate(s.from, timeZone);
       const reviewedOn = toLocalDate(s.to, timeZone);
-      return { week: index + 1, from, to: reviewedOn > from ? addDays(reviewedOn, -1) : from, reviewedOn, start: s.from, end: s.to };
+      return { week: index + 1, from, to: reviewedOn > from ? addDays(reviewedOn, -1) : from, reviewedOn, start: s.from, end: s.to, ...(s.report !== undefined && { report: s.report }) };
     });
 
 /**
  * Pure: the week story from what is saved — the service's statistics, the rules' classes, the day reviews, the
  * history — so it reads the same whenever it is opened again (simulation-mode spec «История недели»).
  */
-export const buildWeekStory = (input: WeekStoryInput): WeekStoryModel | null => {
+export const buildWeekStory = (initial: WeekStoryInput): WeekStoryModel | null => {
+  let input = initial;
   const weeks = livedWeeks(input.simulation, input.timeZone);
   const window = weeks.find((w) => w.week === input.week);
   if (window === undefined) return null;
+  if (window.report !== undefined) {
+    const saved = readWeekReport(window.report);
+    const simulation = { ...input.simulation, simNow: new Date(saved.at), endsAt: new Date(saved.endsAt), baseline: saved.baseline, state: { ...input.simulation.state, truths: saved.truths } };
+    const truthOf = scenarioTruth({ simulation, ads: saved.ads, goal: saved.cso });
+    const names = { directions: Object.fromEntries(saved.directions.map((d) => [d.id, d.name])), channels: Object.fromEntries(saved.directions.map((d) => [d.id, d.channel])), ads: Object.fromEntries(saved.ads.map((a) => [a.id, a.title])), strategies: {} };
+    const current = new Map(input.history.map((h) => [h.id, h]));
+    const records = new Map(saved.insights.map((r) => [r.id, r]));
+    const history: HistoryItem[] = saved.changes.map((c) => {
+      const live = current.get(c.id);
+      const insight = c.insightId ? records.get(c.insightId) : undefined;
+      return {
+        id: c.id, at: c.createdAt.toISOString(), author: c.author, object: objectName(c.objectKind, c.objectId, names),
+        diff: describeDiff(c.before, c.after, names), decisionText: actualActionText(c), explanation: c.explanation, outcome: c.outcome, turnId: c.turnId,
+        insight: insight ? toInsightCard(insight, null, null) : null, status: c.status, reverted: live?.reverted ?? c.revertedById !== null,
+        rollback: live?.rollback ?? { kind: "unavailable", reason: "Запись сохранена в отчёте; откройте текущую историю для отмены." }, budgetAdjustment: isBudgetAdjustment(c),
+      };
+    });
+    input = {
+      ...input, directions: saved.directions, ads: saved.ads, stats: saved.stats, cso: saved.cso, truthOf, history, changes: saved.changes,
+      reviews: feedDays({ insights: saved.insights, turns: saved.turns, hypotheses: saved.hypotheses, timeZone: input.timeZone, launchedOn: toLocalDate(simulation.startedAt, input.timeZone), since: null, entries: new Map(history.map((h) => [h.id, h])), truthOf }),
+      comparison: buildDecisionScreen({ simulation, timeZone: input.timeZone, monthlyBudgetRub: saved.monthlyBudgetRub, directions: saved.directions, changes: saved.changes, fullDaily: saved.fullDaily, observed: saved.stats }).comparison,
+    };
+  }
+
   const inWeek = (date: LocalDate) => date >= window.from && date <= window.to;
   const days: WeekStoryModel["days"] = [];
   for (let date = window.from; date <= window.to; date = addDays(date, 1)) {
@@ -148,8 +180,16 @@ export const buildWeekStory = (input: WeekStoryInput): WeekStoryModel | null => 
     .map((item) => ({ item, insight: item.insight }));
 
   // The mornings after the week's days, up to the one it ended on; the launch day's reviews belong to the first week.
-  const reviewed = (date: LocalDate) => (date > window.from && date <= window.reviewedOn) || (window.week === 1 && date === window.from);
-  const reviews = input.reviews.filter((r) => reviewed(r.date) || (r.from !== null && reviewed(r.from)));
+  const firstReviewed = window.week === 1 ? window.from : addDays(window.from, 1);
+  const reviews = input.reviews.filter((r) => r.date >= firstReviewed && (r.from ?? r.date) <= window.reviewedOn);
+  const actionDates = new Set(input.changes.filter((c) => c.status === "applied" && byService(c) && !isBudgetAdjustment(c)).map((c) => toLocalDate(c.createdAt, input.timeZone)));
+  const quietDates = new Set<string>();
+  for (const review of reviews) {
+    if (!review.quiet || review.insights.length > 0 || (review.weekly?.insights.length ?? 0) > 0) continue;
+    for (let date = review.from ?? review.date; date <= review.date; date = addDays(date, 1)) {
+      if (date >= window.from && date <= window.to && !actionDates.has(date)) quietDates.add(date);
+    }
+  }
   const watching = reviews.flatMap((r) => r.insights).find((i) => i.decision.status === "none");
   const noDecisionReason =
     decisions.length > 0
@@ -172,6 +212,9 @@ export const buildWeekStory = (input: WeekStoryInput): WeekStoryModel | null => 
   }
 
   return {
+    savedAt: window.report === undefined ? undefined : readWeekReport(window.report).at,
+    reconstructed: window.report === undefined,
+    quietDays: quietDates.size,
     week: window.week,
     from: window.from,
     to: window.to,

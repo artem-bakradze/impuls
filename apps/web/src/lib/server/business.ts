@@ -42,7 +42,7 @@ export const saveOnboarding = async (userId: string, step: number, draft: Onboar
     timeZone: draft.card.timeZone,
     monthlyBudgetRub: draft.budget.monthlyBudgetRub ?? 0,
     ...goalKopecks(draft),
-    card: { ...agentCard(draft), [DRAFT_KEY]: draft },
+    card: { ...agentCard(draft), [DRAFT_KEY]: draft, ...(draft.counter !== null && { measurement: draft.counter }) },
     onboardingStep: step,
   };
   if (existing) {

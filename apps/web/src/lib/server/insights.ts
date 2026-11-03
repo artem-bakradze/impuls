@@ -25,6 +25,7 @@ export const buildInsightFeed = async (businessId: string, options: { since: Loc
       insights,
       turns,
       timeZone: business.timeZone,
+      launchedOn: business.launchedOn,
       since: options.since,
       entries: new Map(history.items.map((i) => [i.id, i])),
       hypotheses,

@@ -1,3 +1,4 @@
+import { isStepComplete } from "@impuls/worker/simulation-report";
 import type { SimulationRecord, TurnDigest } from "@impuls/worker";
 import { z } from "zod";
 
@@ -15,6 +16,7 @@ export interface SimulationStatus {
   step: { kind: "week" | "day"; week: number | null } | null;
   /** Weeks lived so far: the newest week story is this one. */
   weeks: number;
+  failed?: boolean;
   /** Days left to the scenario's end: below 7 the main action is «Прожить оставшиеся N дней». */
   daysLeft: number;
   /** The scenario's last day is reached; the pult offers to continue. */
@@ -67,7 +69,7 @@ export const simulationStatusOf = (input: {
   const { simulation } = input;
   const totalDays = Math.round((simulation.endsAt.getTime() - simulation.startedAt.getTime()) / DAY_MS);
   const dayOf = (at: Date) => Math.min(totalDays, Math.floor((at.getTime() - simulation.startedAt.getTime()) / DAY_MS) + 1);
-  const weeks = simulation.steps.filter((step) => step.kind === "week").length;
+  const weeks = simulation.steps.filter((step) => step.kind === "week" && isStepComplete(step, simulation)).length;
   const current = simulation.status === "stepping" ? simulation.steps.at(-1) : undefined;
   return {
     day: dayOf(simulation.simNow),
@@ -75,8 +77,9 @@ export const simulationStatusOf = (input: {
     at: simulation.simNow.toISOString(),
     timeZone: input.timeZone,
     status: simulation.status,
-    step: current ? { kind: current.kind, week: current.kind === "week" ? weeks : null } : null,
+    step: current ? { kind: current.kind, week: current.kind === "week" ? weeks + 1 : null } : null,
     weeks,
+    failed: simulation.steps.at(-1)?.state === "failed",
     daysLeft: Math.max(0, Math.ceil((simulation.endsAt.getTime() - simulation.simNow.getTime()) / DAY_MS)),
     ended: simulation.simNow.getTime() + 3_600_000 > simulation.endsAt.getTime(),
     changes: input.changes,

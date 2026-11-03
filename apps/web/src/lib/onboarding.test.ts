@@ -15,6 +15,7 @@ import {
   startingWeeklyLimits,
   stepIssues,
   stepProblems,
+  wizardStepOf,
   timeZoneOf,
   unreadableNotice,
   withCity,
@@ -151,15 +152,15 @@ describe("wizard steps", () => {
   it("does not let the budget go below 3 000 ₽ but accepts 5 000 ₽", () => {
     const draft = completeDraft();
     draft.budget.monthlyBudgetRub = 2_000;
-    expect(stepProblems(4, draft)).toContain(budgetTooLowMessage);
+    expect(stepProblems(2, draft)).toContain(budgetTooLowMessage);
     draft.budget.monthlyBudgetRub = 5_000;
-    expect(stepProblems(4, draft)).toEqual([]);
+    expect(stepProblems(2, draft)).toEqual([]);
   });
 
   it("asks only for the budget: there is no cost-per-lead question", () => {
     const draft = completeDraft();
     draft.budget = { monthlyBudgetRub: 10_000 };
-    expect(stepProblems(4, draft)).toEqual([]);
+    expect(stepProblems(2, draft)).toEqual([]);
   });
 
   it("needs a city on the card step", () => {
@@ -209,9 +210,20 @@ describe("wizard steps", () => {
 
   it("reports the first incomplete step so progress cannot skip ahead", () => {
     const draft = completeDraft();
-    expect(firstIncompleteStep(draft)).toBe(6);
-    draft.goals = [];
     expect(firstIncompleteStep(draft)).toBe(3);
+    draft.budget.monthlyBudgetRub = null;
+    expect(firstIncompleteStep(draft)).toBe(2);
+    // The goals are on the last step, chosen in advance and changed in the launch summary.
+    expect(stepProblems(3, { ...completeDraft(), goals: [] })).toEqual(["Выберите хотя бы одно действие, которое считать обращением"]);
+  });
+
+  it("opens a draft of the six-step wizard on the step that holds its place now", () => {
+    const draft = completeDraft();
+    expect(wizardStepOf(1, draft)).toBe(1);
+    expect(wizardStepOf(2, draft)).toBe(2);
+    expect(wizardStepOf(4, { ...draft, ads: null })).toBe(2);
+    expect(wizardStepOf(4, draft)).toBe(3);
+    expect(wizardStepOf(6, draft)).toBe(3);
   });
 });
 

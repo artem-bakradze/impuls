@@ -53,7 +53,7 @@ function ScenarioOption({ id, draft, checked, onChange, onEdit }: { id: Scenario
   const item = SCENARIOS[id];
   const reason = reasonFor(draft, id);
   // Missing ads are added on «Как увидят ваши объявления», a small budget is raised on «Бюджет».
-  const fix = reason === null ? null : reason.startsWith("Нужно хотя бы") ? { step: 5, label: "Добавить объявление" } : { step: 4, label: "Изменить бюджет" };
+  const fix = reason === null ? null : reason.startsWith("Нужно хотя бы") ? { step: 3, label: "Добавить объявление" } : { step: 2, label: "Изменить бюджет" };
   return (
     <label className="choice" data-checked={checked} aria-disabled={reason !== null} style={reason ? { opacity: 0.75, cursor: "not-allowed" } : undefined}>
       <Radio checked={checked} disabled={reason !== null} onChange={() => onChange(id)} aria-label={item.title} />

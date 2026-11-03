@@ -3,6 +3,7 @@ import { Golos_Text } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
+import "./workspace.css";
 
 export const dynamic = "force-dynamic";
 

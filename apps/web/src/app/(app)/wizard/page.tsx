@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Wizard } from "@/components/wizard/Wizard";
-import { firstIncompleteStep, STEP_COUNT } from "@/lib/onboarding";
+import { firstIncompleteStep, STEP_COUNT, wizardStepOf } from "@/lib/onboarding";
 import { findBusiness, readDraft } from "@/lib/server/business";
 import { webConfig } from "@/lib/server/config";
 import { requireUserId } from "@/lib/server/session";
@@ -13,7 +13,7 @@ export default async function WizardPage({ searchParams }: { searchParams: Promi
     redirect("/summary");
   }
   const draft = readDraft(business);
-  const saved = Math.min(Math.max(business?.onboardingStep ?? 1, 1), STEP_COUNT);
+  const saved = Math.min(wizardStepOf(business?.onboardingStep ?? 1, draft), STEP_COUNT);
   return (
     <Wizard
       initialDraft={draft}

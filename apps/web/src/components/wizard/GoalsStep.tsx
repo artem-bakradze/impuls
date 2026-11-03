@@ -9,6 +9,7 @@ import { runWebJob } from "@/lib/client-api";
 import type { JobOutcome } from "@/lib/client-api";
 import { COUNTER_MISSING_WARNING, counterOf, GOAL_OPTIONS, hasOwnSite, withCounter } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
+import { measurementState, measurementText } from "@/lib/measurement";
 import type { StepProps } from "./Wizard";
 
 const ICONS: Record<(typeof GOAL_OPTIONS)[number]["value"], ReactNode> = {
@@ -21,7 +22,7 @@ const ICONS: Record<(typeof GOAL_OPTIONS)[number]["value"], ReactNode> = {
 const HINTS: Record<(typeof GOAL_OPTIONS)[number]["value"], string> = {
   form: "Человек отправил форму на сайте",
   call: "Нажал на номер телефона",
-  messenger: "Написал вам в мессенджер",
+  messenger: "Открыл чат — это ещё не отправленное сообщение",
   route: "Построил маршрут до вас в Картах",
 };
 
@@ -32,7 +33,7 @@ const BUILDER_STEPS: { key: string; label: string; steps: string[] }[] = [
   { key: "taplink", label: "Taplink", steps: ["Откройте «Настройки» → «Статистика».", "В поле «Яндекс Метрика» вставьте номер счётчика.", "Сохраните изменения."] },
 ];
 
-const checkOnServer = (): Promise<JobOutcome<CounterCheck>> => runWebJob<CounterCheck>("/api/onboarding/counter", undefined);
+export const checkOnServer = (): Promise<JobOutcome<CounterCheck>> => runWebJob<CounterCheck>("/api/onboarding/counter", undefined);
 
 function CounterHowTo() {
   return (
@@ -71,8 +72,8 @@ function CounterHowTo() {
   );
 }
 
-/** Metrica counter on the owner's site: checked when the step opens and again on request (analytics spec). */
-function CounterCheckBlock({ draft, onChange, check }: StepProps & { check: () => Promise<JobOutcome<CounterCheck>> }) {
+/** Metrica counter on the owner's site: checked when the block opens and again on request (analytics spec). */
+export function CounterCheckBlock({ draft, onChange, check }: StepProps & { check: () => Promise<JobOutcome<CounterCheck>> }) {
   const saved = counterOf(draft);
   const [checking, setChecking] = useState(saved === null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -124,7 +125,7 @@ function CounterCheckBlock({ draft, onChange, check }: StepProps & { check: () =
     return (
       <Note tone="success" icon={<CheckCircleFilled aria-hidden="true" />} data-testid="counter-check">
         <span className="t-body">
-          Счётчик Метрики на сайте есть{saved.counterId === null ? "" : ` · № ${saved.counterId}`}. По нему будем считать обращения с сайта.
+          {measurementText(measurementState(saved)).title}. {measurementText(measurementState(saved)).detail}
         </span>
       </Note>
     );
@@ -143,7 +144,8 @@ function CounterCheckBlock({ draft, onChange, check }: StepProps & { check: () =
   );
 }
 
-export function GoalsStep({ draft, onChange, errors = {}, checkCounter = checkOnServer }: StepProps & { checkCounter?: () => Promise<JobOutcome<CounterCheck>> }) {
+/** What counts as a lead; `counter: false` leaves the Metrica check to the launch summary, which shows it once. */
+export function GoalsStep({ draft, onChange, errors = {}, checkCounter = checkOnServer, counter = true }: StepProps & { checkCounter?: () => Promise<JobOutcome<CounterCheck>>; counter?: boolean }) {
   const toggle = (value: string, checked: boolean) =>
     onChange({ ...draft, goals: checked ? [...draft.goals, value] : draft.goals.filter((g) => g !== value) });
   return (
@@ -173,9 +175,9 @@ export function GoalsStep({ draft, onChange, errors = {}, checkCounter = checkOn
           {errors.goals}
         </div>
       ) : (
-        <span className="t-small">Можно выбрать несколько вариантов.</span>
+        <span className="t-small">Можно выбрать несколько вариантов. Обращения — эти действия, а число реальных клиентов вы подтвердите отдельно.</span>
       )}
-      {hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkCounter} /> : null}
+      {counter && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkCounter} /> : null}
     </div>
   );
 }

@@ -185,8 +185,15 @@ const handleJob = async (ctx: JobContext, job: WebJob): Promise<unknown> => {
     }
     case "extract_card":
       return extractCard(ctx, job.sources);
-    case "check_counter":
-      return checkCounter(job.siteUrl);
+    case "check_counter": {
+      const result = await checkCounter(job.siteUrl);
+      await ctx.locks.withLock(job.businessId, async () => {
+        const business = await ctx.store.getBusiness(job.businessId);
+        if (business.card.siteUrl !== job.siteUrl) return;
+        await ctx.store.saveBusiness({ ...business, card: { ...business.card, measurement: { siteUrl: job.siteUrl, status: result.status, counterId: result.status === "found" ? result.counterId : null } } });
+      });
+      return result;
+    }
     case "generate_creatives":
       return generateCreatives(ctx, job);
     case "simulation_control":

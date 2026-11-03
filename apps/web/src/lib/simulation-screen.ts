@@ -1,5 +1,6 @@
 import { addDays, monthBudget, monthKey, toLocalDate } from "@impuls/core";
 import type { Kopecks, LocalDate } from "@impuls/core";
+import type { DailyStatRow } from "@impuls/platforms";
 import type { AdRecord, ChangeEntry, DirectionRecord, InsightRecord, SimulationRecord } from "@impuls/worker";
 import { isAdDecision } from "@impuls/worker/change-kinds";
 import { isScenarioId, SCENARIOS } from "@impuls/worker/scenarios";
@@ -30,6 +31,10 @@ export interface Comparison {
   baseline: number[];
   serviceNow: RunTotals;
   baselineNow: RunTotals;
+  from?: string;
+  to?: string;
+  asOf?: string;
+  observed?: RunTotals;
 }
 
 export interface RunResult {
@@ -38,7 +43,7 @@ export interface RunResult {
   baseline: RunTotals;
 }
 
-/** «Как сервис принимает решения» (simulation-mode spec): the comparison, the result, the checklist; the feed comes with it. */
+/** The comparison, the result and the checklist of a simulation (simulation-mode spec); «Что делает сервис» shows the first two. */
 export interface DecisionScreenModel {
   day: number;
   totalDays: number;
@@ -60,6 +65,8 @@ export interface DecisionScreenInput {
   monthlyBudgetRub: number;
   directions: DirectionRecord[];
   changes: ChangeEntry[];
+  observed?: readonly DailyStatRow[];
+  fullDaily?: { date: string; spend: number; leads: number }[];
 }
 
 const DAY_MS = 86_400_000;
@@ -130,6 +137,10 @@ export const buildDecisionScreen = (input: DecisionScreenInput): DecisionScreenM
     realByDay.set(cell.date, { spend: known.spend + cell.spend, leads: known.leads + cell.leads });
   }
 
+  if (input.fullDaily !== undefined) {
+    realByDay.clear();
+    for (const row of input.fullDaily) realByDay.set(row.date, row);
+  }
   const today = toLocalDate(simulation.simNow, timeZone);
   // After the last day the clock stands at the next morning: those hours are not a day of the scenario.
   const lastDay = ended ? addDays(start, totalDays - 1) : today;
@@ -144,7 +155,8 @@ export const buildDecisionScreen = (input: DecisionScreenInput): DecisionScreenM
   let comparison: Comparison | null = null;
   const baseline = simulation.baseline;
   if (baseline !== null && Array.isArray(baseline.daily)) {
-    const shown = Math.min(day, baseline.daily.length);
+    const completedDays = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY_MS);
+    const shown = Math.min(ended ? totalDays : completedDays, baseline.daily.length);
     const service: number[] = [];
     const base: number[] = [];
     let serviceSpend = 0;
@@ -156,7 +168,12 @@ export const buildDecisionScreen = (input: DecisionScreenInput): DecisionScreenM
       baseSpend += baseline.daily[i]?.spend ?? 0;
       base.push((base.at(-1) ?? 0) + (baseline.daily[i]?.leads ?? 0));
     }
-    comparison = { service, baseline: base, serviceNow: totals(serviceSpend, service.at(-1) ?? 0), baselineNow: totals(baseSpend, base.at(-1) ?? 0) };
+    if (shown > 0) {
+      const to = addDays(start, shown - 1);
+      const observed = input.observed?.filter((r) => r.date >= start && r.date <= to);
+      comparison = { service, baseline: base, serviceNow: totals(serviceSpend, service.at(-1) ?? 0), baselineNow: totals(baseSpend, base.at(-1) ?? 0), from: start, to, asOf: simulation.simNow.toISOString(),
+        ...(observed !== undefined && { observed: totals(observed.reduce((sum, r) => sum + r.spend, 0), observed.reduce((sum, r) => sum + r.leads, 0)) }) };
+    }
   }
 
   const applied = input.changes.filter((c) => c.status === "applied");

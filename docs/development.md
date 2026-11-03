@@ -103,6 +103,18 @@ campaigns in the worker's memory, which is why e2e uses its own database.
 
 Web unit and component tests (Vitest + Testing Library, jsdom): `pnpm --filter @impuls/web test`.
 
+## Public example and saved weeks
+
+The landing page describes the service as a demo without payment and offers one action, «Попробовать на своём бизнесе»;
+the simulation of one's own business is the way to try it (`/demo` redirects to the landing page). Real advertising, when
+connected, is paid in Yandex.
+
+New simulation steps keep lifecycle state and a versioned week report in the existing `simulations.steps` JSONB;
+there is no schema migration. The worker and web must be updated together. A completed report freezes observed stats,
+ads, goal, explanations and the full market comparison. Later corrections appear in the current summary. Old weeks
+without a report are explicitly labeled reconstructed. A failed step resumes the saved window after the owner presses
+continue; it does not publish a partial week or create another window.
+
 ## Kill switches
 
 ```bash

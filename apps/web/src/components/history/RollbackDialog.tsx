@@ -4,7 +4,7 @@ import { Alert, Button, Flex, List, Modal, Typography } from "antd";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
 import { sentence } from "@/lib/format";
-import { describeDiff } from "@/lib/history-view";
+import { describeDiff, rollbackDiffText } from "@/lib/history-view";
 import type { HistoryItem, Names, Snapshot } from "@/lib/history-view";
 
 /** RollbackResult of the worker's rollback job (dates arrive as strings). */
@@ -117,7 +117,7 @@ export function RollbackDialog({ item, items, names, onClose, run = (body) => ru
             <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="rollback-consequences">
               {item.diff.map((row) => (
                 <li key={row.label}>
-                  {row.label}: снова будет «{row.before}»
+                  {rollbackDiffText(row)}
                 </li>
               ))}
               {consequences.map((c) => (

@@ -44,7 +44,7 @@ describeFeature(feature, ({ Scenario }) => {
     Then("в истории появляется запись автора «Изменено в кабинете Директа» с «было −25% → стало 0%»", async () => {
       const entry = (await sim.store.changes("b1")).filter((c) => c.author === "cabinet").at(-1);
       if (!entry) throw new Error("no cabinet entry");
-      expect(describeDiff(entry.before, entry.after, salonNames)).toEqual([{ label: "Цена перехода с телефонов", before: "−25%", after: "0%" }]);
+      expect(describeDiff(entry.before, entry.after, salonNames)).toEqual([{ label: "Настройка цены для телефонов", before: "−25%", after: "0%" }]);
     });
     And("следующая команда проверяет ожидаемое состояние по новому значению", async () => {
       expect(await user(sim, { type: "SetDeviceAdjustment", directionId: "b1-d1", device: "mobile", percent: -10 })).toMatchObject({ status: "applied" });

@@ -5,6 +5,7 @@ import { findBusiness } from "./business";
 import type { BusinessRow } from "./business";
 import { ApiError } from "./errors";
 import { userExists } from "./users";
+export { homePath } from "../home-path";
 
 /** Signed-in user, or null when there is no valid session or the account no longer exists. */
 export const currentUserId = async (): Promise<string | null> => {
@@ -23,9 +24,6 @@ export const requireUserId = async (): Promise<string> => {
   }
   return userId;
 };
-
-/** Where a signed-in user belongs: the summary once ads were launched, otherwise the wizard step they stopped at. */
-export const homePath = (business: BusinessRow | null): string => (business?.launchedOn ? "/summary" : "/wizard");
 
 /** Pages after launch; before launch the user is sent back to the wizard. */
 export const requireLaunchedBusiness = async (): Promise<{ userId: string; business: BusinessRow }> => {

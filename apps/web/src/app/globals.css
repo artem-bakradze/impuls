@@ -22,7 +22,7 @@
   --accent-ring: rgba(86, 70, 242, 0.18);
   --accent-ink: #3a2cc4;
   /* The brand gradient: progress, the live parts and the primary action; never under body text. */
-  --grad-accent: linear-gradient(90deg, #5646f2 0%, #7b5cff 55%, #9b7bff 100%);
+  --grad-accent: linear-gradient(90deg, #5646f2 0%, #624bdf 55%, #6650d8 100%);
 
   --success: #0c7c55;
   --success-soft: #e6f5ee;
@@ -96,6 +96,21 @@ a {
   outline-offset: 2px;
   border-radius: 6px;
 }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+details > summary { cursor: pointer; }
+details[open] > summary { margin-bottom: 12px; }
+input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -186,6 +201,7 @@ a {
   max-width: 720px;
 }
 .stack {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--gap, 16px);
@@ -222,7 +238,7 @@ a {
   }
   .page {
     padding-top: 20px;
-    padding-bottom: calc(var(--tabbar-h) + 40px);
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 48px);
   }
 }
 
@@ -528,7 +544,8 @@ a {
   margin: 0 auto;
   padding: 8px 24px;
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   min-height: 56px;
@@ -576,7 +593,7 @@ a {
 }
 /* Day and time on top, the speed below: the speed is always visible — without it a slow day looks like a broken one. */
 .sim-time {
-  flex: none;
+  min-width: 0;
   display: inline-flex;
   flex-direction: column;
   line-height: 1.2;
@@ -592,7 +609,8 @@ a {
   font-weight: 550;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 /* «Агент разбирает 8-й день…»: the time stands while it shows, in the place of the days strip. */
 .sim-thinking {
@@ -619,6 +637,7 @@ a {
 }
 /* Notes under the pult row (an error, «Вы изменили ход прогона»): no strip, no room for it. */
 .sim-bar-note {
+  display: block;
   min-height: 0;
   padding-top: 0;
   padding-bottom: 8px;
@@ -709,20 +728,20 @@ a {
   .off-xl {
     display: inline;
   }
-  .sim-label-text {
-    display: none;
-  }
-  .sim-label {
-    width: 28px;
-    padding: 0;
-    justify-content: center;
-  }
 }
 @media (max-width: 720px) {
   .sim-bar-inner {
     padding: 8px 16px 14px;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
   }
+  .sim-label { grid-column: 1; grid-row: 1; justify-self: start; }
+  .sim-time { grid-column: 1 / -1; grid-row: 2; flex-direction: row; gap: 8px; }
+  .sim-actions { grid-column: 2; grid-row: 1; margin-left: 0; }
+  .sim-label-text { display: none; }
+  .sim-icon.ant-btn, .sim-actions .ant-btn { min-width: 44px; min-height: 44px; }
+  .sim-clock { font-size: 12px; }
+  .sim-speed { font-size: 12px; max-width: 100%; }
   .sim-strip {
     left: 16px;
     right: 16px;
@@ -1137,7 +1156,7 @@ a {
   gap: 12px;
   padding: 10px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--surface);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-backdrop-filter: saturate(180%) blur(16px);
   border: 1px solid var(--border);
@@ -1201,7 +1220,8 @@ a {
   border-color: var(--danger) !important;
 }
 .field-invalid {
-  scroll-margin-top: 96px;
+  scroll-margin-top: 160px;
+  scroll-margin-bottom: 120px;
 }
 .missing::before {
   content: "";
@@ -1448,7 +1468,7 @@ li[data-state="done"] .gen-dot {
   background: var(--surface-2);
 }
 .ad-card .ad-meta {
-  padding-right: 72px;
+  padding-right: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1480,17 +1500,26 @@ li[data-state="done"] .gen-dot {
   color: var(--text-2);
 }
 .ad-actions {
-  position: absolute;
-  top: 12px;
-  right: 12px;
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 12px;
 }
+.ad-net .ad-actions { padding: 12px 12px 0; }
 .ad-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+}
+@media (max-width: 720px) {
+  .ad-actions .ant-btn, .settings-nav a { min-height: 44px; }
+  .ad-actions .ant-btn { min-width: 44px; }
+  .mock-kpis { grid-template-columns: minmax(0, 1fr); }
+  .field .optional-input { max-width: 108px; }
+  .first-day .ant-btn { max-width: 100%; height: auto; min-height: 44px; white-space: normal; }
+  .first-day .ant-btn > span { white-space: normal; }
 }
 .net-grid {
   display: grid;
@@ -1849,7 +1878,7 @@ li[data-state="now"] .tl-dot {
 
 .settings-layout {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 32px;
   align-items: start;
 }
@@ -1909,7 +1938,8 @@ li[data-state="now"] .tl-dot {
     overflow-x: auto;
     gap: 6px;
     padding-bottom: 4px;
-    scrollbar-width: none;
+    max-width: 100%;
+    scrollbar-width: thin;
   }
   .settings-nav a {
     flex: none;
@@ -1977,205 +2007,548 @@ li[data-state="now"] .tl-dot {
   border-color: #f5cfcb;
 }
 
-/* ---------- Week story (simulation-mode «История недели») ---------- */
+/* ---------- «Что делает сервис» (simulation-mode): the ads shown now and the agent's journal ---------- */
 
-.week-story {
-  padding: 22px 24px;
+.brief {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  border-color: rgba(86, 70, 242, 0.16);
-  background:
-    radial-gradient(520px 240px at 100% 0%, rgba(124, 109, 255, 0.12), transparent 70%),
-    var(--surface);
+  gap: 16px;
+  margin: -4px 0 28px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
-.week-head {
+.brief-head {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
   flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
 }
-.week-head .t-eyebrow {
-  color: var(--accent-ink);
-}
-.week-tabs {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  background: rgba(18, 18, 23, 0.05);
-}
-.week-tabs a {
-  min-width: 28px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-  text-decoration: none;
-}
-.week-tabs a[aria-current="page"] {
-  background: var(--surface);
-  color: var(--accent-ink);
-  box-shadow: var(--shadow-xs);
-}
-.week-scene {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.week-scene + .week-scene {
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-/* The seven days light up one by one. */
-.week-days {
-  list-style: none;
-  margin: 0;
+.brief-link {
+  appearance: none;
+  border: 0;
+  background: none;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-}
-.week-days li {
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
+  font: inherit;
   font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  background: rgba(18, 18, 23, 0.05);
-  transition: background 0.3s var(--ease), color 0.3s var(--ease), transform 0.3s var(--ease);
+  color: var(--accent-ink);
+  cursor: pointer;
 }
-.week-days li[data-lit="true"] {
-  background: var(--grad-accent);
-  color: #fff;
-  transform: translateY(-1px);
-}
-.week-counters {
+.brief-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-.week-counters > div {
+.brief-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-.week-big {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-.week-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.week-rows li {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
   background: var(--surface);
-  transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease), background 0.3s var(--ease);
+  border: 1px solid var(--border);
+  min-width: 0;
 }
-/* The rows of the insight being read: its facts are about these ads. */
-.week-rows li[data-lit="true"] {
-  border-color: rgba(86, 70, 242, 0.55);
-  background: linear-gradient(135deg, #f4f2ff 0%, #ffffff 70%);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-}
-.week-row-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.week-row-title {
-  font-weight: 600;
-}
-.week-bar {
-  display: block;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(86, 70, 242, 0.08);
-  overflow: hidden;
-}
-.week-bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--grad-accent);
-  transition: width 0.8s var(--ease);
-}
-.week-truth {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 3px 10px;
-  border-radius: 999px;
+.brief-label {
   font-size: 12.5px;
+  color: var(--text-3);
 }
-.week-truth.note-success {
-  background: var(--success-soft);
+.brief-item strong {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.brief-sub {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.brief-good {
   color: var(--success);
 }
-.week-truth.note-warning {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-.week-truth.note-danger {
-  background: var(--danger-soft);
+.brief-bad {
   color: var(--danger);
 }
-.week-insights,
-.week-decisions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.brief-compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.brief-compare .t-small {
+  flex-basis: 100%;
+}
+.work-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 32px;
+  align-items: start;
+}
+.work-ads {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.work-ad-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.week-insights li,
-.week-decisions li {
+.work-ad {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.work-ad:hover {
+  border-color: var(--border-strong);
+}
+/* The whole card selects the ad; the change mark on it stays its own button. */
+.work-ad-select {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.work-ad-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.direction-changes {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--accent-soft);
 }
-.week-compare {
-  padding: 12px 14px;
-  border-radius: 14px;
+.change-mark {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  max-width: 100%;
+  appearance: none;
+  border: 0;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent-ink);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+.direction-changes .change-mark {
+  margin-top: 0;
+  background: var(--surface);
+}
+button.change-mark {
+  cursor: pointer;
+}
+button.change-mark:hover {
+  background: #e4dfff;
+}
+button.change-mark:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.work-ad[data-lit] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-ring);
+}
+.work-ad[data-selected] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.work-ad-network {
+  flex-direction: row;
+}
+.work-ad-image {
+  flex: 0 0 104px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 80% at 20% 20%, rgba(124, 109, 255, 0.35), transparent 70%),
+    radial-gradient(60% 80% at 90% 90%, rgba(14, 165, 233, 0.28), transparent 70%),
+    var(--surface-3);
+  color: var(--accent-ink);
+  font-size: 24px;
+}
+.work-ad-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.work-ad-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.work-ad-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.work-ad-title {
+  font-size: 17px;
+  line-height: 1.3;
+  color: #2a20b8;
+  font-weight: 500;
+}
+.work-ad-network .work-ad-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+}
+.work-ad-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.work-ad-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.work-ad-leads {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.work-console {
+  --log-bg: #15151d;
+  --log-text: #e7e6f2;
+  --log-dim: #9896ad;
+  --log-accent: #b3a9ff;
+  position: sticky;
+  top: calc(var(--header-h) + 88px);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100svh - var(--header-h) - 112px);
+  min-height: 420px;
+  border-radius: 16px;
+  background: var(--log-bg);
+  color: var(--log-text);
+  overflow: hidden;
+  box-shadow: 0 24px 48px -24px rgba(21, 21, 29, 0.45);
+}
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+}
+.console-dots {
+  display: flex;
+  gap: 6px;
+}
+.console-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+.console-title {
+  flex: 1;
+  font-weight: 600;
+}
+.console-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--log-dim);
+}
+.console-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  animation: logPulse 2s ease-in-out infinite;
+}
+.console-filter {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(179, 169, 255, 0.16);
+  color: var(--log-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.console-filter:focus-visible {
+  outline: 2px solid var(--log-accent);
+}
+.console-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 18px 18px;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.log-section {
+  display: flex;
+  flex-direction: column;
+}
+.log-divider {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0 8px;
+  background: var(--log-bg);
+  color: var(--log-dim);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.log-divider::before,
+.log-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.log-entry {
+  padding: 10px 12px;
+  margin: 2px -12px;
+  border-radius: 10px;
+  animation: fadeIn 0.35s var(--ease) both;
+  transition: background 0.15s var(--ease);
+}
+.log-entry[tabindex]:hover,
+.log-entry[tabindex]:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+.log-entry[tabindex]:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--log-accent);
+}
+.log-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--log-dim);
+}
+.log-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(179, 169, 255, 0.16);
+  color: var(--log-accent);
+}
+.log-tag-dim {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--log-dim);
+}
+.log-text {
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.log-quiet .log-text,
+.log-rules .log-text {
+  color: var(--log-dim);
+}
+.log-quiet {
+  padding-block: 6px;
+}
+.log-quiet .log-text {
+  font-size: 13px;
+  margin-top: 2px;
+}
+.log-line {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.log-mark {
+  flex: 0 0 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--log-dim);
+}
+.log-headline {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: #fff;
+}
+.log-changes li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.log-changes li + li {
+  margin-top: 4px;
+}
+.log-changes .log-mark {
+  color: var(--log-accent);
+}
+.log-changes li[data-reverted] .log-change-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--log-dim);
+  color: var(--log-dim);
+}
+.log-headline + .log-text {
+  color: #c9c7d9;
+  font-size: 14px;
+}
+.log-text b {
+  font-weight: 600;
+  color: #fff;
+}
+.log-entry[data-flash] {
+  background: rgba(179, 169, 255, 0.14);
+}
+.log-reverted {
+  color: var(--log-dim);
+  font-weight: 400;
+}
+.log-link {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--log-accent);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.log-link:hover {
+  color: #fff;
+}
+.log-hypothesis,
+.log-hypothesis .log-mark {
+  color: #fcd78a;
+}
+.log-found,
+.log-found .log-mark {
+  color: #86efac;
+}
+.log-truth {
+  font-size: 12.5px;
+  color: var(--log-dim);
+}
+.log-truth-success .log-mark {
+  color: #86efac;
+}
+.log-truth-warning .log-mark {
+  color: #fcd78a;
+}
+.log-truth-danger .log-mark {
+  color: #fca5a5;
+}
+.log-dim {
+  color: var(--log-dim);
+}
+.log-empty {
+  margin: 24px 0 8px;
+  color: var(--log-dim);
+  line-height: 1.6;
+}
+.log-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.log-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--log-accent);
+  animation: logBlink 1s steps(1) infinite;
+}
+@keyframes logBlink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes logPulse {
+  50% {
+    box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.06);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .log-caret,
+  .console-live i,
+  .log-entry {
+    animation: none;
+  }
+}
+@media (max-width: 1000px) {
+  .brief-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .work-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .work-console {
+    position: static;
+    max-height: 70svh;
+  }
 }
 @media (max-width: 720px) {
-  .week-story {
-    padding: 18px;
+  .work-ad-image {
+    flex-basis: 76px;
   }
-  .week-counters {
-    grid-template-columns: 1fr 1fr;
+  .console-body {
+    padding-inline: 14px;
   }
-  .week-big {
-    font-size: 22px;
+  .log-entry {
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
+  .log-link {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 }
 
@@ -2235,5 +2608,176 @@ pre.snippet {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* Results first; context and editing remain available on demand. */
+.summary-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.summary-kpis .kpi { min-height: 132px; }
+.summary-period { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--text-3); }
+.summary-budget { padding: 16px 20px; }
+.context-details { color: var(--text-2); font-size: 14px; line-height: 1.5; min-width: 0; }
+.context-details > summary { min-height: 32px; padding-block: 5px; color: var(--accent-ink); }
+.context-details p { margin-block: 8px; }
+.context-details .surface { box-shadow: none; }
+.insight-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.results-trend { padding: 18px 20px; box-shadow: none; }
+.trend-bars { display: flex; gap: 5px; align-items: end; height: 132px; margin-block: 16px 8px; }
+.trend-day { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; position: relative; }
+.trend-value { font-size: 12px; color: var(--text-2); }
+.trend-track { height: 80px; width: 100%; display: flex; align-items: end; justify-content: center; border-bottom: 1px solid var(--border); }
+.trend-bar { width: 65%; max-width: 38px; background: var(--accent); border-radius: 5px 5px 0 0; }
+.trend-date { height: 20px; font-size: 11px; color: var(--text-3); padding-top: 4px; }
+.trend-event { position: absolute; bottom: -5px; height: 5px; width: 5px; background: var(--accent); border-radius: 50%; }
+.settings-value { min-width: 0; }
+.settings-editor { padding-top: 18px; }
+.settings-editor .ant-input { max-width: 100%; }
+.settings-page .page-head > .ant-btn { max-width: 100%; height: auto; min-height: 44px; white-space: normal; }
+.settings-page .page-head > .ant-btn > span { white-space: normal; }
+.settings-ad-preview { max-width: 540px; }
+.week-decision { display: flex; flex-direction: column; gap: 12px; }
+.scene-number { display: inline-grid; place-items: center; width: 24px; height: 24px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 50%; margin-right: 6px; font-size: 13px; }
+.before-after { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 6px; }
+.before-after > div { display: flex; flex-direction: column; gap: 4px; padding: 14px; background: var(--surface-2); border-radius: 12px; overflow-wrap: anywhere; }
+.before-after > div:last-child { background: var(--accent-soft); }
+@media (max-width: 720px) {
+  .summary-kpis { gap: 8px; }
+  .summary-kpis .kpi { padding: 12px 10px; min-height: 110px; }
+  .summary-kpis .kpi .v { font-size: clamp(21px, 6vw, 28px); }
+  .summary-kpis .t-eyebrow { font-size: 10px; letter-spacing: 0; line-height: 1.3; }
+  .summary-kpis .sub { font-size: 11px; }
+  .summary-kpis .chip { font-size: 11px; padding-inline: 6px; }
+  .summary-budget, .results-trend { padding: 14px; }
+  .week-counters { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .week-big { font-size: 22px; }
+  .week-counters .t-small { font-size: 11px; }
+  .context-details > summary { min-height: 44px; padding-block: 10px; }
+  .summary-period .context-details > summary { min-height: 0; padding: 0; }
+}
+
+.trend-bars[data-dense="true"] { gap: 2px; }
+
+@media (max-width: 720px) {
+  .summary-page .page-head { gap: 10px; align-items: center; margin-bottom: 16px; }
+  .summary-page .page-head > div:first-child { flex: 1 1 auto; }
+  .summary-page .page-head .t-lead { font-size: 14px; }
+  .summary-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-kpis .kpi { padding: 14px; }
+  .summary-kpis .kpi:last-child { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; align-items: center; min-height: 0; }
+  .summary-kpis .kpi:last-child .sub { grid-column: 1 / -1; }
+  .summary-kpis .kpi .v { font-size: 28px; }
+}
+
+/* Owner actions on an ad card and the change line of the journal (analytics «Объявления на экране «Реклама»», insights). */
+.work-ad-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px -8px 0;
+}
+.work-ad-actions .ant-btn-text {
+  color: var(--accent-ink);
+}
+.work-ad-raised {
+  position: relative;
+  z-index: 1;
+}
+.hidden-ads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.hidden-ad {
+  display: inline-flex;
+  align-items: center;
+}
+.log-change-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+button.log-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.log-facts {
+  margin: 4px 0 0 22px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--log-dim);
+}
+.log-facts summary {
+  cursor: pointer;
+  color: var(--log-accent);
+}
+.log-facts dl {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0;
+}
+.log-facts dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.log-facts dd {
+  margin: 0;
+  color: var(--log-text);
+  font-variant-numeric: tabular-nums;
+}
+.log-facts .log-link {
+  margin-left: 0;
+}
+.log-earlier {
+  appearance: none;
+  display: block;
+  margin: 12px auto 0;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: none;
+  color: var(--log-dim);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.log-owner .log-changes {
+  font-size: 14px;
+  font-weight: 500;
+}
+@media (max-width: 720px) {
+  .work-ad-actions .ant-btn,
+  button.log-link,
+  .log-facts summary {
+    min-height: 44px;
+  }
+}
+.log-no-rollback {
+  margin: 2px 0 0 22px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--log-dim);
+}
+/* Long button labels of the wizard wrap on a phone instead of pushing the page sideways. */
+@media (max-width: 720px) {
+  .wizard .surface .ant-btn-lg {
+    max-width: 100%;
+    height: auto;
+    min-height: 44px;
+    white-space: normal;
+  }
+  .wizard .surface .ant-btn-lg > span {
+    white-space: normal;
   }
 }

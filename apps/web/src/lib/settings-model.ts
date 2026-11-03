@@ -1,6 +1,9 @@
 import type { DAY_OPTIONS } from "./onboarding";
 
+import type { MeasurementModel } from "./measurement";
+
 export interface SettingsModel {
+  measurement?: MeasurementModel;
   timeZone: string;
   card: { category: string; services: { name: string; priceRub: number | null }[]; advantages: string[] };
   siteUrl: string | null;
@@ -14,6 +17,10 @@ export interface SettingsModel {
   /** Where the owner asks to delete the account (auth spec: deletion by request to support). */
   supportEmail: string;
   ads: { id: string; title: string; text: string; status: "active" | "paused"; moderation: "accepted" | "pending" | "rejected"; direction: string }[];
+  /** What counts as a lead, chosen at launch; shown, not edited (business-onboarding «Определение клиента»). */
+  goals: string[];
+  /** The budget guard's limit cuts, for «Для специалистов» (change-history «Запись каждого изменения»). */
+  budgetAdjustments: { id: string; at: string; text: string }[];
   directions: { id: string; name: string; channel: "search" | "network"; strategy: string; weeklyLimit: number; status: "active" | "paused"; schedule: string; city: string }[];
 }
 

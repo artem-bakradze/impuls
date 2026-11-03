@@ -35,6 +35,21 @@ and rollback, and «Разбор недели». Comparisons of two weeks need v
 
 ## Agent policies
 
+Product clarity regression coverage lives in `product-clarity.steps.ts`, `simulation-report.test.ts`,
+web `product-clarity.test.ts`, the component suites and `e2e/product-clarity.spec.ts`. The example's generated
+aggregates and checked decisions must exactly match the committed fixture; never select a more flattering random run.
+The snapshot source and the full market source are deliberately distinct: an observed 13 leads must remain 13 when
+the market already contains 14. Comparison tests exclude the current partial calendar day in the business time zone.
+The saved report's baseline and goal are frozen too; changing the current ads or stats cannot rewrite that report.
+
+Readiness and recovery tests hold a deterministic operation or inject a report write failure, then explicitly release
+or resume the step. They use no real-time sleeps or paid model calls. The mobile e2e checks use 320/360/390/1280 px;
+the pult's processing and failure states are also checked with explicit status-response fixtures, without altering a
+live business. These fixtures test rendering; worker recovery is tested separately through `SimulationDriver`.
+
+Run CPU-heavy suites separately and use `--maxWorkers=2` on memory-limited Docker installations. For example:
+`docker compose exec -T worker pnpm test:bdd --maxWorkers=2`. A killed or timed-out process is a failed check, not a pass.
+
 `IdlePolicy`, `QuietPolicy`, `HeuristicPolicy`, `AdversarialPolicy`, `RandomPolicy`, `ReplayPolicy` implement
 `AgentRuntime`. `decides` is false only for `IdlePolicy`: no turns are run for it and the rules act at once, as without
 the agent. `QuietPolicy` takes its turns and changes nothing (the rules act as its backup a day later);

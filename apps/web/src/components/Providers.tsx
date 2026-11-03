@@ -21,7 +21,7 @@ const theme: ThemeConfig = {
     colorText: "#121217",
     colorTextSecondary: "#4f4f5c",
     colorTextTertiary: "#6b6b78",
-    colorTextPlaceholder: "#9a9aa6",
+    colorTextPlaceholder: "#6b6b78",
     colorBorder: "#e0e0e7",
     colorBorderSecondary: "#e7e7ec",
     colorBgLayout: "#f6f6f8",

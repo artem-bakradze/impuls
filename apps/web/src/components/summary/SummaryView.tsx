@@ -1,30 +1,30 @@
 "use client";
 
+import { addDays } from "@impuls/core";
 import {
   BellOutlined,
   CheckOutlined,
-  DownOutlined,
   EyeOutlined,
   FileSearchOutlined,
   LineChartOutlined,
   FastForwardOutlined,
   PauseCircleOutlined,
-  RobotOutlined,
   RocketOutlined,
-  UpOutlined,
   UserAddOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, InputNumber, Segmented } from "antd";
+import { Alert, Button, InputNumber } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult } from "@/lib/client-api";
-import { formatCount, formatDateTime, formatLocalDate, formatRub, plural, sentence } from "@/lib/format";
-import { channelLabel, compareText, goalComparable, goalLine, goalTileText, launchMonthText, moderationText, periodLead } from "@/lib/summary-model";
+import { formatCount, formatDateTime, formatLocalDate, formatRub, sentence } from "@/lib/format";
+import type { AdsWork } from "@/lib/server/simulation-screen";
+import { compareText, goalComparable, goalTileText, launchMonthText, moderationText, periodLead } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
-import { InsightFeed } from "../insights/InsightFeed";
-import { Chip, Empty, Note, PageHead, Surface, SurfaceHead } from "../ui/primitives";
+import { ComparisonNote, WorkArea } from "../ads/WorkArea";
+import { MeasurementNotice } from "../MeasurementNotice";
+import { Chip, PageHead, Surface, SurfaceHead } from "../ui/primitives";
 
 type Feedback = { type: "success" | "error" | "info"; text: string } | null;
 
@@ -84,12 +84,12 @@ function NextSteps({ moderation, simulation }: { moderation: SummaryModel["moder
 }
 
 
-export function SummaryView({ model }: { model: SummaryModel }) {
+/** «Реклама» (analytics spec «Главный экран «Реклама»»): the month's three numbers, the owner's tasks, the ads and the journal. */
+export function SummaryView({ model, work, focusWeek = null }: { model: SummaryModel; work: AdsWork; focusWeek?: number | null }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [clients, setClients] = useState<number | null>(null);
-  const [platformsOpen, setPlatformsOpen] = useState(false);
 
   const finish = (outcome: { kind: "done" } | { kind: "pending" } | { kind: "error"; message: string }, success: string) => {
     if (outcome.kind === "done") {
@@ -110,10 +110,10 @@ export function SummaryView({ model }: { model: SummaryModel }) {
     finish(failed ? { kind: "error", message: sentence(failed.message) } : outcome, "Реклама снова работает");
   };
 
-  /** «Прожить первую неделю» in a simulation: the pult's «Прожить неделю» (analytics spec «Сводка»). */
+  /** «Прожить первую неделю» on the first-day card: the pult's «Прожить неделю». */
   const liveWeek = async () => {
     setBusy("forward");
-    finish(await runWebJob("/api/simulation", { action: "step_week" }), "Неделя прожита — её история на экране «Как решает сервис»");
+    finish(await runWebJob("/api/simulation", { action: "step_week" }), "Неделя прожита — что сделал сервис, видно в журнале");
   };
   const weekLabel = model.simulation?.weeks === 0 ? "Прожить первую неделю" : "Прожить неделю";
 
@@ -127,7 +127,7 @@ export function SummaryView({ model }: { model: SummaryModel }) {
   const goalChip = !goalComparable(model.goal) ? null : model.goal.status === "within" ? <Chip tone="success">В цели</Chip> : model.goal.status === "above" ? <Chip tone="warning">Дороже цели</Chip> : null;
   const sim = model.simulation;
   const monthLine = launchMonthText(model);
-  const periodWord = model.compare ? (model.period === "week" ? "за 7 дней" : "за месяц") : "с запуска";
+  const periodWord = model.compare ? "за месяц" : "с запуска";
   const q = model.attention.clientsQuestion;
   const attentionCount = model.attention.notifications.length + (q === null ? 0 : 1);
 
@@ -146,7 +146,7 @@ export function SummaryView({ model }: { model: SummaryModel }) {
               <div className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>
                 <strong style={{ color: "var(--text)" }}>Сколько обращений стали клиентами?</strong>
                 <span>
-                  С {formatLocalDate(q.week)} по {formatLocalDate(q.weekEnd)} было обращений: {q.leads}. Сколько из них стали вашими клиентами?
+                  С {formatLocalDate(q.week)} по {formatLocalDate(q.weekEnd)} было обращений: {q.leads}.
                 </span>
                 <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
                   <InputNumber min={0} max={q.leads} value={clients} onChange={(v) => setClients(typeof v === "number" ? Math.round(v) : null)} aria-label="Сколько стали клиентами" />
@@ -173,95 +173,16 @@ export function SummaryView({ model }: { model: SummaryModel }) {
     </Surface>
   );
 
-  /** Until the service has decided something, a simulation offers to live a week (the first-day card has its own button). */
-  const forwardButton =
-    sim && !model.decided ? (
-      <Button type="primary" icon={<FastForwardOutlined aria-hidden="true" />} onClick={() => void liveWeek()} loading={busy === "forward"}>
-        {weekLabel}
-      </Button>
-    ) : null;
-
-  const feed = (
-    <section className="stack" style={{ "--gap": "14px" } as React.CSSProperties} data-testid="summary-feed">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h2 className="t-h2">Что сервис заметил и решил</h2>
-        {!firstDay && model.feed.days.length > 0 ? forwardButton : null}
-      </div>
-      <InsightFeed
-        feed={model.feed}
-        empty={
-          <Surface>
-            <Empty icon={<RobotOutlined aria-hidden="true" />} title={model.launchedDays > 2 ? "За этот период разборов не было" : "Разборов пока не было"}>
-              {model.launchedDays > 2
-                ? "Помощник и автоматические решения в эти дни не работали — реклама шла как настроена."
-                : sim
-                  ? "Сервис смотрит рекламу каждое утро, а первые решения обычно принимает в первую неделю. Время в симуляции идёт по шагам: проживите неделю."
-                  : "Сервис разбирает рекламу каждое утро: первый разбор — завтра утром, первые решения — примерно через неделю."}
-              {!firstDay && forwardButton ? <div style={{ marginTop: 12 }}>{forwardButton}</div> : null}
-            </Empty>
-          </Surface>
-        }
-      />
-    </section>
-  );
-
-  const platforms = (
-    <div className="stack" style={{ "--gap": "10px" } as React.CSSProperties}>
-      <button type="button" className="link-button" style={{ alignSelf: "flex-start" }} onClick={() => setPlatformsOpen(!platformsOpen)} aria-expanded={platformsOpen}>
-        {platformsOpen ? <UpOutlined aria-hidden="true" /> : <DownOutlined aria-hidden="true" />} Цифры по площадкам
-      </button>
-      {platformsOpen ? (
-        <Surface data-testid="platforms">
-          <SurfaceHead title="Где показываем рекламу" />
-          <div className="surface-body" style={{ paddingTop: 4, paddingBottom: 8 }}>
-            {model.directions.map((d) => (
-              <div key={d.id} className="list-row" style={{ alignItems: "center" }}>
-                <div className="stack" style={{ "--gap": "4px", flex: 1, minWidth: 0 } as React.CSSProperties}>
-                  <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
-                    <span style={{ fontWeight: 600 }}>{channelLabel(d.channel)}</span>
-                    {d.status === "paused" ? <Chip>на паузе</Chip> : <Chip tone="success">работает</Chip>}
-                  </div>
-                  <span className="t-small">
-                    {d.ads} {plural(d.ads, "объявление", "объявления", "объявлений")} · до {formatRub(d.weeklyLimit)} в неделю
-                  </span>
-                </div>
-                <div className="stack t-num" style={{ "--gap": "2px", textAlign: "right" } as React.CSSProperties}>
-                  <span style={{ fontWeight: 600 }}>{formatRub(d.spend)}</span>
-                  <span className="t-small">
-                    обращений {d.leads}
-                    {d.costPerLead === null ? "" : ` · ${formatRub(d.costPerLead)} за обращение`}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {model.directions.length === 0 ? <Note>Рекламы пока нет.</Note> : null}
-          </div>
-        </Surface>
-      ) : null}
-    </div>
+  const heading = (
+    <PageHead title="Реклама" lead={firstDay ? (sim ? "Симуляция только запущена" : "Реклама только запущена") : !model.compare ? periodLead(model) : undefined} />
   );
 
   return (
-    <div className="page">
-      <PageHead
-        title="Сводка"
-        lead={firstDay ? (sim ? "Симуляция только запущена" : "Реклама только запущена") : periodLead(model)}
-        extra={
-          // No period to switch before the first statistics arrive.
-          firstDay ? null : (
-          <Segmented
-            value={model.period}
-            options={[
-              { value: "week", label: "Неделя" },
-              { value: "month", label: "Месяц" },
-            ]}
-            onChange={(value) => router.push(`/summary?period=${value}`)}
-          />
-          )
-        }
-      />
+    <div className="page summary-page">
+      {firstDay ? heading : null}
 
       <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
+        {model.measurement && !sim ? <MeasurementNotice model={model.measurement} readOnly /> : null}
         {feedback ? <Alert type={feedback.type} showIcon title={feedback.text} closable={{ onClose: () => setFeedback(null) }} /> : null}
 
         {model.state === "paused" ? (
@@ -278,7 +199,7 @@ export function SummaryView({ model }: { model: SummaryModel }) {
 
         {firstDay ? (
           <div className={attention ? "grid-2" : "stack"}>
-            <Surface className="surface-pad" data-testid="first-day">
+            <Surface className="surface-pad first-day" data-testid="first-day">
               <div className="stack" style={{ "--gap": "20px" } as React.CSSProperties}>
                 <div className="row" style={{ "--gap": "14px", flexWrap: "nowrap", alignItems: "flex-start" } as React.CSSProperties}>
                   <span className="icon-tile accent" style={{ width: 44, height: 44, fontSize: 20 }}>
@@ -313,69 +234,33 @@ export function SummaryView({ model }: { model: SummaryModel }) {
           </div>
         ) : (
           <>
-            <div className="kpis">
-              <div className="surface kpi kpi-hero">
-                <span className="t-eyebrow">Потрачено из бюджета месяца</span>
-                <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
-                  <span className="v">{formatRub(model.spentMonth)}</span>
-                  {/* The month's budget as a bar (campaign-settings: spend and what is left on the budget bar). */}
-                  <span className="budget-bar" aria-hidden="true">
-                    <i style={{ width: `${model.monthBudget > 0 ? Math.min(100, Math.max(1.5, (model.spentMonth / model.monthBudget) * 100)) : 0}%` }} />
-                  </span>
-                  <span className="sub">из {formatRub(model.monthBudget)} — больше не потратим</span>
-                  {monthLine ? <span className="sub" data-testid="launch-month">{monthLine}</span> : null}
-                </div>
-                {model.budgetForecast ? (
-                  <span className="sub" data-testid="budget-forecast">
-                    Осталось {formatRub(model.budgetForecast.left)}
-                    {model.budgetForecast.exhaustOn ? ` — при нынешних расходах хватит примерно до ${formatLocalDate(model.budgetForecast.exhaustOn)}` : ""}
-                  </span>
-                ) : null}
-                {model.compare ? <span className="sub">{compareText(model.spend.value, model.spend.previous, formatRub)}</span> : null}
-              </div>
-              <Kpi label="Обращения" value={formatCount(model.leads.value)} sub={model.compare ? compareText(model.leads.value, model.leads.previous, formatCount) : periodWord} />
-              {model.clientCost.kind === "known" ? (
-                <Kpi
-                  label="Стоимость клиента"
-                  value={model.clientCost.costPerClient === null ? "—" : formatRub(model.clientCost.costPerClient)}
-                  sub={`Клиентов: ${model.clients.value === null ? "—" : formatCount(model.clients.value)} · за неделю с ${formatLocalDate(model.clientCost.week)}`}
-                />
-              ) : (
-                <Kpi
-                  label="Стоимость обращения"
-                  value={model.clientCost.costPerLead === null ? "—" : formatRub(model.clientCost.costPerLead)}
-                  extra={goalChip}
-                  sub={
-                    <>
-                      <span data-testid="goal-line">{goalTileText(model.goal)}</span>
-                      {/* The answer about clients is asked for only while the question is open. */}
-                      {q === null ? ` · ${periodWord}` : <span style={{ display: "block" }}>{model.clientCost.hint}</span>}
-                    </>
-                  }
-                />
-              )}
+            <section className="summary-overview" aria-label="Результаты рекламы">
+            <div className="summary-heading">{heading}</div>
+            <div className="summary-period" data-testid="data-period">
+              <span>{model.dataPeriod ? `${formatLocalDate(model.dataPeriod.from)} — ${formatLocalDate(model.dataPeriod.to)} · текущий день неполный` : periodWord}</span>
             </div>
-
-            {model.clientCost.kind === "known" ? (
-              <div className="note" data-testid="goal-line" style={{ alignItems: "center" }}>
-                <span style={{ flex: 1 }}>{goalLine(model.goal)}</span>
-                {goalChip}
+            <div className="kpis summary-kpis">
+              <Kpi label="Обращения" value={formatCount(model.leads.value)} sub={model.compare ? compareText(model.leads.value, model.leads.previous, formatCount) : periodWord} />
+              <Kpi label="Цена обращения" value={model.goal.current === null ? "—" : formatRub(model.goal.current)} extra={goalChip} sub={<span data-testid="goal-line">{goalTileText(model.goal)}</span>} />
+              <div className="surface kpi budget-kpi" data-testid="budget-tile">
+                <span className="t-eyebrow">Потрачено</span>
+                <span className="v">{formatRub(model.spentMonth)}</span>
+                <span className="budget-bar" aria-label={`Потрачено ${formatRub(model.spentMonth)} из ${formatRub(model.monthBudget)}`}><i style={{ width: `${model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0}%` }} /></span>
+                <span className="sub">из {formatRub(model.monthBudget)} · сервис сам держит расход в бюджете месяца</span>
+                {monthLine ? <span className="sub" data-testid="launch-month">{monthLine}</span> : null}
+                {model.budgetForecast ? <span className="sub" data-testid="budget-forecast">Осталось {formatRub(model.budgetForecast.left)}{model.budgetForecast.exhaustOn ? ` — хватит примерно до ${formatLocalDate(model.budgetForecast.exhaustOn)}` : ""}</span> : null}
               </div>
-            ) : null}
+            </div>
+            {work.sim ? <ComparisonNote sim={work.sim} /> : null}
+            </section>
+            {model.clientCost.kind === "known" ? <details className="context-details"><summary>Подтверждённые клиенты</summary><p>Клиентов: {formatCount(model.clientCost.clients)} · {formatLocalDate(model.clientCost.week)} — {formatLocalDate(addDays(model.clientCost.week, 6))}</p><p>Стоимость клиента: {model.clientCost.costPerClient === null ? "—" : formatRub(model.clientCost.costPerClient)}</p></details> : null}
 
             {attention}
-            {feed}
-            {platforms}
-            {sim ? null : <span className="t-small">Данные за последние 3 дня могут уточняться: Яндекс иногда пересчитывает расходы задним числом.</span>}
           </>
         )}
 
-        {firstDay ? (
-          <>
-            {feed}
-            {platforms}
-          </>
-        ) : null}
+        <WorkArea work={work} focusWeek={focusWeek} />
+        {sim || firstDay ? null : <span className="t-small">Данные за последние 3 дня могут уточняться: Яндекс иногда пересчитывает расходы задним числом.</span>}
       </div>
     </div>
   );

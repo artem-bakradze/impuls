@@ -5,13 +5,11 @@ import { z } from "zod";
 import { formatRub } from "./format";
 
 /** Wizard steps in the fixed order of the business-onboarding spec. */
+/** Three steps (business-onboarding spec «Шаги мастера»): the card and the budget share one, the ads and the launch another. */
 export const WIZARD_STEPS = [
   "Где вас найти?",
   "Вот как мы вас поняли",
-  "Что для вас клиент?",
-  "Бюджет",
-  "Как увидят ваши объявления",
-  "Подключите Яндекс Директ и запустите",
+  "Объявления и запуск",
 ] as const;
 
 export const STEP_COUNT = WIZARD_STEPS.length;
@@ -26,8 +24,8 @@ export const AD_TEXT_MAX = 81;
 
 export const GOAL_OPTIONS = [
   { value: "form", label: "Заявка или запись с сайта" },
-  { value: "call", label: "Звонок по номеру с сайта" },
-  { value: "messenger", label: "Сообщение в WhatsApp/Telegram" },
+  { value: "call", label: "Нажатие на номер телефона" },
+  { value: "messenger", label: "Переход в WhatsApp/Telegram" },
   { value: "route", label: "Построение маршрута" },
 ] as const;
 
@@ -269,12 +267,6 @@ export const stepIssues = (step: number, draft: OnboardingDraft): StepIssue[] =>
       if (!c.services.some((s) => filled(s.name))) issues.push({ field: "services", message: "Добавьте хотя бы одну услугу — о ней будут объявления" });
       if (!filled(c.city)) issues.push({ field: "city", message: "Укажите город — в нём будет показываться реклама" });
       if (c.openFrom === c.openTo) issues.push({ field: "hours", message: "Время открытия и закрытия совпадает — для работы без перерыва выберите «Круглосуточно»" });
-      break;
-    }
-    case 3:
-      if (draft.goals.length === 0) issues.push({ field: "goals", message: "Выберите хотя бы одно действие, которое считать обращением" });
-      break;
-    case 4: {
       const b = draft.budget;
       if (b.monthlyBudgetRub === null) {
         issues.push({ field: "budget", message: "Укажите бюджет на месяц" });
@@ -283,18 +275,16 @@ export const stepIssues = (step: number, draft: OnboardingDraft): StepIssue[] =>
       }
       break;
     }
-    case 5: {
+    case 3: {
       const ads = draft.ads;
       if (ads === null || ads.search.length + ads.network.length === 0) {
         issues.push({ field: "ads", message: "Оставьте хотя бы одно объявление" });
       } else if ([...ads.search, ...ads.network].some((a) => !filled(a.title) || !filled(a.text))) {
         issues.push({ field: "ads", message: "У каждого объявления должны быть заголовок и текст" });
       }
+      if (draft.goals.length === 0) issues.push({ field: "goals", message: "Выберите хотя бы одно действие, которое считать обращением" });
       break;
     }
-    case 6:
-      if (!draft.directConnected) issues.push({ field: "direct", message: "Подключите Яндекс Директ" });
-      break;
     default:
       break;
   }
@@ -305,6 +295,16 @@ export const stepIssues = (step: number, draft: OnboardingDraft): StepIssue[] =>
 export const stepProblems = (step: number, draft: OnboardingDraft): string[] => stepIssues(step, draft).map((issue) => issue.message);
 
 /** First step that is not complete; the wizard may not be saved beyond it. */
+/**
+ * The step to open for a saved one. Drafts of the six-step wizard keep their place: the goals and the budget belong to
+ * step 2 until the ads are written, the preview and the launch to step 3.
+ */
+export const wizardStepOf = (saved: number, draft: Pick<OnboardingDraft, "ads">): number => {
+  if (saved >= 5) return STEP_COUNT;
+  if (saved >= 3) return draft.ads === null ? 2 : STEP_COUNT;
+  return Math.max(1, saved);
+};
+
 export const firstIncompleteStep = (draft: OnboardingDraft): number => {
   for (let step = 1; step < STEP_COUNT; step++) {
     if (stepProblems(step, draft).length > 0) {

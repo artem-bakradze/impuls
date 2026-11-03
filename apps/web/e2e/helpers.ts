@@ -18,7 +18,7 @@ export const choose = async (page: Page, label: string, option: string): Promise
 };
 
 export const expectStep = async (page: Page, step: number, title: string): Promise<void> => {
-  await expect(page.getByTestId("wizard-step")).toHaveText(`Шаг ${step} из 6`);
+  await expect(page.getByTestId("wizard-step")).toHaveText(`Шаг ${step} из 3`);
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 };
 
@@ -26,7 +26,7 @@ export const next = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Дальше" }).click();
 };
 
-/** Steps 1–3 of the wizard with the owner's site (the ads' landing page) and a Yandex Maps link. */
+/** Step 1 and the card of step 2, with the owner's site (the ads' landing page) and a Yandex Maps link; stays on step 2. */
 export const fillFirstSteps = async (page: Page): Promise<void> => {
   await expectStep(page, 1, "Где вас найти?");
   // «Дальше» is always pressable: an empty step shows the error right at the field.
@@ -34,11 +34,21 @@ export const fillFirstSteps = async (page: Page): Promise<void> => {
   await expect(page.getByRole("alert").filter({ hasText: "Укажите адрес вашего сайта" })).toBeVisible();
   // Owners type links without https://; the wizard completes them.
   await page.getByLabel("Ваш сайт").fill("nogotok.example");
+  // The other sources are folded until needed.
+  await expect(page.getByLabel("Организация в Яндекс Картах")).toBeHidden();
+  await page.getByText("Ещё источники — необязательно").click();
   await page.getByLabel("Организация в Яндекс Картах").fill("yandex.ru/maps/org/nogotok/123");
   await expect(page.getByLabel("Ваш сайт")).toHaveValue("https://nogotok.example");
   await next(page);
 
   await expectStep(page, 2, "Вот как мы вас поняли");
+  await expect(page.getByLabel("Название", { exact: true })).toHaveCount(0);
+  for (const width of [320, 360, 390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  }
+  await page.setViewportSize({ width: 360, height: 900 });
+  await page.getByRole("button", { name: /Дополнительные сведения/ }).click();
   await page.getByLabel("Название").fill("Ноготок");
   await page.getByLabel("Чем вы занимаетесь").fill("Маникюр");
   await page.getByLabel("Услуга 1").fill("Маникюр с покрытием");
@@ -48,37 +58,30 @@ export const fillFirstSteps = async (page: Page): Promise<void> => {
   // No price was given, so the field is marked instead of filled in.
   await expect(page.getByText("Цены не нашли — можно дописать")).toBeVisible();
   await page.getByLabel("Цена услуги 1").fill("1800");
-  await next(page);
-
-  await expectStep(page, 3, "Что для вас клиент?");
-  // The two usual goals are checked in advance.
-  await expect(page.getByLabel("Звонок по номеру с сайта")).toBeChecked();
-  // The test site does not exist, so the counter check says so without blocking the launch.
-  await expect(page.getByTestId("counter-check")).toContainText("Не получилось открыть сайт, чтобы проверить счётчик");
-  await next(page);
 };
 
+/** The budget under the card on step 2. */
 export const fillBudget = async (page: Page): Promise<void> => {
-  await expectStep(page, 4, "Бюджет");
+  await expectStep(page, 2, "Вот как мы вас поняли");
   await page.getByLabel("Бюджет в месяц").fill("15000");
   // No cost-per-lead question: the goal is selected automatically.
   await expect(page.getByLabel("Цена одного обращения")).toHaveCount(0);
   await expect(page.getByTestId("auto-goal")).toContainText("Сколько будут стоить обращения, станет видно после первой недели работы");
 };
 
-/** Steps 4–6 and «Запустить»; ends on the summary. */
+/** Step 3 — the ads and the launch — and «Запустить»; ends on «Реклама». */
 export const finishWizard = async (page: Page): Promise<void> => {
   await next(page);
-  await expectStep(page, 5, "Как увидят ваши объявления");
+  await expectStep(page, 3, "Объявления и запуск");
   await expect(page.getByTestId("ad-search").first()).toBeVisible();
-  await next(page);
-
-  await expectStep(page, 6, "Подключите Яндекс Директ и запустите");
   await page.getByRole("button", { name: "Продолжить в тестовом режиме" }).click();
-  // Connected: the launch summary appears on the same step.
-  await expectStep(page, 6, "Подключите Яндекс Директ и запустите");
+  // Connected: the launch summary appears on the same step, with the goals chosen in advance.
+  await expectStep(page, 3, "Объявления и запуск");
   await expect(page.getByText("Город «Москва»")).toBeVisible();
-  await page.getByRole("button", { name: "Запустить" }).click();
+  await expect(page.getByText(/заявка или запись с сайта, нажатие на номер телефона/)).toBeVisible();
+  // The test site does not exist, so the counter check says so without blocking the launch.
+  await expect(page.getByTestId("counter-check")).toContainText("Не получилось открыть сайт, чтобы проверить счётчик");
+  await page.getByRole("button", { name: "Запустить", exact: true }).click();
   await page.waitForURL("**/summary");
 };
 

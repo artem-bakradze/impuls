@@ -74,26 +74,22 @@ const seedAgentTurn = async (email: string): Promise<void> => {
   }
 };
 
-test("from a history entry made by the agent the owner opens the turn with guard verdicts", async ({ page }) => {
+test("from a change in the journal made by the agent the owner opens the turn with guard verdicts", async ({ page }) => {
   const email = uniqueEmail("turn");
   await launchNewBusiness(page, "turn", email);
   await seedAgentTurn(email);
 
-  await page.getByRole("link", { name: "История" }).click();
-  const entry = page.getByTestId("history-entry").filter({ hasText: "выделили ему больше денег" });
-  // «Почему»: the insight of the decision with its facts, right at the entry.
-  await entry.getByRole("button", { name: /Почему/ }).click();
-  const insight = entry.getByTestId("insight");
-  await insight.getByRole("button", { name: /На каких данных и что дальше/ }).click();
-  await expect(insight).toContainText("На каких данных");
-  await expect(insight).toContainText("Осталось в этом месяце");
-  await expect(insight).toContainText("урезано: не больше +20% за шаг");
-  await entry.getByRole("link", { name: "Как сервис принял это решение" }).click();
+  await page.reload();
+  const change = page.getByTestId("agent-journal").getByTestId("journal-change").filter({ hasText: /Добавил денег рекламе .*3[\s\u00a0]600/ });
+  // The facts of the decision behind one disclosure, right in its line (insights «Решение и его отмена в одной строке»).
+  await change.getByText("Факты").click();
+  await expect(change.locator("dl")).toContainText("Осталось в этом месяце");
+  await change.getByRole("link", { name: "Как сервис принял это решение" }).click();
 
   await expect(page.getByRole("heading", { name: "Как сервис принял решение" })).toBeVisible();
   await expect(page.getByTestId("turn-summary")).toContainText("Ежедневный разбор");
   const call = page.getByTestId("turn-call");
-  await expect(call).toContainText("Урезано ограничителем");
+  await expect(call).toContainText("Применено с ограничением");
   await expect(call).toContainText("урезано: не больше +20% за шаг");
 });
 

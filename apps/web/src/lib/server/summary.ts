@@ -1,8 +1,10 @@
 import "server-only";
-import { addDays, costPerLead, daysBetween, emptyStats, monthKey, weekStart } from "@impuls/core";
+import { addDays, costPerLead, daysBetween, emptyStats, monthKey, toLocalDate, weekStart } from "@impuls/core";
 import type { LocalDate, PerformanceStats } from "@impuls/core";
+import { measurementFromCard } from "../measurement";
+import { isStepComplete } from "@impuls/worker/simulation-report";
 import { aggregate, isAdDecision, loadBusinessView, weeklyClientCost } from "@impuls/worker";
-import { budgetForecast } from "../summary-model";
+import { budgetForecast, observedDaily } from "../summary-model";
 import { buildInsightFeed } from "./insights";
 import type { SummaryModel, SummaryPeriod } from "../summary-model";
 import { businessClock, platformCapabilities, readOnlyContext } from "./read-context";
@@ -84,9 +86,12 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
 
   return {
     timeZone: business.timeZone,
+    measurement: measurementFromCard(business.card, business.mode === "simulation"),
+    dataPeriod: { from: range.from > (business.launchedOn ?? today) ? range.from : (business.launchedOn ?? today), to: range.to, asOf: ctx.clock.now().toISOString(), month: monthKey(today), previousPartial: launchedOn > range.prevFrom },
+    daily: observedDaily(range.from > launchedOn ? range.from : launchedOn, range.to, rows, new Set(changes.filter((c) => c.author === "service" && c.status === "applied" && isAdDecision(c)).map((c) => toLocalDate(c.createdAt, business.timeZone)))),
     period,
     state: allPaused ? "paused" : allRows.length === 0 ? "first_day" : "running",
-    simulation: simulation ? { weeks: simulation.steps.filter((s) => s.kind === "week").length } : null,
+    simulation: simulation ? { weeks: simulation.steps.filter((s) => s.kind === "week" && isStepComplete(s, simulation)).length } : null,
     launchedDays: daysBetween(launchedOn, today) + 1,
     // The previous period entirely before the launch: nothing to compare with.
     compare: launchedOn < range.from,

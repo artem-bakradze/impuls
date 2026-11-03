@@ -4,6 +4,9 @@ import { addDays, allowedWeeklyTotal, fitLimits, monthBudget, monthKey, toLocalD
 import type { Channel } from "@impuls/core";
 import { SimulatedPlatform, YANDEX_DIRECT_CAPABILITIES } from "@impuls/platforms";
 import type { SimulatorState } from "@impuls/platforms";
+import { loadBusinessView } from "./state";
+import { createLogger } from "./logger";
+import type { SimulationWeekReport } from "./simulation-report";
 import { ManualClock } from "./clock";
 import type { Clock } from "./clock";
 import type { JobContext } from "./context";
@@ -289,8 +292,15 @@ export const advanceWorld = async (
     await applyEvents(world, from, hourEnd.getTime());
     world.clock.set(hourEnd);
     world.platform.advanceHour(hourEnd);
-    await runBusinessHour(world.ctx, world.business);
-    await world.ctx.executor.recoverPending(5 * 60_000, (id) => id === world.business.id);
+    try {
+      await runBusinessHour(world.ctx, world.business);
+      await world.ctx.executor.recoverPending(5 * 60_000, (id) => id === world.business.id);
+    } catch (error: unknown) {
+      // The market hour and any applied commands must survive a failed job boundary.
+      // Pending commands are reconciled by the executor on continuation, never replayed here.
+      await saveWorld(base, world);
+      throw error;
+    }
     await saveWorld(base, world);
     hours++;
     if (options.yieldAfterTurn && world.ctx.agent.decides && world.agentTurns > turnsBefore) {
@@ -409,12 +419,12 @@ export const restartSimulation = async (base: JobContext, businessId: string, mo
   return launchInWorld(base, fresh);
 };
 
-/** «Запустить по-настоящему»: the simulation's data is deleted, the wizard opens on step 6 with the draft kept. */
+/** «Запустить по-настоящему»: the simulation's data is deleted, the wizard opens on its last step, «Объявления и запуск», with the draft kept. */
 export const leaveSimulation = async (base: JobContext, businessId: string): Promise<void> => {
   await base.locks.withLock(simulationLockKey(businessId), async () => {
     await base.store.deleteLaunchData(businessId);
     await base.store.deleteSimulation(businessId);
-    await base.store.reopenWizard(businessId, 6);
+    await base.store.reopenWizard(businessId, 3);
   });
 };
 
@@ -429,6 +439,31 @@ const fullBaseline = async (world: SimulationWorld): Promise<SimulationBaseline>
   return known !== null && Array.isArray(known.daily) && known.days === days ? known : baselineRun(world.business, world.record, world.record.endsAt);
 };
 
+/** Freeze the public inputs of the week, never the agent's private session or user data. */
+const captureWeekReport = async (world: SimulationWorld): Promise<string> => {
+  const { store, clock } = world.ctx;
+  const id = world.business.id;
+  const today = toLocalDate(clock.now(), world.business.timeZone);
+  const [view, stats, changes, insights, turns, hypotheses] = await Promise.all([
+    loadBusinessView(store, id, clock, YANDEX_DIRECT_CAPABILITIES),
+    store.stats(id, addDays(toLocalDate(world.record.startedAt, world.business.timeZone), -13), today), store.changes(id), store.insights(id), store.turnDigests(id), store.hypotheses(id),
+  ]);
+  const full = new Map<string, { date: string; spend: number; leads: number }>();
+  const campaignIds = new Set(view.directions.map((d) => d.platformCampaignId));
+  for (const cell of world.platform.snapshot().cells) {
+    if (!campaignIds.has(cell.campaignId)) continue;
+    const known = full.get(cell.date) ?? { date: cell.date, spend: 0, leads: 0 };
+    known.spend += cell.spend; known.leads += cell.leads; full.set(cell.date, known);
+  }
+  const report: SimulationWeekReport = {
+    version: 1, at: clock.now().toISOString(), cso: view.cso, monthlyBudgetRub: world.business.monthlyBudgetRub, endsAt: world.record.endsAt.toISOString(), baseline: world.record.baseline, stats,
+    directions: view.directions, ads: view.ads,
+    changes: changes.filter((c) => c.actor !== "budget_guard"), insights, turns, hypotheses,
+    truths: world.platform.snapshot().truths, fullDaily: [...full.values()],
+  };
+  return JSON.stringify(report);
+};
+
 /**
  * «Прожить неделю» and «+1 день» (simulation-mode spec «Виртуальное время и пульт»): the step's window is recorded
  * first, so the pult shows which day goes; then the time moves in parts that end after every agent turn, so the pult
@@ -438,11 +473,17 @@ const fullBaseline = async (world: SimulationWorld): Promise<SimulationBaseline>
 const step = async (base: JobContext, businessId: string, kind: "week" | "day"): Promise<void> => {
   const target = await withSimulation(base, businessId, (world) => {
     const from = world.clock.now();
-    if (world.record.status === "stepping" || from.getTime() + HOUR_MS > world.record.endsAt.getTime()) return Promise.resolve(null);
+    if (world.record.status === "stepping") return Promise.resolve(null);
+    const previous = world.record.steps.at(-1);
+    if (previous?.state === "failed") {
+      world.record = { ...world.record, status: "stepping", steps: world.record.steps.map((s, i) => i === world.record.steps.length - 1 ? { ...s, state: "running", errorCode: undefined } : s) };
+      return Promise.resolve(previous.to);
+    }
+    if (from.getTime() + HOUR_MS > world.record.endsAt.getTime()) return Promise.resolve(null);
     const to = new Date(Math.min(from.getTime() + (kind === "week" ? WEEK_DAYS : 1) * DAY_MS, world.record.endsAt.getTime()));
     // «Вы изменили ход прогона» has been on the pult since the last step: it is said once.
     const replay = world.record.replay?.diverged ? { ...world.record.replay, notified: true } : world.record.replay;
-    world.record = { ...world.record, status: "stepping", steps: [...world.record.steps, { kind, from, to }], replay };
+    world.record = { ...world.record, status: "stepping", steps: [...world.record.steps, { kind, from, to, state: "running" }], replay };
     return Promise.resolve(to);
   });
   if (target === null) return;
@@ -450,12 +491,20 @@ const step = async (base: JobContext, businessId: string, kind: "week" | "day"):
     const done = await withSimulation(base, businessId, async (world) => {
       const { stopped } = await advanceWorld(base, world, target, { yieldAfterTurn: true });
       if (world.clock.now().getTime() + HOUR_MS <= target.getTime() && stopped === null) return false;
-      const steps = world.record.steps.map((s, index) => (index === world.record.steps.length - 1 ? { ...s, to: world.clock.now() } : s));
+      const current = world.record.steps.at(-1);
+      const report = current?.kind === "week" ? await captureWeekReport(world) : undefined;
+      const steps = world.record.steps.map((s, index) => (index === world.record.steps.length - 1 ? { ...s, to: world.clock.now(), state: "completed" as const, completedAt: world.clock.now(), ...(report !== undefined && { report }) } : s));
       world.record = { ...world.record, status: "paused", steps, ...(stopped === "end" && { baseline: await fullBaseline(world) }) };
       return true;
-    }).catch((error: unknown) => {
-      // «Запустить по-настоящему» deleted the simulation between the parts.
+    }).catch(async (error: unknown) => {
+      // This is the job boundary. Keep the checkpoint; continuation is an explicit user action.
       if (error instanceof SimulationError && error.code === "NOT_SIMULATED") return true;
+      await base.locks.withLock(simulationLockKey(businessId), async () => {
+        const saved = await base.store.getSimulation(businessId);
+        if (saved === null) return;
+        await base.store.saveSimulation({ ...saved, status: "paused", steps: saved.steps.map((s, i) => i === saved.steps.length - 1 ? { ...s, state: "failed", errorCode: "SIMULATION_STEP_FAILED" } : s) });
+      });
+      createLogger().error("Simulation step failed", { businessId, errorCode: "SIMULATION_STEP_FAILED" });
       throw error;
     });
     if (done) return;

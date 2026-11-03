@@ -1,6 +1,7 @@
 import { toLocalDate } from "@impuls/core";
 import { formatRub } from "./format";
 import type { InsightCardModel } from "./insights-model";
+import type { ChangeEntry } from "@impuls/worker";
 
 export type HistoryAuthor = "service" | "user" | "cabinet";
 export type Snapshot = Record<string, string | number | boolean | null>;
@@ -24,6 +25,7 @@ export interface HistoryItem {
   object: string;
   diff: DiffRow[];
   explanation: string;
+  decisionText?: string | undefined;
   outcome: string | null;
   /** Agent turn that made the change, for «Как сервис принял это решение». */
   turnId: string | null;
@@ -34,6 +36,8 @@ export interface HistoryItem {
   rollback: { kind: "available"; consequences: string[] } | { kind: "unavailable"; reason: string };
   /** A budget-guard limit cut: folded into one row per day (change-history spec «Подстройки лимитов за день»). */
   budgetAdjustment: boolean;
+  /** «LAUNCH» names the launch in the journal. */
+  reasonCode?: string;
 }
 
 /** Names for ids that appear in snapshots, so the history never shows raw identifiers. */
@@ -114,8 +118,34 @@ const LABELS: Record<string, string> = {
   services: "Услуги",
   advantages: "Преимущества",
   negativeKeywords: "Минус-фразы",
-  mobileAdjustment: "Цена перехода с телефонов",
-  desktopAdjustment: "Цена перехода с компьютеров и планшетов",
+  mobileAdjustment: "Настройка цены для телефонов",
+  desktopAdjustment: "Настройка цены для компьютеров и планшетов",
+};
+
+/** The executed command, not a proposal that may have been limited by the guard. */
+export const actualActionText = (entry: Pick<ChangeEntry, "action" | "before" | "after" | "status">): string | undefined => {
+  if (entry.status !== "applied") return undefined;
+  if (entry.action.type === "SetSpendLimit" && typeof entry.after.weeklyLimit === "number" && typeof entry.before.weeklyLimit === "number") {
+    return `${entry.after.weeklyLimit > entry.before.weeklyLimit ? "Увеличили" : entry.after.weeklyLimit < entry.before.weeklyLimit ? "Уменьшили" : "Сохранили"} недельный лимит до ${formatRub(entry.after.weeklyLimit)}`;
+  }
+  if (entry.action.type === "PauseAd") return "Отключили объявление";
+  if (entry.action.type === "PauseDirection") return "Поставили эту рекламу на паузу";
+  if (entry.action.type === "SetDeviceAdjustment") {
+    const percent = entry.after[entry.action.device === "mobile" ? "mobileAdjustment" : "desktopAdjustment"];
+    if (typeof percent === "number") {
+      const device = entry.action.device === "mobile" ? "телефонов" : "компьютеров и планшетов";
+      return `Настройка цены для ${device}: ${percent === 0 ? "без повышения или снижения" : `${percent < 0 ? "снижение" : "повышение"} на ${Math.abs(percent)}%`}`;
+    }
+  }
+  return undefined;
+};
+
+export const rollbackDiffText = (row: DiffRow): string => {
+  if (row.label.startsWith("Настройка цены для") && row.before === "0%") {
+    const device = row.label.includes("телефонов") ? "телефонов" : "компьютеров и планшетов";
+    return row.after.startsWith("−") ? `Уберём снижение цены перехода для ${device} на ${row.after.slice(1)}` : `Уберём повышение цены перехода для ${device} на ${row.after.replace(/^\+/, "")}`;
+  }
+  return `${row.label}: снова будет «${row.before}»`;
 };
 
 /** «Реклама в поиске» / «Реклама на сайтах-партнёрах»: what the owner chose, not the internal word «направление». */

@@ -5,20 +5,18 @@ import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, Memo
 import type { JobContext, LaunchPlan } from "@impuls/worker";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { formatRub } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import { emptyDraft } from "@/lib/onboarding";
 import { feedDays } from "@/lib/insights-model";
 import { buildDecisionScreen, scenarioTruth } from "@/lib/simulation-screen";
-import { buildWeekStory } from "@/lib/week-story";
+import { buildServiceWork } from "@/lib/service-work";
+import type { AdsWork } from "@/lib/server/simulation-screen";
+import { buildWeekStory, livedWeeks } from "@/lib/week-story";
 import { elapsedText, isCurrentAction, SimulationControlBody } from "@/lib/simulation-model";
 import type { SimulationStatus } from "@/lib/simulation-model";
-import { DecisionsView } from "./simulation/DecisionsView";
-import { WeekStory } from "./simulation/WeekStory";
+import { ComparisonNote, WorkArea } from "./ads/WorkArea";
 import { SimulationBar } from "./SimulationBar";
 import { ModeChoice, ScenarioPicker } from "./wizard/SimulationChoice";
-
-const plain = (text: string) => text.replace(/[  ]/g, " ");
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/summary" }));
 
@@ -101,7 +99,10 @@ const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy())
       ...overrides,
     });
   const story = await storyOf(4);
-  return { ...model, feed: { timeZone: "Europe/Moscow", check: null, days, names: { directions: {}, channels: {}, ads: {}, strategies: {} } }, ads, truthOf, story, storyOf };
+  const directions = await store.directions("b1");
+  const work = buildServiceWork({ ads, directions, stats: await store.stats("b1", "2026-12-01", "2026-12-30"), today: "2026-12-31", startedOn: "2026-12-01", timeZone: "Europe/Moscow", cso: rubles(500), reviews: days, history, changes, openChecks: (await store.hypotheses("b1")).filter((h) => h.status === "checking"), weeks: livedWeeks(simulation, "Europe/Moscow") });
+  const screenModel: AdsWork = { ...work, site: "nogotok.example", history, names: { directions: {}, channels: {}, ads: {}, strategies: {} }, sim: { comparison: model.comparison, result: model.result, decisionDays: model.decisionDays, day: model.day, totalDays: model.totalDays, scenarioTitle: model.scenarioTitle, ended: model.result !== null } };
+  return { ...model, work, screenModel, feed: { timeZone: "Europe/Moscow", check: null, days, names: { directions: {}, channels: {}, ads: {}, strategies: {} } }, ads, truthOf, story, storyOf };
 };
 
 describe("decisions screen model (simulation-mode spec)", () => {
@@ -153,15 +154,100 @@ describe("decisions screen model (simulation-mode spec)", () => {
     expect(model.feed.days.some((d) => d.summary !== null || d.quiet)).toBe(true);
   }, 60_000);
 
-  it("renders the comparison, the checklist and the feed in plain words, without the old ribbons and budget chart", async () => {
-    render(<DecisionsView model={await run(false, new HeuristicPolicy())} />);
-    expect(screen.getByText("Отключил рекламу, которая не приносит клиентов")).toBeTruthy();
-    expect(screen.getAllByTestId("insight-truth").some((n) => n.textContent?.includes("не приводит обращений"))).toBe(true);
-    expect(screen.getByTestId("sim-comparison").textContent).toContain("Если бы сервис ничего не делал");
-    expect(screen.getByTestId("sim-result").textContent).toContain("Если бы сервис ничего не делал");
-    expect(screen.queryByTestId("sim-lane")).toBeNull();
-    expect(document.body.textContent).not.toMatch(/Лента месяца|Расходы против бюджета/);
-    expect(document.body.textContent).not.toMatch(/CTR|конверси|ставк|CPC|CPA/i);
+  it("says the comparison in one line, without a table, graphs or checklist", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    if (!model.screenModel.sim) throw new Error("no simulation");
+    render(<ComparisonNote sim={model.screenModel.sim} />);
+    expect(screen.queryByTestId("sim-checklist")).toBeNull();
+    const comparison = screen.getByTestId("sim-comparison");
+    expect(comparison.querySelectorAll("table")).toHaveLength(0);
+    expect(comparison).toHaveTextContent(`Итог 30 дней: с сервисом ${model.result?.service.leads ?? ""}`);
+    expect(comparison).toHaveTextContent(`без него было бы ${model.result?.baseline.leads ?? ""}`);
+    expect(document.querySelectorAll(".results-trend")).toHaveLength(0);
+  }, 60_000);
+
+});
+
+describe("ads and journal of «Реклама» in a simulation (simulation-mode spec)", () => {
+  it("shows the ads people see now and names the ones that are not shown", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    // The agent paused the ad without clients; a new variant may share its title.
+    const dead = model.ads.find((a) => a.title === "Маникюр 1" && a.status === "paused");
+    expect(dead).toBeDefined();
+    expect(model.work.hidden.map((h) => h.title)).toContain("Маникюр 1");
+    expect(model.work.shown.some((a) => a.id === dead?.id)).toBe(false);
+    expect(model.work.shown.length).toBeGreaterThan(0);
+    render(<WorkArea work={model.screenModel} />);
+    expect(screen.getAllByTestId("shown-ad")).toHaveLength(model.work.shown.length);
+    expect(screen.getByTestId("hidden-ads")).toHaveTextContent("«Маникюр 1»");
+  }, 60_000);
+
+  it("keeps the agent's journal oldest first in sections of the lived weeks, with the change and the truth", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    const entries = model.work.journal.flatMap((s) => s.entries);
+    expect(entries.map((e) => e.date)).toEqual([...entries.map((e) => e.date)].sort());
+    expect(model.work.journal.filter((s) => s.week !== null).map((s) => s.week)).toEqual([1, 2, 3, 4, 5]);
+    const pause = entries.find((e) => e.changes.some((c) => c.text === "Отключил объявление «Маникюр 1»"));
+    expect(pause?.truths.map((t) => t.text)).toContain("На самом деле: объявление не приводит обращений");
+    // Rejected proposals are never shown as changes.
+    expect(entries.flatMap((e) => e.changes).every((c) => !c.text.startsWith("Изменение не применено"))).toBe(true);
+    expect(entries.every((e) => e.paragraphs.every((p) => !p.includes("**") && !/^Разбор (дня|недели)/.test(p)))).toBe(true);
+  }, 60_000);
+
+  it("groups the ads by the rules' estimate and marks what the service changed", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    const order = ["effective", "borderline", "learning", "ineffective"];
+    const ranks = model.work.shown.map((a) => order.indexOf(a.verdict));
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+    expect(model.work.journal[0]?.week).toBe(1);
+    render(<WorkArea work={model.screenModel} />);
+    for (const verdict of new Set(model.work.shown.map((a) => a.verdict))) expect(screen.getByTestId(`ads-${verdict}`)).toBeTruthy();
+    const marks = [...model.work.shown.flatMap((a) => (a.change ? [a.change] : [])), ...model.work.directionChanges];
+    expect(screen.queryAllByTestId("change-mark")).toHaveLength(marks.length);
+    expect(marks.every((m) => !/направлени|инсайт/i.test(m.text))).toBe(true);
+  }, 60_000);
+
+  it("speaks plainly: no «инсайт», and «пункты» are percents", async () => {
+    const { speech } = await import("@/lib/service-work");
+    expect(speech("**Разбор дня:** сохранил инсайт. Повышаю цену перехода на 10 пунктов.")).toEqual(["Сохранил наблюдение. Повышаю цену перехода на 10%."]);
+  });
+
+  it("keeps only the records about the pressed ad, and shows everything again", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    render(<WorkArea work={model.screenModel} />);
+    const all = screen.getAllByTestId("journal-entry").length;
+    const [first] = screen.getAllByRole("button", { name: /показать записи журнала/ });
+    if (!first) throw new Error("no ad");
+    fireEvent.click(first);
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("journal-filter")).toBeTruthy();
+    expect(screen.queryAllByTestId("journal-entry").length).toBeLessThan(all);
+    fireEvent.click(screen.getByTestId("journal-filter"));
+    expect(screen.getAllByTestId("journal-entry")).toHaveLength(all);
+  }, 60_000);
+
+  it("says hypotheses once, when they are opened", () => {
+    const hypothesis = { id: "h1", statement: "телефоны приводят обращения дороже компьютеров", check: "Сравню цену обращения", checkOn: "2026-12-15", outcome: null, result: null };
+    const weekly = (date: string) => ({ date, from: null, summary: "**Разбор недели:** снизил цену перехода с телефонов.", quiet: false, rulesReason: null, insights: [], weekly: { summary: "**Разбор недели:** снизил цену перехода с телефонов.", checking: [hypothesis], found: [], insights: [] } });
+    const work = buildServiceWork({ ads: [], directions: [], stats: [], today: "2026-12-16", startedOn: "2026-12-01", timeZone: "Europe/Moscow", cso: rubles(500), reviews: [weekly("2026-12-15"), weekly("2026-12-08")], history: [], changes: [], openChecks: [], weeks: [] });
+    const entries = work.journal.flatMap((s) => s.entries).filter((e) => e.weekly);
+    expect(entries.map((e) => e.checking.length)).toEqual([1, 0]);
+    // Without changes the first sentence is the gist.
+    expect(entries[0]?.headline).toBe("Снизил цену перехода с телефонов.");
+    expect(entries[0]?.paragraphs).toEqual([]);
+  });
+
+  it("shows the newest record at once when the system asks for less motion", async () => {
+    const model = await run(false, new HeuristicPolicy());
+    const original = window.matchMedia.bind(window);
+    window.matchMedia = (query: string): MediaQueryList => ({ ...original(query), matches: query.includes("reduce") });
+    try {
+      render(<WorkArea work={model.screenModel} />);
+      const last = screen.getAllByTestId("journal-entry").at(-1);
+      expect(last?.querySelector(".log-caret")).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   }, 60_000);
 });
 
@@ -189,43 +275,15 @@ describe("week story (simulation-mode spec «История недели»)", ()
     const model = await run(false, new HeuristicPolicy());
     // While the ads collect data, the rules' estimate says so.
     const collecting = await model.storyOf(1, { changes: [], stats: [] });
-    expect(collecting?.decisions).toEqual([]);
-    expect(collecting?.noDecisionReason).toBe("Объявления ещё собирали данные: решения сервис принимает, когда данных достаточно.");
+    // New reports stay frozen even if today's statistics and commands were corrected.
+    expect(collecting).toEqual(await model.storyOf(1));
+    expect(collecting?.savedAt).toBeDefined();
     // The first week's own decision comes on the morning after its seven days and belongs to it.
     const first = await model.storyOf(1);
     expect(first?.days.map((d) => d.date)).toEqual(["2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06", "2026-12-07"]);
     expect(await model.storyOf(9)).toBeNull();
   }, 60_000);
 
-  it("plays the scenes and shows them all at once on «Показать сразу»", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    const story = model.story;
-    if (!story) throw new Error("no story");
-    render(<WeekStory story={story} names={model.feed.names} />);
-    // At first only the days are there, before they light up.
-    expect(screen.queryByTestId("week-scene-decision")).toBeNull();
-    expect(plain(screen.getByTestId("week-spend").textContent ?? "")).toBe("0 ₽");
-    fireEvent.click(screen.getByRole("button", { name: /Показать сразу/ }));
-    expect(screen.getByTestId("week-scene-review")).toBeTruthy();
-    expect(screen.getByTestId("week-scene-decision")).toBeTruthy();
-    expect(plain(screen.getByTestId("week-spend").textContent ?? "")).toBe(plain(formatRub(story.totals.spend)));
-    expect(screen.getByTestId("week-compare").textContent).toContain("без него было бы");
-  }, 60_000);
-
-  it("shows every scene at once when the system asks for less motion", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    const story = model.story;
-    if (!story) throw new Error("no story");
-    const original = window.matchMedia.bind(window);
-    window.matchMedia = (query: string): MediaQueryList => ({ ...original(query), matches: query.includes("reduce") });
-    try {
-      render(<WeekStory story={story} names={model.feed.names} />);
-      expect(screen.getByTestId("week-scene-decision")).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /Показать сразу/ })).toBeNull();
-    } finally {
-      window.matchMedia = original;
-    }
-  }, 60_000);
 });
 
 describe("step 6 choice", () => {
@@ -248,7 +306,7 @@ describe("step 6 choice", () => {
     expect(screen.getByLabelText("Одно объявление не приносит клиентов")).toBeDisabled();
     expect(screen.getByLabelText("Пограничное объявление")).not.toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Добавить объявление" }));
-    expect(onEdit).toHaveBeenCalledWith(5);
+    expect(onEdit).toHaveBeenCalledWith(3);
   });
 });
 
@@ -286,26 +344,26 @@ describe("simulation pult", () => {
     expect(screen.getByTestId("simulation-day").textContent).toBe("День 9 из 30 · 14:00");
     expect(screen.getByText(/Симуляция — реклама не показывается/)).toBeTruthy();
     expect(screen.getByTestId("simulation-step-week").textContent).toContain("Прожить неделю");
-    expect(screen.getByRole("button", { name: "Начать заново" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Начать заново" })).toBeNull();
     // No speed and no «До следующего решения»: the time moves only by steps.
     expect(screen.queryByText(/1 день = /)).toBeNull();
     expect(screen.queryByRole("button", { name: /До следующего решения/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Ещё/ }));
-    for (const text of ["+1 день", "Запустить по-настоящему"]) {
+    for (const text of ["+1 день", "Начать заново", "Запустить по-настоящему"]) {
       expect(screen.getByText(text)).toBeTruthy();
     }
   });
 
   it("says which day goes while a week is lived, and that the service is reviewing a day", () => {
     const { unmount } = render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, day: 10 }} />);
-    expect(screen.getByTestId("simulation-progress").textContent).toBe("Неделя 2: идёт 10-й день");
+    expect(screen.getByTestId("simulation-progress").textContent).toContain("Неделя 2: идёт 10-й день");
     unmount();
     const { unmount: unmountDay } = render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, agentTurn: { day: 10, weekly: false } }} />);
-    expect(screen.getByTestId("simulation-progress").textContent).toBe("Сервис разбирает 10-й день… · 0:00");
+    expect(screen.getByTestId("simulation-progress").textContent).toContain("Сервис разбирает 10-й день… · 0:00");
     unmountDay();
     // A week's review on a model takes minutes: the pult says so and counts the time, so it does not look stuck.
     render(<SimulationBar initial={{ ...status, status: "stepping", step: { kind: "week", week: 2 }, agentTurn: { day: 9, weekly: true } }} />);
-    expect(screen.getByTestId("simulation-progress").textContent).toBe("Сервис разбирает неделю — обычно до 2–3 минут · 0:00");
+    expect(screen.getByTestId("simulation-progress").textContent).toContain("Сервис разбирает неделю — обычно до 2–3 минут · 0:00");
     expect(elapsedText(125)).toBe("2:05");
   });
 
@@ -316,7 +374,8 @@ describe("simulation pult", () => {
 
   it("offers to repeat the run or to run it again, and warns that the agent may decide otherwise", async () => {
     render(<SimulationBar initial={status} />);
-    fireEvent.click(screen.getByRole("button", { name: "Начать заново" }));
+    fireEvent.click(screen.getByRole("button", { name: /Ещё/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Начать заново/ }));
     expect(await screen.findByText(/рынок будет тем же, но агент может решить иначе/)).toBeTruthy();
     expect(screen.getByTestId("restart-repeat")).not.toBeDisabled();
     expect(screen.getByTestId("restart-fresh")).toBeTruthy();
@@ -324,7 +383,8 @@ describe("simulation pult", () => {
 
   it("offers only to run again when the run had no decisions on a model", async () => {
     render(<SimulationBar initial={{ ...status, replay: { available: false, repeating: false, diverged: false } }} />);
-    fireEvent.click(screen.getByRole("button", { name: "Начать заново" }));
+    fireEvent.click(screen.getByRole("button", { name: /Ещё/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Начать заново/ }));
     expect(await screen.findByTestId("restart-repeat")).toBeDisabled();
   });
 

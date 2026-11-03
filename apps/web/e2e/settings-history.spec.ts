@@ -1,25 +1,27 @@
 import { expect, test } from "@playwright/test";
 import { choose, launchNewBusiness } from "./helpers";
 
-test("changing show hours goes to every campaign and can be rolled back from the history", async ({ page }) => {
+test("changing show hours goes to every campaign and can be rolled back from the journal", async ({ page }) => {
   await launchNewBusiness(page, "hours");
 
   await page.getByRole("link", { name: "Настройки" }).click();
-  // «Сайт»: the owner's own site, no mini-site form (the mini-site is out of the MVP).
-  await expect(page.getByText("Объявления ведут на ваш сайт:")).toBeVisible();
-  await expect(page.getByRole("link", { name: "https://nogotok.example" })).toBeVisible();
+  // The site in one line, no mini-site form (the mini-site is out of the MVP).
+  await expect(page.getByTestId("site-change")).toContainText("Объявления ведут на nogotok.example");
+  await expect(page.getByRole("link", { name: "nogotok.example" })).toBeVisible();
   await expect(page.getByTestId("minisite-form")).toHaveCount(0);
-  const schedule = page.getByTestId("schedule-section");
-  await expect(schedule).toContainText("Сейчас: Пн–Вс 10:00–20:00");
+  const schedule = page.locator("#where");
+  // The current value is read before the editor opens.
+  await expect(schedule).toContainText("Пн–Вс 10:00–20:00");
+  await page.getByRole("button", { name: "Изменить: Когда показываем" }).click();
   await choose(page, "Показывать до", "до 21:00");
   await page.getByRole("button", { name: "Сохранить время" }).click();
   await expect(schedule).toContainText("Расписание обновлено во всей рекламе");
-  await expect(schedule).toContainText("Сейчас: Пн–Вс 10:00–21:00");
+  await expect(schedule).toContainText("Пн–Вс 10:00–21:00");
 
-  await page.getByRole("link", { name: "История" }).click();
-  // One feed without filters (simplify-mvp-scope).
-  await expect(page.getByLabel("Кто сделал")).toHaveCount(0);
-  const changes = page.getByTestId("history-entry").filter({ hasText: "Время показа: было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00" });
+  // The history is the journal of «Реклама»: the owner's change in their words, with «Вернуть как было».
+  await page.getByRole("link", { name: "Реклама" }).click();
+  const journal = page.getByTestId("agent-journal");
+  const changes = journal.getByTestId("journal-change").filter({ hasText: "время показа: было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00" });
   await expect(changes).toHaveCount(2);
 
   const first = changes.first();
@@ -30,24 +32,23 @@ test("changing show hours goes to every campaign and can be rolled back from the
   await expect(dialog).toContainText("Готово — вернули как было");
   await dialog.getByRole("button", { name: "Понятно" }).click();
 
-  const reverted = page.getByTestId("history-entry").filter({ hasText: "Время показа: было Пн–Вс 10:00–21:00 → стало Пн–Вс 10:00–20:00" });
-  await expect(reverted).toHaveCount(1);
-  await expect(reverted).toContainText("Вы отменили изменение");
-  await expect(page.getByTestId("history-entry").filter({ hasText: "Отменено" })).toHaveCount(1);
+  await expect(journal.getByTestId("journal-change").filter({ hasText: "время показа: было Пн–Вс 10:00–21:00 → стало Пн–Вс 10:00–20:00" })).toHaveCount(1);
+  await expect(journal.getByTestId("journal-change").filter({ hasText: "отменено" })).toHaveCount(1);
 });
 
 test("the owner sets an own cost per lead, edits the business card and sees how to delete the account", async ({ page }) => {
   await launchNewBusiness(page, "goal");
   await page.getByRole("link", { name: "Настройки" }).click();
   await expect(page.getByText("Спрашивать перед крупными изменениями")).toHaveCount(0);
-  const goal = page.getByTestId("goal-section");
-  await expect(goal).toContainText("подбираем сами по результатам рекламы");
+  const goal = page.locator("#budget");
+  await expect(goal).toContainText("Подбираем сами по результатам");
+  await page.getByRole("button", { name: "Изменить: Цена обращения" }).click();
   await goal.getByRole("radio", { name: "Укажу сумму" }).click();
   await page.getByLabel("Цена одного обращения").fill("500");
   await goal.getByRole("button", { name: "Сохранить цель" }).click();
   await expect(goal).toContainText("Цель сохранена");
-  await expect(goal).toContainText("Сейчас: до 500 ₽ за обращение");
-  await expect(page.getByTestId("account-deletion")).toContainText("support@impuls.test");
+  await expect(goal).toContainText("До 500 ₽");
+  await expect(page.getByTestId("site-change")).toContainText("удалить аккаунт — напишите на support@impuls.test");
 
   // «Что рекламируем» is editable; the running ads stay as they are.
   const card = page.getByTestId("card-section");
@@ -57,12 +58,13 @@ test("the owner sets an own cost per lead, edits the business card and sees how 
   await expect(card).toContainText("Описание сохранено");
   await expect(card).toContainText("Работаем без выходных");
 
-  await page.getByRole("link", { name: "История" }).click();
-  const entry = page.getByTestId("history-entry").filter({ hasText: "Вы изменили цель" });
+  await page.getByRole("link", { name: "Реклама" }).click();
+  const journal = page.getByTestId("agent-journal");
+  const entry = journal.getByTestId("journal-change").filter({ hasText: "Вы: Цель по цене обращения" });
   await expect(entry).toHaveCount(1);
   await expect(entry.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
-  const cardEntry = page.getByTestId("history-entry").filter({ hasText: "Вы изменили описание бизнеса" });
-  await expect(cardEntry).toContainText("Преимущества");
+  const cardEntry = journal.getByTestId("journal-change").filter({ hasText: "Вы: Описание бизнеса" });
+  await expect(cardEntry).toContainText("преимущества");
   await expect(cardEntry.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
 });
 
@@ -71,7 +73,7 @@ test("pause and resume all ads from the settings", async ({ page }) => {
   await page.getByRole("link", { name: "Настройки" }).click();
   await page.getByRole("button", { name: "Поставить рекламу на паузу" }).click();
   await expect(page.getByText("Реклама на паузе", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Сводка" }).click();
+  await page.getByRole("link", { name: "Реклама" }).click();
   await expect(page.getByText("Реклама на паузе", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Возобновить" }).click();
   await expect(page.getByText("Реклама снова работает")).toBeVisible();

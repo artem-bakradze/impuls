@@ -16,6 +16,8 @@ export function SourcesStep({ draft, onChange, errors = {} }: StepProps) {
     const link = normalizeLink(kind, draft.sources[field]);
     if (link !== null && link !== draft.sources[field]) set({ [field]: link });
   };
+  // The extra sources are folded until needed; what was typed or an error keeps them open (business-onboarding «Шаги мастера»).
+  const extras = draft.sources.mapsUrl !== "" || draft.sources.vkUrl !== "" || draft.sources.about !== "" || errors.mapsUrl !== undefined || errors.vkUrl !== undefined;
   return (
     <div className="form-section">
       <Field id="siteUrl" label="Ваш сайт" error={errors.siteUrl} help="Можно без https:// — например, nogotok.ru. На эту страницу будут вести объявления, а карточку бизнеса мы заполним по ней сами.">
@@ -34,7 +36,9 @@ export function SourcesStep({ draft, onChange, errors = {} }: StepProps) {
           autoFocus
         />
       </Field>
-      <div className="row" style={{ "--gap": "16px", alignItems: "flex-start" } as React.CSSProperties}>
+      <details className="context-details" open={extras} data-testid="more-sources">
+      <summary>Ещё источники — необязательно</summary>
+      <div className="row" style={{ "--gap": "16px", alignItems: "flex-start", marginTop: 12 } as React.CSSProperties}>
         <div style={{ flex: "1 1 240px" }}>
           <Field id="mapsUrl" label="Яндекс Карты" error={errors.mapsUrl} help="Необязательно">
             <Input
@@ -77,6 +81,7 @@ export function SourcesStep({ draft, onChange, errors = {} }: StepProps) {
           aria-label="Расскажите своими словами"
         />
       </Field>
+      </details>
     </div>
   );
 }

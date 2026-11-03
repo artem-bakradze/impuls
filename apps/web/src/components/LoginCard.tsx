@@ -30,7 +30,7 @@ function ProductMock() {
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
         <div className="row" style={{ gap: 10 }}>
           <LogoMark size={24} />
-          <span className="t-h3">Неделя 14–20 октября</span>
+          <span className="t-h3">Учебная неделя 14–20 октября</span>
         </div>
         <span className="chip chip-success">Работает</span>
       </div>
@@ -117,7 +117,7 @@ export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTes
                   <ClockCircleOutlined />
                 </span>
                 <span>
-                  <b>10 минут до запуска.</b> Нужны только сайт и аккаунт в Яндекс Директе — без ставок и ключевых фраз.
+                  <b>Начните с сайта и описания услуг.</b> Для учебного запуска аккаунт в Яндексе не нужен. Для настоящей рекламы его подключают на последнем шаге.
                 </span>
               </li>
               <li>
@@ -125,7 +125,7 @@ export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTes
                   <SafetyCertificateOutlined />
                 </span>
                 <span>
-                  <b>Бюджет никогда не превышается.</b> Это проверяет код, а не обещание.
+                  <b>Контроль бюджета на календарный месяц.</b> Сервис проверяет лимиты перед изменениями и останавливает свою рекламу при исчерпании бюджета.
                 </span>
               </li>
               <li>
@@ -147,14 +147,16 @@ export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTes
             </ul>
             {errorText ? <Alert type="warning" showIcon title={errorText} /> : null}
             <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
+              {/* One action (product-demo «Условия демосервиса»): the simulation of one's own business is the way to try it. */}
               <form action={signInWithGoogle}>
-                <button type="submit" className="google-btn">
+                <button type="submit" className="google-btn" aria-label="Попробовать на своём бизнесе — войти через Google">
                   <span className="g-mark">
                     <GoogleG />
                   </span>
-                  Войти через Google
+                  Попробовать на своём бизнесе
                 </button>
               </form>
+              <p className="t-small">Вход через Google. Импульс — демосервис без оплаты; в симуляции деньги не списываются, настоящая реклама оплачивается отдельно в Яндексе.</p>
               <div className="trust">
                 <span>
                   <CheckOutlined aria-hidden="true" />

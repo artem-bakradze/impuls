@@ -4,7 +4,8 @@ import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
-import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, SimulationStep, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import { readSimulationSteps } from "./simulation-report";
 
 const GLOBAL = "*";
 const toMap = <V>(value: unknown): Map<string, V> => new Map(Object.entries(value as Record<string, V>));
@@ -455,7 +456,7 @@ export class PgStore implements Store {
       status: row.status,
       state: row.state as SimulationRecord["state"],
       baseline: (row.baseline as SimulationRecord["baseline"]) ?? null,
-      steps: ((row.steps as { kind: SimulationStep["kind"]; from: string; to: string }[] | null) ?? []).map((s) => ({ kind: s.kind, from: new Date(s.from), to: new Date(s.to) })),
+      steps: readSimulationSteps(row.steps),
       replay: reviveReplay(row.replay),
     };
   }

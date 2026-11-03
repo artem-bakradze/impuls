@@ -589,7 +589,8 @@ describeFeature(feature, ({ Scenario }) => {
       const story = await weekStory(w, 1);
       if (!story) throw new Error("no story");
       // The story's own rule: no decisions in the week, a reason in plain words.
-      const quiet = buildWeekStory({ ...(await storyInput(w)), week: 1, changes: [] });
+      const input = await storyInput(w);
+      const quiet = buildWeekStory({ ...input, simulation: { ...input.simulation, steps: input.simulation.steps.map(({ kind, from, to }) => ({ kind, from, to })) }, week: 1, changes: [] });
       expect(quiet?.decisions).toEqual([]);
       expect(quiet?.noDecisionReason).toBeTruthy();
     });
@@ -701,17 +702,17 @@ describeFeature(feature, ({ Scenario }) => {
     Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
       w = await launched("Обычный месяц");
     });
-    When("симуляция доходит до 12-го дня", async () => {
-      await untilDay(w, 11);
+    When("симуляция завершила 12-й календарный день", async () => {
+      await untilDay(w, 12);
     });
     Then("экран сравнивает обращения с сервисом и без него за 12 дней, по дням, и цифры с сервисом совпадают с данными симулятора", async () => {
       const model = await screen(w);
-      expect(model.day).toBe(12);
+      expect(model.day).toBe(13);
       expect(model.comparison?.service).toHaveLength(12);
       expect(model.comparison?.baseline).toHaveLength(12);
       const simulation = await w.store.getSimulation("b1");
       const campaigns = new Set((await w.store.directions("b1")).map((d) => d.platformCampaignId));
-      const cells = (simulation?.state.cells ?? []).filter((c) => campaigns.has(c.campaignId));
+      const cells = (simulation?.state.cells ?? []).filter((c) => campaigns.has(c.campaignId) && c.date <= (model.comparison?.to ?? ""));
       expect(model.comparison?.serviceNow.leads).toBe(cells.reduce((sum, c) => sum + c.leads, 0));
       expect(model.comparison?.serviceNow.spend).toBe(cells.reduce((sum, c) => sum + c.spend, 0));
     });

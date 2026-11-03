@@ -21,7 +21,7 @@ export interface TurnViewModel {
 
 const STATUS_LABELS: Record<string, { text: string; tone: Tone; icon: ReactNode }> = {
   applied: { text: "Выполнено", tone: "success", icon: <CheckOutlined /> },
-  clamped: { text: "Урезано ограничителем", tone: "warning", icon: <ScissorOutlined /> },
+  clamped: { text: "Применено с ограничением", tone: "warning", icon: <ScissorOutlined /> },
   queued: { text: "Отправлено вам на подтверждение", tone: "accent", icon: <SendOutlined /> },
   rejected: { text: "Отклонено ограничителем", tone: "danger", icon: <CloseOutlined /> },
 };
