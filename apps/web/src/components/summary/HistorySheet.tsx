@@ -1,0 +1,197 @@
+"use client";
+
+import { Drawer } from "antd";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { formatLocalDate, formatRub, plural } from "@/lib/format";
+import type { HistoryItem } from "@/lib/history-view";
+import type { AdsWork } from "@/lib/server/simulation-screen";
+import type { SummaryModel } from "@/lib/summary-model";
+import type { JournalChange, JournalEntry, JournalSection } from "@/lib/service-work";
+import type { Tone } from "../ui/primitives";
+
+const SHOWN_WEEKS = 8;
+const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
+
+/** One line under the month's numbers in a simulation: the same words as before, now inside the history sheet. */
+export function ComparisonNote({ sim }: { sim: NonNullable<AdsWork["sim"]> }) {
+  const { comparison, result, decisionDays } = sim;
+  if (comparison === null) return <p className="j-compare" data-testid="sim-comparison">Сравнение с прогоном без изменений появится после первого завершённого дня.</p>;
+  const days = result?.days ?? comparison.service.length;
+  const service = result?.service.leads ?? comparison.serviceNow.leads;
+  const baseline = result?.baseline.leads ?? comparison.baselineNow.leads;
+  const diff = service - baseline;
+  const early = result === null && (days < 14 || decisionDays.length === 0);
+  const verdict = early ? "пока рано сравнивать" : diff === 0 ? "поровну" : diff > 0 ? `на ${diff} больше` : `на ${-diff} меньше`;
+  const tone: Tone = early || diff === 0 ? "neutral" : diff > 0 ? "success" : "danger";
+  return (
+    <div className="j-compare" data-testid="sim-comparison">
+      <span>
+        {result ? "Итог" : "За"} {days} {plural(days, "день", "дня", "дней")}: с сервисом <strong>{service} {leadsWord(service)}</strong>, без него было бы {baseline}
+      </span>
+      <span className="j-verdict" data-tone={tone === "neutral" ? undefined : tone}>
+        {verdict}
+      </span>
+      <span className="t-small">Разница может быть случайной и не обещает такого же в настоящей рекламе.</span>
+    </div>
+  );
+}
+
+function ChangeLine({ change, onRollback }: { change: JournalChange; onRollback: (item: HistoryItem) => void }) {
+  const item = change.item;
+  const canRollBack = item !== null && !change.reverted && item.rollback.kind === "available";
+  return (
+    <li data-reverted={change.reverted || undefined} data-testid="journal-change">
+      <div className="j-change">
+        <span className="j-mark" aria-hidden="true">→</span>
+        <span className="log-change-text j-change-text">
+          {change.text}
+          {change.reverted ? <span className="j-reverted"> · отменено</span> : null}
+        </span>
+        {canRollBack ? (
+          <button type="button" className="j-link" onClick={() => onRollback(item)}>
+            Вернуть как было
+          </button>
+        ) : null}
+      </div>
+      {item !== null && !change.reverted && item.rollback.kind === "unavailable" && item.reasonCode !== "LAUNCH" ? <p className="j-no-rollback">{item.rollback.reason}</p> : null}
+      {change.facts.length > 0 || change.turnId ? (
+        <details className="j-facts">
+          <summary>Факты</summary>
+          {change.facts.length > 0 ? (
+            <dl>
+              {change.facts.map((f) => (
+                <div key={f.label}>
+                  <dt>{f.label}</dt>
+                  <dd>{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {change.turnId ? (
+            <Link href={`/history/turn/${change.turnId}`} className="j-link">
+              Как сервис принял это решение
+            </Link>
+          ) : null}
+        </details>
+      ) : null}
+    </li>
+  );
+}
+
+function Entry({ entry, onRollback }: { entry: JournalEntry; onRollback: (item: HistoryItem) => void }) {
+  const when = entry.from ? `${formatLocalDate(entry.from)} — ${formatLocalDate(entry.date)}` : `День ${entry.day} · ${formatLocalDate(entry.date)}`;
+  const [first, ...rest] = entry.paragraphs;
+  return (
+    <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry">
+      <div className="j-when">
+        <time dateTime={entry.date}>{when}</time>
+        {entry.weekly ? <span className="j-tag">разбор недели</span> : null}
+        {entry.kind === "rules" ? <span className="j-tag j-tag-dim">страховочные правила</span> : null}
+      </div>
+      {entry.changes.length > 0 ? (
+        <ul className="j-changes" data-testid="journal-headline">
+          {entry.changes.map((c, i) => (
+            <ChangeLine key={c.historyId ?? i} change={c} onRollback={onRollback} />
+          ))}
+        </ul>
+      ) : entry.headline ? (
+        <p className="j-headline">{entry.headline}</p>
+      ) : null}
+      {first ? <p className="j-text">{first}</p> : null}
+      {rest.length > 0 ? (
+        <details className="j-more">
+          <summary>Ещё</summary>
+          {rest.map((p, i) => (
+            <p key={i} className="j-text">
+              {p}
+            </p>
+          ))}
+        </details>
+      ) : null}
+      {entry.checking.map((h, i) => (
+        <div key={`c${i}`} className="j-line log-hypothesis">
+          <span className="j-mark" aria-hidden="true">?</span>
+          <span>
+            {/^провер/i.test(h.statement) ? h.statement : `Проверяю: ${h.statement}`} <span className="j-dim">— итог {formatLocalDate(h.checkOn)}</span>
+          </span>
+        </div>
+      ))}
+      {entry.found.map((h, i) => (
+        <div key={`f${i}`} className="j-line">
+          <span className="j-mark" aria-hidden="true">✓</span>
+          <span>
+            Выяснил: {h.statement} — {h.outcome}.{h.result ? ` ${h.result}` : ""}
+          </span>
+        </div>
+      ))}
+      {entry.truths.map((t, i) => (
+        <div key={`t${i}`} className={`j-line j-truth j-truth-${t.tone}`} data-testid="insight-truth">
+          <span className="j-mark" aria-hidden="true">◆</span>
+          <span>{t.text}</span>
+        </div>
+      ))}
+    </article>
+  );
+}
+
+function Section({ section, children }: { section: JournalSection; children: React.ReactNode }) {
+  const dates = section.from === section.to ? formatLocalDate(section.from) : `${formatLocalDate(section.from)} — ${formatLocalDate(section.to)}`;
+  return (
+    <section className="j-section" data-week={section.week ?? undefined} aria-label={section.week ? `Неделя ${section.week}` : dates}>
+      <div className="j-week">
+        {section.week ? `Неделя ${section.week} · ` : ""}
+        {dates}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** The history sheet: a light list of decisions, not a terminal. The full story stays here, one tap from the brief. */
+export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRollback }: { work: AdsWork; clientCost: SummaryModel["clientCost"]; focusWeek?: number | null; onClose: () => void; onRollback: (item: HistoryItem) => void }) {
+  const body = useRef<HTMLDivElement>(null);
+  const [all, setAll] = useState(false);
+  const sections = useMemo(() => {
+    const focused = focusWeek === null ? -1 : work.journal.findIndex((s) => s.week === focusWeek);
+    return all || (focused !== -1 && focused < work.journal.length - SHOWN_WEEKS) ? work.journal : work.journal.slice(-SHOWN_WEEKS);
+  }, [work.journal, all, focusWeek]);
+  const earlier = !all && work.journal.length > sections.length;
+
+  useEffect(() => {
+    const el = body.current;
+    if (el === null) return;
+    const hash = window.location.hash.replace(/^#/, "");
+    const target = focusWeek !== null ? el.querySelector<HTMLElement>(`[data-week="${focusWeek}"]`) : hash.startsWith("log-") ? el.querySelector<HTMLElement>(`#${CSS.escape(hash)}`) : null;
+    target?.scrollIntoView?.({ block: "center" });
+  }, [focusWeek]);
+
+  return (
+    <Drawer open onClose={onClose} closable={{ "aria-label": "Закрыть" }} placement="right" width="min(560px, 100vw)" title="История" className="sheet" styles={{ body: { padding: 0 } }}>
+      <div className="sheet-body" data-testid="agent-journal" ref={body}>
+        {clientCost.kind === "known" ? (
+          <p className="j-clients" data-testid="client-cost">
+            Клиенты · {clientCost.clients} · {clientCost.costPerClient === null ? "—" : `${formatRub(clientCost.costPerClient)} за клиента`}
+          </p>
+        ) : null}
+        {work.sim ? <ComparisonNote sim={work.sim} /> : null}
+        {earlier ? (
+          <button type="button" className="j-earlier" onClick={() => setAll(true)}>
+            Раньше
+          </button>
+        ) : null}
+        {sections.length === 0 ? (
+          <p className="sheet-empty">Записей пока нет.</p>
+        ) : (
+          sections.map((s) => (
+            <Section key={`${s.week ?? "d"}:${s.from}`} section={s}>
+              {s.entries.map((e) => (
+                <Entry key={e.id} entry={e} onRollback={onRollback} />
+              ))}
+            </Section>
+          ))
+        )}
+      </div>
+    </Drawer>
+  );
+}

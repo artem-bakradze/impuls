@@ -23,10 +23,12 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   await expect(page.getByTestId("auto-goal")).toBeVisible();
 
   await finishWizard(page);
-  await expect(page.getByTestId("first-day")).toContainText("Первые результаты появятся в течение суток");
+  // The first day is a word and a promise, not a timeline.
+  await expect(page.getByTestId("first-day")).toContainText("первые данные завтра");
 
-  // Two sections only; the history is the journal of «Реклама».
+  // Two sections only; the history is a sheet of «Реклама», one tap from the brief.
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);
+  await page.getByRole("button", { name: /История/ }).click();
   await expect(page.getByTestId("agent-journal")).toContainText("Вы: реклама запущена");
   await page.goto("/history");
   await page.waitForURL("**/summary");

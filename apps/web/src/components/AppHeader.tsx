@@ -1,22 +1,23 @@
 "use client";
 
-import { LineChartOutlined, LogoutOutlined, SettingOutlined } from "@ant-design/icons";
+import { LineChartOutlined, LogoutOutlined, PlayCircleOutlined, SettingOutlined } from "@ant-design/icons";
 import { Button, Tooltip } from "antd";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Logo } from "./ui/Logo";
 
-/** Two sections in both modes (analytics spec «Главный экран «Реклама»»): the results with the journal, and the settings. */
-const LINKS: { href: string; label: string; icon: ReactNode }[] = [
-  { href: "/summary", label: "Реклама", icon: <LineChartOutlined /> },
-  { href: "/settings", label: "Настройки", icon: <SettingOutlined /> },
-];
+type NavLink = { href: string; label: string; icon: ReactNode };
+
+/** Two sections in Direct, three in a simulation: the control room of the simulation is a place of its own. */
+const ADS: NavLink = { href: "/summary", label: "Реклама", icon: <LineChartOutlined /> };
+const SIMULATION: NavLink = { href: "/simulation", label: "Симуляция", icon: <PlayCircleOutlined /> };
+const SETTINGS: NavLink = { href: "/settings", label: "Настройки", icon: <SettingOutlined /> };
 
 /** Top bar on desktop; on phones the same links become a bottom tab bar (globals.css), so the header never wraps. */
-export function AppHeader({ launched, signOutAction }: { launched: boolean; simulated?: boolean; signOutAction: () => Promise<void> }) {
+export function AppHeader({ launched, simulated = false, signOutAction }: { launched: boolean; simulated?: boolean; signOutAction: () => Promise<void> }) {
   const pathname = usePathname();
-  const links = LINKS;
+  const links = simulated ? [ADS, SIMULATION, SETTINGS] : [ADS, SETTINGS];
   return (
     <header className="app-header">
       <div className="app-header-inner">

@@ -15,7 +15,7 @@ export interface Compared<T> {
 export interface SummaryModel {
   measurement?: MeasurementModel;
   dataPeriod?: { from: string; to: string; asOf: string; month: string; previousPartial?: boolean };
-  daily?: { date: string; leads: number | null; decision: boolean }[];
+  daily?: { date: string; leads: number | null; spend: number; decision: boolean }[];
   timeZone: string;
   period: SummaryPeriod;
   /** first_day: no statistics yet, show the launch state instead of zeros. */
@@ -131,10 +131,16 @@ export const moderationText = (m: SummaryModel["moderation"]): string => {
 };
 
 /** Keep gaps distinct from reported zero leads; use only the selected observed rows. */
-export const observedDaily = (from: LocalDate, to: LocalDate, rows: readonly { date: LocalDate; leads: number }[], decisionDates: ReadonlySet<LocalDate>): NonNullable<SummaryModel["daily"]> => {
-  const leads = new Map<LocalDate, number>();
-  for (const row of rows) leads.set(row.date, (leads.get(row.date) ?? 0) + row.leads);
+export const observedDaily = (from: LocalDate, to: LocalDate, rows: readonly { date: LocalDate; leads: number; spend: number }[], decisionDates: ReadonlySet<LocalDate>): NonNullable<SummaryModel["daily"]> => {
+  const totals = new Map<LocalDate, { leads: number; spend: number }>();
+  for (const row of rows) {
+    const current = totals.get(row.date) ?? { leads: 0, spend: 0 };
+    totals.set(row.date, { leads: current.leads + row.leads, spend: current.spend + row.spend });
+  }
   const days: NonNullable<SummaryModel["daily"]> = [];
-  for (let date = from; date <= to; date = addDays(date, 1)) days.push({ date, leads: leads.get(date) ?? null, decision: decisionDates.has(date) });
+  for (let date = from; date <= to; date = addDays(date, 1)) {
+    const total = totals.get(date);
+    days.push({ date, leads: total?.leads ?? null, spend: total?.spend ?? 0, decision: decisionDates.has(date) });
+  }
   return days;
 };

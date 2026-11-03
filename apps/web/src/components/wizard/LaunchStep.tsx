@@ -60,7 +60,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });
     } else if (outcome.kind === "done") {
-      router.push("/summary");
+      router.push(simulation ? "/simulation" : "/summary");
       router.refresh();
     } else if (outcome.kind === "pending") {
       setState({ kind: "pending" });
@@ -106,7 +106,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
       <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис меняет, видно в журнале, и почти любое изменение можно вернуть одной кнопкой.</Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
-      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть рекламу</Button>} /> : null}
+      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push(simulation ? "/simulation" : "/summary")}>{simulation ? "Открыть симуляцию" : "Открыть рекламу"}</Button>} /> : null}
       <Button
         type="primary"
         size="large"

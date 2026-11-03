@@ -17,8 +17,7 @@ body:has(.app-nav) {
 }
 body:has(.app-nav)::before { display: none; }
 .app-header:has(.app-nav) { background: #fff; backdrop-filter: none; border-bottom-color: var(--border); }
-.app-header:has(.app-nav) .app-header-inner,
-.sim-bar-inner { width: calc(100% - 96px); max-width: 1280px; padding-inline: 0; }
+.app-header:has(.app-nav) .app-header-inner { width: calc(100% - 96px); max-width: 1280px; padding-inline: 0; }
 .app-header:has(.app-nav) .app-header-inner { height: 72px; }
 .app-header:has(.app-nav) .brand { font-size: 20px; }
 .app-header:has(.app-nav) .brand > svg { width: 34px; height: 34px; }
@@ -27,14 +26,6 @@ body:has(.app-nav)::before { display: none; }
 .app-header:has(.app-nav) .app-nav a[aria-current="page"] { box-shadow: none; color: var(--accent-ink); }
 .app-header:has(.app-nav) .app-nav a[aria-current="page"]::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); }
 .app-header .app-nav .nav-icon { display: none; }
-.sim-bar { background: #fff; backdrop-filter: none; border-bottom: 0; }
-.sim-bar-inner { border-bottom: 1px solid var(--border); padding-block: 12px 16px; min-height: 70px; }
-.sim-label { border: 0; padding-left: 0; background: transparent; font-weight: 500; }
-.sim-strip { left: 0; right: 0; bottom: 0; opacity: .45; }
-.sim-strip i { height: 2px; }
-.sim-strip i[data-state="done"] { background: var(--accent); }
-.sim-strip i[data-state="now"] { box-shadow: none; }
-.sim-label .sim-live { background: var(--accent); }
 body:has(.app-nav) .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled) { background: var(--accent); box-shadow: none; border-radius: 8px; }
 body:has(.app-nav) .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):hover { background: var(--accent-hover); transform: none; filter: none; box-shadow: none; }
 body:has(.app-nav) .ant-segmented { background: var(--surface-2); border-radius: 8px; }
@@ -92,16 +83,11 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
 .workspace .chip { font-weight: 500; }
 
 /* Settings read as a short document, rather than a stack of forms. */
-.workspace .settings-layout { grid-template-columns: 180px minmax(0, 1fr); gap: 64px; }
 .workspace .settings-section { border: 0; border-radius: 0; background: transparent; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .workspace .settings-section > .surface-head { padding: 0 0 16px; border: 0; }
 .workspace .settings-section > .surface-body { padding: 0 0 24px; }
 .workspace .settings-section .t-h3 { font-size: 18px; }
 .workspace .settings-section .settings-value { padding-block: 4px; }
-.workspace .settings-nav a { padding-left: 0; font-size: 14px; }
-.workspace .settings-nav a > span { display: none; }
-.workspace .settings-nav a[aria-current="location"] { box-shadow: none; background: transparent; color: var(--accent-ink); }
-.workspace .settings-nav a[aria-current="location"]::before { display: none; }
 .workspace .settings-value > .row > .stack { gap: 6px !important; }
 .workspace .settings-value > .row > .stack > strong { font-weight: 500; }
 .workspace .settings-value > .row > .ant-btn { border: 0; color: var(--accent-ink); background: transparent; box-shadow: none; }
@@ -117,17 +103,10 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
   .summary-budget > .row { align-items: center; gap: 8px; justify-content: space-between; }
   .summary-budget > .row > strong { width: auto; font-size: 22px; }
   .summary-budget .budget-bar { margin: 12px 0; }
-  .workspace .settings-layout { gap: 24px; }
-}
-@media (max-width: 900px) {
-  .workspace .settings-layout { grid-template-columns: minmax(0, 1fr); }
-  .workspace .settings-nav a { padding-inline: 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
-  .workspace .settings-nav a[aria-current="location"] { border-bottom-color: var(--accent); }
 }
 @media (max-width: 720px) {
   body:has(.app-nav) { --header-h: 56px; }
   .app-header:has(.app-nav) .app-header-inner,
-  .sim-bar-inner,
   .workspace .page { width: calc(100% - 32px); }
   .app-header:has(.app-nav) .app-header-inner { height: 56px; }
   .app-header:has(.app-nav) .brand { font-size: 17px; }
@@ -136,9 +115,6 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
   .app-header:has(.app-nav) .app-nav a { height: 52px; padding: 0; border-radius: 8px; font-size: 10px; }
   .app-header:has(.app-nav) .app-nav a[aria-current="page"]::after { display: none; }
   .app-header .app-nav .nav-icon { display: inline-flex; font-size: 19px; }
-  .sim-bar { top: 57px; }
-  .sim-bar-inner { min-height: 80px; padding-block: 6px 12px; }
-  .sim-time { gap: 6px; }
   .workspace .page { padding: 24px 0 104px; }
   .workspace .t-h1 { font-size: 28px; }
   .workspace .t-h2 { font-size: 19px; }
@@ -164,7 +140,6 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
   .summary-budget .context-details { padding-top: 2px; }
   .summary-budget .context-details > summary { min-height: 32px; padding-block: 6px; font-size: 12px; }
   .workspace .results-trend { --trend-height: 80px; }
-  .workspace .settings-layout { gap: 24px; }
   .workspace .settings-section > .surface-head { padding-bottom: 12px; }
   .workspace .settings-section > .surface-body { padding-bottom: 18px; }
 }
@@ -184,3 +159,16 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
 .summary-kpis .kpi.budget-kpi > .budget-bar { order: 3; height: 6px; background: #e7e5f1; }
 .summary-kpis .kpi.budget-kpi > .budget-bar i { background: var(--accent); animation: none; }
 .summary-kpis .kpi.budget-kpi > .sub { order: 4; }
+
+/* Settings are one calm document, not a dashboard with a side menu. */
+.workspace .page.settings-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 44px 24px 80px;
+}
+@media (max-width: 720px) {
+  .workspace .page.settings-page {
+    max-width: 100%;
+    padding: 20px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 48px);
+  }
+}

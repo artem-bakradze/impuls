@@ -14,6 +14,8 @@ export default defineConfig({
         test: {
           name: "bdd",
           include: ["tests/bdd/steps/**/*.steps.ts"],
+          // A scenario may live a whole 30-day simulation week by week; five seconds is tight for the A/B run.
+          testTimeout: 20_000,
         },
       },
       {

@@ -18,15 +18,16 @@ test("changing show hours goes to every campaign and can be rolled back from the
   await expect(schedule).toContainText("Расписание обновлено во всей рекламе");
   await expect(schedule).toContainText("Пн–Вс 10:00–21:00");
 
-  // The history is the journal of «Реклама»: the owner's change in their words, with «Вернуть как было».
+  // The history is a sheet of «Реклама»: the owner's change in their words, with «Вернуть как было».
   await page.getByRole("link", { name: "Реклама" }).click();
+  await page.getByRole("button", { name: /История/ }).click();
   const journal = page.getByTestId("agent-journal");
   const changes = journal.getByTestId("journal-change").filter({ hasText: "время показа: было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00" });
   await expect(changes).toHaveCount(2);
 
   const first = changes.first();
   await first.getByRole("button", { name: "Вернуть как было" }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.locator(".ant-modal");
   await expect(dialog.getByTestId("rollback-consequences")).toContainText("Вернётся прежнее расписание показов");
   await dialog.getByRole("button", { name: "Вернуть как было" }).click();
   await expect(dialog).toContainText("Готово — вернули как было");
@@ -59,6 +60,7 @@ test("the owner sets an own cost per lead, edits the business card and sees how 
   await expect(card).toContainText("Работаем без выходных");
 
   await page.getByRole("link", { name: "Реклама" }).click();
+  await page.getByRole("button", { name: /История/ }).click();
   const journal = page.getByTestId("agent-journal");
   const entry = journal.getByTestId("journal-change").filter({ hasText: "Вы: Цель по цене обращения" });
   await expect(entry).toHaveCount(1);
@@ -76,5 +78,5 @@ test("pause and resume all ads from the settings", async ({ page }) => {
   await page.getByRole("link", { name: "Реклама" }).click();
   await expect(page.getByText("Реклама на паузе", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Возобновить" }).click();
-  await expect(page.getByText("Реклама снова работает")).toBeVisible();
+  await expect(page.getByText("Реклама на паузе", { exact: true })).toHaveCount(0);
 });

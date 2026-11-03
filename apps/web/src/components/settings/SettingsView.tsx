@@ -1,21 +1,17 @@
 "use client";
 
 import {
-  AimOutlined,
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
-  EnvironmentOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
-  ShopOutlined,
-  WalletOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Collapse, Input, InputNumber, Select } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult, JobOutcome } from "@/lib/client-api";
 import { formatDateTime, formatRub, sentence } from "@/lib/format";
@@ -125,13 +121,6 @@ function CardEditor({ card, onChange }: { card: CardDraft; onChange: (card: Card
   );
 }
 
-const SECTIONS = [
-  { id: "business", label: "Что рекламируем", icon: <ShopOutlined /> },
-  { id: "where", label: "Где и когда", icon: <EnvironmentOutlined /> },
-  { id: "budget", label: "Бюджет и цель", icon: <WalletOutlined /> },
-  { id: "leads", label: "Что считаем обращением", icon: <AimOutlined /> },
-];
-
 function Section({ id, title, lead, children, testId }: { id: string; title: string; lead?: ReactNode; children: ReactNode; testId?: string }) {
   return (
     <section id={id} className="surface settings-section" data-testid={testId}>
@@ -153,35 +142,9 @@ function EditableValue({ title, value, editing, onEdit, onCancel, busy, children
   </div>;
 }
 
-/** The section in view, for the side navigation: the topmost one that crossed the upper third of the screen. */
-function useActiveSection(ids: readonly string[]): string | null {
-  const [active, setActive] = useState<string | null>(ids[0] ?? null);
-  const key = ids.join(",");
-  useEffect(() => {
-    // Old browsers and the test DOM have no observer: the navigation simply stays without a highlight.
-    if (typeof IntersectionObserver === "undefined") return;
-    const visible = new Map<string, boolean>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) visible.set(entry.target.id, entry.isIntersecting);
-        const first = key.split(",").find((id) => visible.get(id));
-        if (first) setActive(first);
-      },
-      { rootMargin: "-20% 0px -60% 0px" },
-    );
-    for (const id of key.split(",")) {
-      const element = document.getElementById(id);
-      if (element) observer.observe(element);
-    }
-    return () => observer.disconnect();
-  }, [key]);
-  return active;
-}
-
 export function SettingsView({ model }: { model: SettingsModel; simulated?: boolean }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const active = useActiveSection(SECTIONS.map((section) => section.id));
   const [busy, setBusy] = useState<string | null>(null);
   const [city, setCity] = useState(model.city);
   const [days, setDays] = useState(model.schedule.days ?? DAY_OPTIONS[0]);
@@ -258,15 +221,6 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
       ) : null}
 
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Разделы настроек">
-          {SECTIONS.map((s) => (
-            <a key={s.id} href={`#${s.id}`} aria-current={active === s.id ? "location" : undefined}>
-              <span aria-hidden="true">{s.icon}</span>
-              {s.label}
-            </a>
-          ))}
-        </nav>
-
         <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
           <Section id="business" title="Что рекламируем" lead="По этим фактам мы пишем новые варианты объявлений" testId="card-section">
             {cardEdit === null ? (

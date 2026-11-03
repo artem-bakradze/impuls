@@ -57,23 +57,28 @@ business runs the same handlers, executor, guards and history on its own virtual
   `handleWebJob` routes every job of a simulated business through it; launch with a scenario goes through
   `launchSimulation`. The agent's snapshot is built from the service's records only; the scenario's truth stays in
   the simulated market.
-- The virtual time moves only by steps on the pult (weekly-simulation-triggered-agent): «Прожить неделю»
-  (`step_week`, 7 days or what is left of the scenario) and «+1 день» from the menu (`step_day`). There is no ticker.
+- The virtual time moves only by the owner's steps in the simulation studio (`/simulation`): «Прожить неделю»
+  (`step_week`, 7 days or what is left of the scenario) and «Прожить день» (`step_day`). There is no ticker.
   A step records its window in `steps` first, then moves hour by hour — scenario events → `advanceHour` →
   `runBusinessHour` → save — in parts that end after each agent turn, with the simulation `stepping` meanwhile, so
-  the pult follows it («Неделя 2: идёт 10-й день», «Сервис разбирает 10-й день…» from `runningTurnStartedAt`). A
+  the studio follows it («Неделя 2: идёт 10-й день», «Сервис разбирает 10-й день…» from `runningTurnStartedAt`). A
   step runs as a web job to its end even if the tab is closed; the worker runs up to 5 web jobs at once
   (`WEB_JOB_CONCURRENCY`), so a long step does not hold up other owners' jobs. A decision of the service does not
   stop a step (`isAdDecision` in `change-kinds.ts` now only marks decisions on the screens); the end of the 30 days
   stops with an offer to continue.
-- The owner has two screens, «Реклама» (`/summary`) and «Настройки»; `/history`, `/simulation` and `/demo` redirect.
-  «Реклама» is the same in both modes: the month's numbers (`buildSummary`), then the ads and the agent's journal
-  (`loadAdsWork` → `buildServiceWork`). The journal is the history too: the checked turn summaries (or the day's insight
-  observations without one), the applied changes with their rollback and facts, the owner's and the cabinet's changes,
-  hypotheses when they are opened and closed, in sections of the weeks (lived weeks in a simulation, seven days from the
-  launch on Direct). The budget guard's limit cuts are listed in the settings' «Для специалистов» instead. A simulation
-  adds the comparison with the control run and the scenario's truth. The saved week reports and `buildWeekStory` still
-  keep a lived week's numbers frozen.
+- The owner has two screens in Direct — «Реклама» (`/summary`) and «Настройки» — and three in a simulation, where
+  «Симуляция» (`/simulation`) is the studio; `/history` and `/demo` redirect. The studio shows the day and its status,
+  the 30-day strip, the ads with spend and leads, the day/week steps and the review rail: the service's latest entry,
+  its decision (already applied), «Оставить как есть» / «Вернуть как было», facts and the next step. The floating pult
+  is gone. «Реклама» is one answer in both modes (`buildSummary`): the price of a lead with its goal or orienting point,
+  one 14-day cost-per-lead chart against the goal, the month's leads and budget, the latest service change with
+  «Вернуть», and two rows that open sheets. «Объявления»
+  (`AdsSheet`) shows spend and cost per lead first and keeps actions behind a menu; «История» (`HistorySheet`) holds the
+  agent's journal (`loadAdsWork` → `buildServiceWork`): checked turn summaries (or the day's insight observations without
+  one), applied changes with rollback and facts, the owner's and cabinet's changes, hypotheses when they are opened and
+  closed, in sections of the weeks. The journal is the history too. The budget guard's limit cuts are listed in the
+  settings' «Для специалистов» instead. A simulation adds the comparison with the control run at the top of the history
+  sheet and the scenario's truth. The saved week reports and `buildWeekStory` still keep a lived week's numbers frozen.
 - The wizard has three steps (`WIZARD_STEPS`); a draft saved by the six-step wizard opens on the step that holds its
   place now (`wizardStepOf`).
 - «Начать заново» → «Повторить этот прогон» copies the run's completed turns, owner actions and object ids (by the

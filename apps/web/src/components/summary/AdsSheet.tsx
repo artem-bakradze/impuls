@@ -1,0 +1,130 @@
+"use client";
+
+import { MoreOutlined } from "@ant-design/icons";
+import { Alert, Button, Drawer, Dropdown, Input } from "antd";
+import type { MenuProps } from "antd";
+import { useState } from "react";
+import type { EffectivenessClass } from "@impuls/core";
+import { formatLocalDate, formatRub, plural } from "@/lib/format";
+import { AD_TEXT_MAX, AD_TITLE_MAX } from "@/lib/onboarding";
+import type { AdsWork } from "@/lib/server/simulation-screen";
+import type { ShownAd } from "@/lib/service-work";
+import { useCommands } from "./useCommands";
+
+const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
+const shortDate = (date: string): string => formatLocalDate(date).replace(/(\S+) (\S{3})\S*/, "$1 $2");
+
+/** Plain names of the rules' estimate; the sheet groups ads by them. */
+const GROUPS: Record<EffectivenessClass, string> = {
+  effective: "Приводят клиентов",
+  borderline: "Под наблюдением",
+  learning: "Собирают данные",
+  ineffective: "Не приводят клиентов",
+};
+
+const ORDER: EffectivenessClass[] = ["effective", "borderline", "learning", "ineffective"];
+
+function AdRow({ ad, commands }: { ad: ShownAd; commands: ReturnType<typeof useCommands> }) {
+  const [edit, setEdit] = useState<{ title: string; text: string } | null>(null);
+  const changed = edit !== null && (edit.title.trim() !== ad.title || edit.text.trim() !== ad.text);
+  const feedback = commands.feedback && (commands.feedback.id === `text-${ad.id}` || commands.feedback.id === `status-${ad.id}`) ? commands.feedback : null;
+  const labels = [ad.checking ? "В проверке" : null, ad.fresh ? "Новое" : null, ad.pending ? "На проверке" : null].filter((x): x is string => x !== null);
+  const menu: MenuProps = {
+    items: [
+      { key: "edit", label: "Изменить текст" },
+      { key: "off", label: "Отключить" },
+    ],
+    onClick: ({ key }) => {
+      if (key === "edit") setEdit({ title: ad.title, text: ad.text });
+      else void commands.run(`status-${ad.id}`, { action: "adStatus", adId: ad.id, active: false }, "Объявление отключено");
+    },
+  };
+  return (
+    <article className="ad-row" data-testid="shown-ad">
+      <div className="ad-row-head">
+        <div className="ad-row-main">
+          <h3 className="ad-row-title">{ad.title}</h3>
+          <p className="ad-row-text">{ad.text}</p>
+          <p className="ad-row-stats">
+            {formatRub(ad.spend)} · {ad.leads} {leadsWord(ad.leads)} · {ad.costPerLead === null ? "—" : formatRub(ad.costPerLead)}
+          </p>
+          {labels.length > 0 ? <p className="ad-row-labels">{labels.join(" · ")}</p> : null}
+          {ad.change ? (
+            <span className="ad-mark" data-testid="change-mark">
+              ↻ {ad.change.text} · {shortDate(ad.change.date)}
+            </span>
+          ) : null}
+        </div>
+        {edit === null ? (
+          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+            <Button type="text" size="small" icon={<MoreOutlined aria-hidden="true" />} aria-label={`${ad.title}: действия`} />
+          </Dropdown>
+        ) : null}
+      </div>
+      {edit !== null ? (
+        <div className="ad-edit">
+          <Input value={edit.title} maxLength={AD_TITLE_MAX} showCount onChange={(e) => setEdit({ ...edit, title: e.target.value })} aria-label={`${ad.title}: заголовок`} autoFocus />
+          <Input.TextArea value={edit.text} maxLength={AD_TEXT_MAX} showCount autoSize onChange={(e) => setEdit({ ...edit, text: e.target.value })} aria-label={`${ad.title}: текст`} />
+          <div className="ad-edit-actions">
+            {changed ? (
+              <Button size="small" type="primary" loading={commands.busy === `text-${ad.id}`} onClick={() => void commands.run(`text-${ad.id}`, { action: "adText", adId: ad.id, title: edit.title.trim(), text: edit.text.trim() }, "Текст изменён").then((ok) => ok && setEdit(null))}>
+                Сохранить
+              </Button>
+            ) : null}
+            <Button size="small" onClick={() => setEdit(null)}>
+              Отмена
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {feedback ? <Alert type={feedback.type} showIcon title={feedback.text} className="ad-feedback" /> : null}
+    </article>
+  );
+}
+
+/** The ads sheet: money first, one group per estimate, actions behind one menu instead of two buttons per ad. */
+export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void }) {
+  const commands = useCommands();
+  const groups = ORDER.map((verdict) => ({ verdict, ads: work.shown.filter((a) => a.verdict === verdict) })).filter((g) => g.ads.length > 0);
+  const paused = work.hidden.filter((h) => h.paused);
+  return (
+    <Drawer open onClose={onClose} closable={{ "aria-label": "Закрыть" }} placement="right" width="min(560px, 100vw)" title="Объявления" className="sheet" styles={{ body: { padding: 0 } }}>
+      <div className="sheet-body" data-testid="shown-ads">
+        <p className="sheet-note">за 7 дней</p>
+        {work.directionChanges.length > 0 ? (
+          <div className="ad-direction-changes" data-testid="direction-changes">
+            {work.directionChanges.map((mark, i) => (
+              <span key={i} className="ad-mark" data-testid="change-mark">
+                ↻ {mark.text} · {shortDate(mark.date)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {groups.length === 0 ? <p className="sheet-empty">Сейчас ни одно объявление не показывается.</p> : null}
+        {groups.map((g) => (
+          <section key={g.verdict} data-testid={`ads-${g.verdict}`}>
+            <h3 className="sheet-group">
+              {GROUPS[g.verdict]} · {g.ads.length}
+            </h3>
+            {g.ads.map((ad) => (
+              <AdRow key={ad.id} ad={ad} commands={commands} />
+            ))}
+          </section>
+        ))}
+        {paused.length > 0 ? (
+          <section className="ad-hidden" data-testid="hidden-ads">
+            <h3 className="sheet-group">Отключены</h3>
+            {paused.map((h) => (
+              <div key={h.id} className="ad-hidden-row">
+                <span>{h.title}</span>
+                <Button size="small" type="link" loading={commands.busy === `status-${h.id}`} onClick={() => void commands.run(`status-${h.id}`, { action: "adStatus", adId: h.id, active: true }, "Объявление включено")} aria-label={`${h.title}: включить`}>
+                  Включить
+                </Button>
+              </div>
+            ))}
+          </section>
+        ) : null}
+      </div>
+    </Drawer>
+  );
+}

@@ -31,7 +31,21 @@ export interface ShownAd {
   checking: boolean;
   clicks: number;
   leads: number;
+  /** Impressions are background: the decision is made on leads and money. */
+  impressions: number;
+  /** Money and its cost per lead over the same 7 days, so the owner sees what an ad spends, not only clicks. */
+  spend: Kopecks;
+  costPerLead: Kopecks | null;
   change: ChangeMark | null;
+}
+
+/** The one change on the main screen: a two- or three-word label, its day and the history behind an undo. */
+export interface LastChange {
+  text: string;
+  date: LocalDate;
+  entryId: string | null;
+  historyId: string | null;
+  item: HistoryItem | null;
 }
 
 export interface JournalChange {
@@ -117,6 +131,8 @@ export interface ServiceWorkModel {
   directionChanges: (ChangeMark & { channel: "search" | "network" })[];
   journal: JournalSection[];
   brief: WeekBrief | null;
+  /** The latest service decision, for the one line between the numbers and the sheets. */
+  lastChange: LastChange | null;
 }
 
 /** Words the owner does not use, in the agent's own text: the stop-list of `change-history`, for the journal. */
@@ -191,6 +207,42 @@ export const changeHeadline = (c: ChangeEntry, directions: ReadonlyMap<string, D
       return `Переписал ${ad(action.adId)}`;
     default:
       return null;
+  }
+};
+
+/**
+ * The same change in two or three words, for the main screen: a label, not a sentence. The full first-person
+ * explanation stays in the history sheet.
+ */
+export const briefChange = (c: ChangeEntry): string => {
+  const action = c.action;
+  switch (action.type) {
+    case "SetDeviceAdjustment":
+      return action.percent === 0 ? "Клик 0%" : `Цена клика ${action.percent > 0 ? "+" : "−"}${Math.abs(action.percent)}%`;
+    case "SetSpendLimit": {
+      const after = Number(c.after.weeklyLimit);
+      return Number.isFinite(after) ? `Лимит ${formatRub(after)}` : "Лимит";
+    }
+    case "PauseAd":
+      return "Пауза объявления";
+    case "ResumeAd":
+      return "Объявление включено";
+    case "PauseDirection":
+      return "Реклама на паузе";
+    case "ResumeDirection":
+      return "Реклама включена";
+    case "StartExperiment":
+      return "Проверка варианта";
+    case "FinishExperiment":
+      return "Вариант выбран";
+    case "AddNegativeKeywords":
+      return `Запросы −${action.phrases.length}`;
+    case "RemoveNegativeKeywords":
+      return `Запросы +${action.phrases.length}`;
+    case "UpdateAdText":
+      return "Новый текст";
+    default:
+      return "Изменение";
   }
 };
 
@@ -310,7 +362,9 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       last.to = entry.date;
       continue;
     }
-    journal.push({ week: week?.week ?? null, from: week?.from ?? entry.from ?? entry.date, to: entry.date, entries: [entry] });
+    // Week 1 may start before the calendar Monday: the launch day belongs to it and the header must name it.
+    const from = week === undefined ? (entry.from ?? entry.date) : week.week === 1 && input.startedOn < week.from ? input.startedOn : week.from;
+    journal.push({ week: week?.week ?? null, from, to: entry.date, entries: [entry] });
   }
   for (const section of journal) {
     const week = input.weeks.find((w) => w.week === section.week);
@@ -326,6 +380,16 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
   };
   const newest = [...decisions].filter((c) => c.revertedById === null).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const adOf = (c: ChangeEntry): string | null => ("adId" in c.action ? c.action.adId : c.action.type === "FinishExperiment" ? c.action.keepAdId : null);
+  const last = newest[0];
+  const lastChange: LastChange | null = last
+    ? {
+        text: briefChange(last),
+        date: toLocalDate(last.createdAt, input.timeZone),
+        entryId: entryOf.get(last.id) ?? null,
+        historyId: last.id,
+        item: historyById.get(last.id) ?? null,
+      }
+    : null;
 
   const since7 = addDays(input.today, -7);
   const since14 = addDays(input.today, -14);
@@ -348,10 +412,13 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
         checking: (input.checkAds ?? []).some((v) => v.title === ad.title && v.text === ad.text),
         clicks: week.clicks,
         leads: week.leads,
+        impressions: week.impressions,
+        spend: week.spend,
+        costPerLead: costPerLead(week),
         change: change ? markOf(change) : null,
       };
     })
-    .sort((a, b) => order[a.verdict] - order[b.verdict] || b.leads - a.leads || b.clicks - a.clicks);
+    .sort((a, b) => order[a.verdict] - order[b.verdict] || b.spend - a.spend || b.leads - a.leads);
   const shownIds = new Set(shown.map((a) => a.id));
   const hidden = input.ads.filter((ad) => !shownIds.has(ad.id)).map((ad) => ({ id: ad.id, title: ad.title, paused: ad.status !== "active" }));
   const directionChanges = input.directions
@@ -380,5 +447,5 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       goal: input.cso,
     };
   }
-  return { shown, hidden, directionChanges, journal, brief };
+  return { shown, hidden, directionChanges, journal, brief, lastChange };
 };
