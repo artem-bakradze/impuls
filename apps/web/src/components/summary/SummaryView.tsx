@@ -152,7 +152,6 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
     <DayWordsContext.Provider value={words}>
       <div className="page brief-page">
         <h1 className="sr-only">Реклама</h1>
-        {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} scenarioTitle={work.sim?.scenarioTitle ?? null} /> : null}
         <div className="brief-layout" data-side>
           <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
             <div className="brief-card panel">
@@ -263,7 +262,11 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
             </div>
           </div>
 
-          <ReviewRail review={review} thinking={thinking} reveal={review !== null && review.id !== openedReview.current} onRollback={setRollback} onMore={openHistory} />
+          {/* The review, and in a simulation the player under it: the next step is pressed where its result is read. */}
+          <div className="brief-aside">
+            <ReviewRail review={review} thinking={thinking} reveal={review !== null && review.id !== openedReview.current} onRollback={setRollback} onMore={openHistory} />
+            {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} scenarioTitle={work.sim?.scenarioTitle ?? null} /> : null}
+          </div>
         </div>
 
         {sheet === "ads" ? <AdsSheet work={work} onClose={() => setSheet(null)} /> : null}

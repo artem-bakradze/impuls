@@ -21,9 +21,10 @@ function DayStrip({ total, done, now }: { total: number; done: number; now: bool
 export const isStepping = (status: SimulationStatus): boolean => status.status === "stepping" || status.agentTurn !== null;
 
 /**
- * The simulation's player over «Реклама» (simulation-mode spec «Симуляция как отдельный режим»): the scenario's day and
- * state, its days strip, one main button for the next step with «Прожить неделю» beside it, the real launch as a
- * secondary button and «Начать заново» in its menu. Time moves only by these presses.
+ * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
+ * wide screen and over the answer on a narrow one: the scenario's day and state, its days strip, one main button for
+ * the next step with «Прожить неделю» under it, and at its foot the training market's note with the real launch as a
+ * secondary button; «Начать заново» is in its menu. Time moves only by these presses.
  */
 export function SimulationPlayer({
   status,
@@ -96,36 +97,34 @@ export function SimulationPlayer({
             {tag}
           </span>
         </div>
-        <span className="studio-scenario" data-testid="studio-scenario">
-          {scenarioTitle ? `сценарий «${scenarioTitle}»` : "симуляция"}
-        </span>
-        <div className="sim-player-end">
-          <Button className="studio-go-real" onClick={() => void confirmGoReal()} disabled={stepping}>
-            Запустить по-настоящему
-          </Button>
-          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново" className="studio-menu" />
-          </Dropdown>
-        </div>
+        <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново" className="studio-menu" />
+        </Dropdown>
       </div>
+      <span className="studio-scenario" data-testid="studio-scenario">
+        {scenarioTitle ? `сценарий «${scenarioTitle}»` : "симуляция"}
+      </span>
       <DayStrip total={status.totalDays} done={done} now={stepping} />
-      <div className="sim-player-foot">
-        <div className="sim-player-actions">
-          <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
-            {primaryLabel}
+      <div className="sim-player-actions">
+        <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
+          {primaryLabel}
+        </button>
+        {!status.ended && !status.failed && !stepping ? (
+          <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
+            {stepWeekLabel(status.daysLeft)}
           </button>
-          {!status.ended && !status.failed && !stepping ? (
-            <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
-              {stepWeekLabel(status.daysLeft)}
-            </button>
-          ) : null}
-        </div>
-        <p className="studio-disclaimer" data-testid="studio-disclaimer">
-          <ExperimentOutlined aria-hidden="true" /> Учебный рынок · деньги не списываются
-        </p>
+        ) : null}
       </div>
       {status.replay.diverged ? <Alert className="studio-alert" type="info" showIcon title={DIVERGED_TEXT} /> : null}
       {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
+      <div className="sim-player-foot">
+        <p className="studio-disclaimer" data-testid="studio-disclaimer">
+          <ExperimentOutlined aria-hidden="true" /> Учебный рынок · деньги не списываются
+        </p>
+        <Button className="studio-go-real" onClick={() => void confirmGoReal()} disabled={stepping}>
+          Запустить по-настоящему
+        </Button>
+      </div>
 
       <Modal open={restartOpen} title="Начать симуляцию заново?" onCancel={() => setRestartOpen(false)} footer={null}>
         <div className="studio-modal">

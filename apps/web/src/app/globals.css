@@ -2350,16 +2350,19 @@ button.log-link {
 }
 /*
  * The service's review beside the answer: the assistant's message on the right of a wide screen, under the answer on a
- * narrow one, before the ways deeper (analytics spec «Сводка»).
+ * narrow one, before the ways deeper (analytics spec «Сводка»). A simulation's player stands under the review on a wide
+ * screen and over the answer on a narrow one.
  */
 .brief-layout {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
-.brief-layout .brief {
+.brief-layout .brief,
+.brief-aside {
   display: contents;
 }
+.sim-player { order: 0; }
 .brief-card { order: 1; }
 .brief-side { order: 2; }
 .brief-rows { order: 3; }
@@ -2386,9 +2389,22 @@ button.log-link {
   .brief-rows {
     grid-area: rows;
   }
-  .brief-side {
+  .brief-aside {
     grid-area: side;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  .brief-aside .brief-side,
+  .brief-aside .sim-player {
+    order: 0;
+  }
+  .brief-side {
     padding: 22px 24px 24px;
+  }
+  .sim-player {
+    --sim-pad: 24px;
   }
 }
 
@@ -3468,42 +3484,75 @@ button.log-link {
   }
 }
 
-/* The simulation's player over «Реклама»: its day and state, the step's buttons, the real launch and the days strip. */
+/*
+ * The simulation's player: under the review on a wide screen, over the answer on a narrow one. Its day and state, the
+ * days strip, the next step as the one main button with the week under it, and at its foot the training market's note
+ * with the real launch.
+ */
 .sim-player {
-  margin: 0 0 16px;
-  padding: 16px 20px 12px;
+  --sim-pad: 20px;
+  container-type: inline-size;
+  overflow: hidden;
+  padding: 18px var(--sim-pad) 0;
 }
 .sim-player-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px 16px;
+  gap: 8px;
 }
-.sim-player-end {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
+.sim-player-head .studio-menu {
+  margin: -4px -8px -4px auto;
+}
+.sim-player .studio-scenario {
+  display: block;
+  margin-top: 2px;
 }
 .sim-player .studio-strip {
-  margin-top: 14px;
-}
-/* The step's buttons under the days, the note about the training market at the other end. */
-.sim-player-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 18px;
-  margin-top: 14px;
+  margin: 14px 0 18px;
 }
 .sim-player-actions {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.sim-player-actions .studio-link {
+  align-self: center;
+  padding: 2px 4px;
+}
+.sim-player-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 18px calc(-1 * var(--sim-pad)) 0;
+  padding: 14px var(--sim-pad) 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
 }
 .sim-player .studio-disclaimer {
+  justify-content: center;
   margin: 0;
+}
+.sim-player .studio-go-real {
+  align-self: stretch;
+  margin: 0;
+}
+/* Over the answer on a tablet the player has room: the step's buttons in a row, the note and the launch in a row. */
+@container (min-width: 560px) {
+  .sim-player-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+  .sim-player-foot {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sim-player .studio-go-real {
+    align-self: center;
+  }
 }
 /* Beside the answer the message is narrow: an action's undo goes under its words. */
 .review-rail .studio-msg-action {
@@ -3517,7 +3566,7 @@ button.log-link {
   text-align: left;
 }
 .sim-player .studio-alert {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
 }
 .studio-msg-more-button {
   border: 0;
@@ -3529,14 +3578,10 @@ button.log-link {
 }
 @media (max-width: 720px) {
   .sim-player {
-    padding: 14px 14px 10px;
+    --sim-pad: 18px;
+    padding-top: 16px;
   }
   .studio-day-num { font-size: var(--fs-lg); }
-  .studio-scenario { flex-basis: 100%; order: 1; margin-top: -4px; }
-  .sim-player-end { margin-left: auto; }
-  .sim-player-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: center; gap: 10px 18px; }
-  .sim-player-actions .studio-primary { flex: 1 0 100%; white-space: nowrap; }
-  .sim-player .studio-disclaimer { flex: 1 0 100%; justify-content: center; }
   /* On a phone the undo goes under the action's words, so they keep the width. */
   .studio-msg-action { flex-wrap: wrap; row-gap: 4px; }
   .studio-msg-undo { flex-basis: 100%; align-self: flex-start; padding-left: 26px; text-align: left; }

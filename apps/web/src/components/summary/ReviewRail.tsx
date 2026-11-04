@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircleFilled } from "@ant-design/icons";
+import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties, MouseEvent } from "react";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -121,8 +122,21 @@ export function ReviewRail({
 }) {
   const words = useDayWords();
   const state = thinking !== null ? "thinking" : review !== null ? "review" : "empty";
+  // While the assistant types, the rail keeps the height of its last message, so the player under it does not jump.
+  const rail = useRef<HTMLElement>(null);
+  const height = useRef(0);
+  useLayoutEffect(() => {
+    const el = rail.current;
+    if (el === null) return;
+    if (state === "thinking") {
+      el.style.minHeight = height.current > 0 ? `${height.current}px` : "";
+    } else {
+      el.style.minHeight = "";
+      height.current = el.offsetHeight;
+    }
+  }, [state, review]);
   return (
-    <aside className="brief-side panel review-rail" aria-label="Разбор" data-state={state} data-testid="review-rail">
+    <aside ref={rail} className="brief-side panel review-rail" aria-label="Разбор" data-state={state} data-testid="review-rail">
       <MessageHead title={thinking !== null ? "Разбирает день" : review === null ? "Разбор дня" : noteTitle(review, words)} />
       {thinking !== null ? (
         <Thinking line={thinking} />

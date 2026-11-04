@@ -128,7 +128,7 @@ const sim = { comparison: null, result: null, decisionDays: [], day: 11, totalDa
 const plain = (node: Element | null): string => node?.textContent?.replace(/[  ]/g, " ") ?? "";
 
 describe("one «Реклама» in a simulation (simulation-mode spec «Симуляция как отдельный режим»)", () => {
-  it("plays the simulation over the answer and puts the assistant's review beside it", () => {
+  it("puts the assistant's review beside the answer and the player under the review", () => {
     const { container } = render(<SummaryView model={model()} work={work({ sim, lastChange: { text: "Цена перехода +10%", date: "2026-11-11", reason: null, entryId: review.id, historyId: "c1", item } })} simulation={status()} />);
     const player = screen.getByTestId("sim-player");
     expect(plain(player.querySelector("[data-testid=studio-day]"))).toBe("День 10");
@@ -137,6 +137,10 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     expect(screen.getByTestId("studio-disclaimer")).toHaveTextContent("Учебный рынок · деньги не списываются");
     expect([...container.querySelectorAll(".studio-primary")].map((b) => b.textContent)).toEqual(["Прожить следующий день"]);
     expect(screen.getByRole("button", { name: "Прожить неделю" })).toBeTruthy();
+    // The player is pressed where its result is read: in the review's column, right under the review.
+    expect(player.parentElement?.className).toBe("brief-aside");
+    expect(player.previousElementSibling).toBe(screen.getByTestId("review-rail"));
+    expect(player.querySelector(".sim-player-foot")?.textContent).toContain("Запустить по-настоящему");
     // The numbers are the brief's own: no second total, no ad cards of a studio.
     expect(screen.getByTestId("brief")).toBeTruthy();
     expect(screen.queryByTestId("studio-ad")).toBeNull();
