@@ -41,7 +41,7 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   // The empty rail is a desktop hint; on a phone the action comes first and the hint is not needed.
-  await expect(page.getByText(/После дня здесь появится разбор/)).toBeVisible();
+  await expect(page.getByText(/После первого дня я напишу здесь/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("studio-start.png"), fullPage: true });
 
   const day = () => page.getByTestId("studio-day").textContent();

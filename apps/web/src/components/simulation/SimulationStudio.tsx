@@ -1,11 +1,12 @@
 "use client";
 
-import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { formatCount, formatLocalDate, formatRange, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -19,6 +20,7 @@ import type { JournalEntry, ShownAd } from "@/lib/service-work";
 import { goalComparable, goalExplanation } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
+import { LogoMark } from "../ui/Logo";
 import { BudgetPaceChip, NumbersCard, ResultChip } from "../ui/ResultChip";
 import { useCountUp } from "./useCountUp";
 import { useSimulation } from "./useSimulation";
@@ -161,67 +163,82 @@ function DayStrip({ total, done, now }: { total: number; done: number; now: bool
   );
 }
 
+/**
+ * Who speaks in the rail: the service's mark, its name and what the message is about (simulation-mode spec «Симуляция
+ * как отдельный режим»). The heading is the day of the record, so the review is found by it.
+ */
+function MessageHead({ title }: { title: string }) {
+  return (
+    <header className="studio-msg-head">
+      <span className="studio-avatar">
+        <LogoMark size={36} />
+      </span>
+      <span className="studio-msg-who">
+        <span className="studio-msg-name">Импульс</span>
+        <h2 className="studio-msg-title">{title}</h2>
+      </span>
+    </header>
+  );
+}
+
+/** While the day goes, the service is typing: running dots in its bubble and the step's line under it. */
 function Thinking({ status, elapsed }: { status: SimulationStatus; elapsed: string }) {
   const line = status.agentTurn ? `${agentTurnText(status.agentTurn)}${elapsed}` : stepText(status) ?? "День идёт";
   return (
     <div className="studio-thinking" data-testid="studio-thinking">
-      <div className="studio-shimmer" />
-      <div className="studio-shimmer short" />
-      <p className="studio-thinking-line">
-        <span className="studio-pulse" aria-hidden="true" />
-        {line}
-      </p>
-      <p className="studio-small">Смотрим, что изменилось</p>
+      <div className="studio-bubble studio-typing" role="status" aria-label="Сервис пишет разбор">
+        <i />
+        <i />
+        <i />
+      </div>
+      <p className="studio-thinking-line">{line}</p>
     </div>
   );
 }
 
 /**
- * The review as a marketer's note, not a form (simulation-mode spec «Симуляция как отдельный режим»): what the service
- * sees, what it did and what it expects, in its own words; the facts and the agent's turn stay in the history.
+ * The review as the service's message, in its own words and without section labels (simulation-mode spec «Симуляция как
+ * отдельный режим»): the reasoning and what the checks found, each change as a done action with its undo, then what the
+ * service expects and when it checks. A review that arrives on the owner's eyes shows part by part; the text is the one
+ * already written, and with reduced motion it is all there at once.
  */
-function Review({ review, onRollback }: { review: JournalEntry; onRollback: (item: HistoryItem) => void }) {
+function Review({ review, reveal, onRollback }: { review: JournalEntry; reveal: boolean; onRollback: (item: HistoryItem) => void }) {
   const seen = noteSeen(review);
   const expected = noteExpect(review);
+  let part = 0;
+  const order = () => ({ "--i": part++ }) as CSSProperties;
   return (
-    <article className="studio-note" data-testid="studio-review">
-      {seen.length > 0 ? (
-        <section className="studio-note-part">
-          <h3 className="studio-note-label">Что вижу</h3>
-          {seen.map((text, i) => (
-            <p key={i}>{text}</p>
-          ))}
-        </section>
-      ) : null}
-      {review.changes.length > 0 ? (
-        <section className="studio-note-part studio-note-done">
-          <h3 className="studio-note-label">Что сделал</h3>
-          {review.changes.map((change, i) => {
-            const undoable = change.item !== null && !change.reverted && change.item.rollback.kind === "available";
-            return (
-              <p key={change.historyId ?? i} data-reverted={change.reverted || undefined}>
+    <article className={reveal ? "studio-msg studio-msg-reveal" : "studio-msg"} data-testid="studio-review">
+      <div className="studio-bubble">
+        {seen.map((text, i) => (
+          <p key={`seen-${i}`} className="studio-msg-text" style={order()}>
+            {text}
+          </p>
+        ))}
+        {review.changes.map((change, i) => {
+          const undoable = change.item !== null && !change.reverted && change.item.rollback.kind === "available";
+          return (
+            <div key={change.historyId ?? `change-${i}`} className="studio-msg-action" data-reverted={change.reverted || undefined} style={order()}>
+              <CheckCircleFilled className="studio-msg-done" aria-label={change.reverted ? "отменено" : "сделано"} />
+              <span className="studio-msg-action-text">
                 {noteSentence(change.text)}
-                {change.reverted ? <span className="studio-note-dim"> — вы вернули как было</span> : null}.
-                {undoable ? (
-                  <>
-                    {" "}
-                    <button type="button" className="studio-note-link" onClick={() => onRollback(change.item as HistoryItem)}>
-                      Вернуть как было
-                    </button>
-                  </>
-                ) : null}
-              </p>
-            );
-          })}
-        </section>
-      ) : null}
-      {expected.length > 0 ? (
-        <section className="studio-note-part">
-          <h3 className="studio-note-label">Чего жду</h3>
-          <p>{expected.join(" ")}</p>
-        </section>
-      ) : null}
-      <Link className="studio-note-more" href={`/summary#log-${review.id}`}>
+                {change.reverted ? <span className="studio-msg-dim"> — вы вернули как было</span> : null}.
+              </span>
+              {undoable ? (
+                <button type="button" className="studio-msg-undo" onClick={() => onRollback(change.item as HistoryItem)}>
+                  Вернуть как было
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+        {expected.length > 0 ? (
+          <p className="studio-msg-text" style={order()}>
+            {expected.join(" ")}
+          </p>
+        ) : null}
+      </div>
+      <Link className="studio-msg-more" href={`/summary#log-${review.id}`} style={order()}>
         Подробнее — в истории ›
       </Link>
     </article>
@@ -237,6 +254,8 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
   const [rollback, setRollback] = useState<HistoryItem | null>(null);
   const [modal, modalHolder] = Modal.useModal();
   const review = latestReview(work);
+  // The review the page opened with is shown at once; one that arrives after a step is written part by part.
+  const openedReview = useRef(review?.id ?? null);
   const stepping = status.status === "stepping" || status.agentTurn !== null;
   const firstDay = status.weeks === 0 && status.day === 1 && !stepping && !status.ended;
   const shownDay = status.ended ? status.totalDays : status.day;
@@ -342,15 +361,17 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
         </section>
 
         <aside className="studio-rail panel" aria-label="Разбор" data-state={stepping ? "thinking" : review !== null ? "review" : "empty"}>
-          <h2 className="studio-eyebrow">{stepping || review === null ? "Разбор дня" : noteTitle(review)}</h2>
+          <MessageHead title={stepping ? "Разбирает день" : review === null ? "Разбор дня" : noteTitle(review)} />
           {stepping ? (
             <Thinking status={status} elapsed={elapsed} />
           ) : review !== null ? (
-            <Review review={review} onRollback={setRollback} />
+            <Review key={review.id} review={review} reveal={review.id !== openedReview.current} onRollback={setRollback} />
           ) : (
-            <div className="studio-empty-review">
-              <p>После дня здесь появится разбор: что сервис заметил и что изменил.</p>
-              <Link href="/summary">История ›</Link>
+            <div className="studio-msg studio-empty-review">
+              <p className="studio-bubble">После первого дня я напишу здесь, что заметил в рекламе и что изменил.</p>
+              <Link className="studio-msg-more" href="/summary">
+                История ›
+              </Link>
             </div>
           )}
         </aside>

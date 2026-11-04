@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -125,18 +125,18 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
 });
 
 describe("simulation studio (simulation-mode spec «Симуляция как отдельный режим»)", () => {
-  it("shows the last lived day, the ads and the review as a note: what the service sees and what it did", () => {
+  it("shows the last lived day, the ads and the review as the service's message: its reasoning and what it did", () => {
     render(<SimulationStudio model={model()} work={work()} initial={status()} />);
     expect(screen.getByText("День 10")).toBeTruthy();
     expect(screen.getByText("прожит")).toBeTruthy();
     expect(screen.getAllByTestId("studio-ad")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "Разбор дня · 11 ноября" })).toBeTruthy();
+    expect(screen.getByRole("complementary", { name: "Разбор" }).querySelector(".studio-msg-name")).toHaveTextContent("Импульс");
     const note = screen.getByTestId("studio-review");
-    expect([...note.querySelectorAll(".studio-note-part")].map((part) => part.textContent)).toEqual([
-      "Что вижуКомпьютеры дают обращения по 414 ₽ — дешевле цели.",
-      "Что сделалПоднял цену перехода с компьютеров на 10%. Вернуть как было",
-    ]);
-    expect(note.textContent).not.toMatch(/Уже в работе|Оставить как есть|Почему так|Чего жду/);
+    expect([...note.querySelectorAll(".studio-msg-text")].map((p) => p.textContent)).toEqual(["Компьютеры дают обращения по 414 ₽ — дешевле цели."]);
+    expect([...note.querySelectorAll(".studio-msg-action")].map((a) => a.textContent)).toEqual(["Поднял цену перехода с компьютеров на 10%.Вернуть как было"]);
+    expect(note.querySelector(".studio-msg-action [aria-label]")).toHaveAttribute("aria-label", "сделано");
+    expect(note.textContent).not.toMatch(/Что вижу|Что сделал|Чего жду|Уже в работе|Оставить как есть|Почему так/);
     expect(screen.getByRole("link", { name: "Подробнее — в истории ›" })).toHaveAttribute("href", "/summary#log-2026-11-11:day");
   });
 
@@ -161,14 +161,17 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     const note = screen.getByTestId("studio-review");
     expect(note).toHaveTextContent("Поднял цену перехода с компьютеров на 10% — вы вернули как было.");
     expect(screen.queryByRole("button", { name: "Вернуть как было" })).toBeNull();
-    expect(note.querySelectorAll(".studio-note-part")[2]?.textContent).toBe("Чего ждуЖду больше обращений с компьютеров по цене не выше цели. 16 ноября проверю, останется ли стоимость обращений с компьютеров ниже цели.");
+    expect(note.querySelector(".studio-msg-action")).toHaveAttribute("data-reverted", "true");
+    expect([...note.querySelectorAll(".studio-msg-text")].at(-1)?.textContent).toBe("Жду больше обращений с компьютеров по цене не выше цели. 16 ноября проверю, останется ли стоимость обращений с компьютеров ниже цели.");
     expect(note.textContent).not.toContain("К 16 ноября проверю стоимость");
   });
 
   it("tells a quiet day in one paragraph, without empty ones", () => {
     const quiet: JournalEntry = { ...review, kind: "quiet", headline: null, paragraphs: ["Посмотрели рекламу — менять ничего не нужно."], changes: [] };
     render(<SimulationStudio model={model()} work={work({ journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [quiet] }] })} initial={status()} />);
-    expect(within(screen.getByTestId("studio-review")).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Что вижу"]);
+    const note = screen.getByTestId("studio-review");
+    expect([...note.querySelectorAll(".studio-msg-text")].map((p) => p.textContent)).toEqual(["Посмотрели рекламу — менять ничего не нужно."]);
+    expect(note.querySelector(".studio-msg-action")).toBeNull();
   });
 
   it("says the market is a training one without sounding like a failure", () => {
@@ -278,7 +281,7 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     render(<SimulationStudio model={model({ leads: { value: 0, previous: 0 }, spentMonth: 0 })} work={work({ journal: [], shown: [] })} initial={status({ day: 1, weeks: 0, changes: 1, daysLeft: 30 })} />);
     expect(screen.getByText("День 1")).toBeTruthy();
     expect(screen.getByText("впереди")).toBeTruthy();
-    expect(screen.getByText(/После дня здесь появится разбор/)).toBeTruthy();
+    expect(screen.getByText("После первого дня я напишу здесь, что заметил в рекламе и что изменил.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Прожить день" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Прожить неделю" })).toBeTruthy();
   });
@@ -288,6 +291,19 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(screen.getByText("идёт")).toBeTruthy();
     expect(screen.getByRole("button", { name: "День идёт…" })).toBeDisabled();
     expect(screen.getByTestId("studio-thinking")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Сервис пишет разбор" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Разбирает день" })).toBeTruthy();
+  });
+
+  it("writes a review that arrives after a step part by part, and shows the one the page opened with at once", () => {
+    const { rerender } = render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    expect(screen.getByTestId("studio-review")).not.toHaveClass("studio-msg-reveal");
+    const next: JournalEntry = { ...review, id: "2026-11-12:day", date: "2026-11-12" };
+    rerender(<SimulationStudio model={model()} work={work({ journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [review, next] }] })} initial={status()} />);
+    const note = screen.getByTestId("studio-review");
+    expect(note).toHaveClass("studio-msg-reveal");
+    expect([...note.querySelectorAll<HTMLElement>(".studio-msg-text, .studio-msg-action, .studio-msg-more")].map((part) => part.style.getPropertyValue("--i"))).toEqual(["0", "1", "2"]);
+    expect(screen.getByRole("heading", { level: 2, name: "Разбор дня · 12 ноября" })).toBeTruthy();
   });
 
   it("offers to continue for 30 more days when the scenario ends", () => {

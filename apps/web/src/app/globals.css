@@ -3404,7 +3404,7 @@ button.log-link {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 10px;
+  gap: 2px 14px;
   margin: 0;
   font-size: var(--fs-xs);
   color: var(--text-3);
@@ -3432,11 +3432,6 @@ button.log-link {
   gap: 5px;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
-}
-.studio-ad-leads::before {
-  content: "·";
-  margin-right: 5px;
-  color: var(--text-3);
 }
 /* The numbers behind a result: a short list and one sentence on what they mean. */
 .numbers-card {
@@ -3545,114 +3540,164 @@ button.log-link {
   min-height: 280px;
   padding: 22px 24px 24px;
 }
-.studio-eyebrow {
-  margin: 0 0 16px;
-  font-size: var(--fs-md);
-  font-weight: 650;
-  letter-spacing: -0.015em;
-  color: var(--text);
+/* The rail is the service speaking: its mark and name, then its message in a bubble (simulation-mode spec). */
+.studio-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
 }
-/* The review is a marketer's note: labelled paragraphs of the service's own words, no form, one link to the history. */
-.studio-note {
+.studio-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  border-radius: 11px;
+  box-shadow: 0 6px 16px -8px rgba(58, 44, 196, 0.55);
+}
+.studio-avatar svg {
+  display: block;
+}
+.studio-msg-who {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 1px;
+  min-width: 0;
 }
-.studio-note-label {
-  margin: 0 0 4px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--accent-ink);
+.studio-msg-name {
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
-.studio-note-part p {
+.studio-msg-title {
   margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-3);
+}
+.studio-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* The bubble's corner points at the mark: this is said by the service. */
+.studio-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px 16px 16px 16px;
+  background: var(--surface-2);
   font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--text);
 }
-.studio-note-part p + p {
-  margin-top: 8px;
+.studio-msg-text {
+  margin: 0;
 }
-.studio-note-done p {
+/* A change is a done action inside the message, with its undo at hand. */
+.studio-msg-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+/* Inside the action, so that it outweighs antd's later «.anticon { color: inherit }». */
+.studio-msg-action .studio-msg-done {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  font-size: 16px;
+  color: var(--success);
+}
+.studio-msg-action[data-reverted] .studio-msg-done {
+  color: var(--text-3);
+}
+.studio-msg-action-text {
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
+  line-height: 1.45;
   letter-spacing: -0.005em;
 }
-.studio-note-dim {
+.studio-msg-dim {
   font-weight: 400;
   color: var(--text-3);
 }
-.studio-note-link {
+.studio-msg-undo {
+  flex: 0 0 auto;
+  align-self: center;
   border: 0;
   background: none;
   padding: 0;
   font: inherit;
-  font-weight: 500;
+  font-size: var(--fs-xs);
+  font-weight: 550;
   color: var(--accent-ink);
+  white-space: nowrap;
   text-decoration: underline;
   text-decoration-color: rgba(85, 67, 212, 0.35);
   text-underline-offset: 3px;
-  white-space: nowrap;
   cursor: pointer;
 }
-.studio-note-link:hover,
-.studio-note-link:focus-visible {
+.studio-msg-undo:hover,
+.studio-msg-undo:focus-visible {
   text-decoration-color: currentColor;
 }
-.studio-note-more {
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+.studio-msg-more {
+  align-self: flex-start;
+  padding-left: 2px;
   font-size: var(--fs-xs);
   color: var(--text-2);
   text-decoration: none;
 }
-.studio-note-more:hover {
+.studio-msg-more:hover {
   color: var(--accent-ink);
 }
-.studio-empty-review {
-  font-size: var(--fs-xs);
-  line-height: 1.55;
-  color: var(--text-3);
+/* A review that arrives after a step is written part by part: the text is the one already saved, only shown in turn. */
+.studio-msg-reveal .studio-msg-text,
+.studio-msg-reveal .studio-msg-action,
+.studio-msg-reveal .studio-msg-more {
+  animation: studioWrite 0.45s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 280ms);
 }
-.studio-empty-review p {
-  margin: 0 0 10px;
+.studio-empty-review .studio-bubble {
+  color: var(--text-2);
 }
+/* While the day goes the service is typing: three dots in its bubble and the step's line under it. */
 .studio-thinking {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.studio-shimmer {
-  height: 38px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #f1f0f6 25%, #fafafe 50%, #f1f0f6 75%);
-  background-size: 200% 100%;
-  animation: studioShine 1.6s linear infinite;
-}
-.studio-shimmer.short {
-  width: 70%;
-  height: 14px;
-}
-.studio-thinking-line {
-  display: flex;
+.studio-typing {
+  flex-direction: row;
   align-items: center;
-  gap: 7px;
-  margin: 4px 0 0;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
+  align-self: flex-start;
+  gap: 5px;
+  padding: 15px 18px;
 }
-.studio-pulse {
-  width: 6px;
-  height: 6px;
+.studio-typing i {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-  animation: studioPulse 1.8s ease-in-out infinite;
+  opacity: 0.35;
+  animation: studioType 1.2s ease-in-out infinite;
 }
-.studio-small {
-  margin: 0;
+.studio-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.studio-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.studio-thinking-line {
+  margin: 0 0 0 2px;
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .studio-empty {
   padding: 18px 0;
@@ -3668,14 +3713,20 @@ button.log-link {
 @keyframes studioPulse {
   50% { opacity: 0.35; }
 }
-@keyframes studioShine {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes studioType {
+  0%, 60%, 100% { opacity: 0.35; transform: none; }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes studioWrite {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .studio-strip i[data-state="now"],
-  .studio-pulse,
-  .studio-shimmer {
+  .studio-typing i,
+  .studio-msg-reveal .studio-msg-text,
+  .studio-msg-reveal .studio-msg-action,
+  .studio-msg-reveal .studio-msg-more {
     animation: none;
   }
 }
@@ -3740,6 +3791,9 @@ button.log-link {
    * On a phone the totals and the ads are one card a row.
    */
   .studio-sum { grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the undo goes under the action's words, so they keep the width. */
+  .studio-msg-action { flex-wrap: wrap; row-gap: 4px; }
+  .studio-msg-undo { flex-basis: 100%; align-self: flex-start; padding-left: 26px; text-align: left; }
   .studio-ad-grid { grid-template-columns: minmax(0, 1fr); }
   .studio-actions {
     flex-wrap: wrap;
