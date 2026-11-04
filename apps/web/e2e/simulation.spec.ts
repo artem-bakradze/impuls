@@ -47,11 +47,14 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   const day = () => page.getByTestId("studio-day").textContent();
   const state = () => page.getByTestId("studio-status").textContent();
   const step = async (button: Locator) => {
-    const before = `${await day()}|${await state()}`;
+    const beforeDay = await day();
+    const before = `${beforeDay}|${await state()}`;
     await button.click();
     await expect.poll(async () => `${await day()}|${await state()}`, { timeout: 180_000 }).not.toBe(before);
     await expect(page.getByTestId("studio-review")).toBeVisible({ timeout: 180_000 });
     await expect(page.getByTestId("studio-status")).toHaveText("прожит");
+    // A lived step has moved the day: while a step runs, the day before is never shown as lived.
+    expect(await day()).not.toBe(beforeDay);
   };
 
   // One day by the stage button: the review appears on the right and the next day moves there.

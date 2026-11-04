@@ -161,8 +161,14 @@ export const changeLog = pgTable(
     error: text("error"),
     outcome: text("outcome"),
     createdAt: createdAt(),
+    /**
+     * The order of writing, given by the database on insert and never changed by an update: it decides between entries of
+     * the same time, which a simulation's virtual clock gives to every change of one hour (change-history spec «Порядок
+     * записей истории»).
+     */
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
   },
-  (t) => [index("change_log_business_time").on(t.businessId, t.createdAt), index("change_log_pending").on(t.status).where(sql`status = 'pending'`)],
+  (t) => [index("change_log_business_time").on(t.businessId, t.createdAt, t.seq), index("change_log_pending").on(t.status).where(sql`status = 'pending'`)],
 );
 
 export const userDecisions = pgTable("user_decisions", {

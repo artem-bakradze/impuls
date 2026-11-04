@@ -194,7 +194,8 @@ export class PgStore implements Store {
   }
 
   async changes(businessId: string): Promise<ChangeEntry[]> {
-    const rows = await this.db.select().from(schema.changeLog).where(eq(schema.changeLog.businessId, businessId)).orderBy(asc(schema.changeLog.createdAt));
+    // Entries of the same time keep the order they were written in (change-history spec «Порядок записей истории»).
+    const rows = await this.db.select().from(schema.changeLog).where(eq(schema.changeLog.businessId, businessId)).orderBy(asc(schema.changeLog.createdAt), asc(schema.changeLog.seq));
     return rows.map((r) => this.toChange(r));
   }
 

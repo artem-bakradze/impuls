@@ -1,7 +1,9 @@
-import { AdversarialPolicy } from "@impuls/agent";
+import { AdversarialPolicy, IdlePolicy } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { createDb, createPool, databaseUrl, schema, sql } from "@impuls/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ExecutionResult } from "./executor";
+import { rollback } from "./history";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { SimulationDriver } from "./simulation";
@@ -139,5 +141,77 @@ describe("PgStore with the full worker loop", () => {
     await store.setFlag("agent_enabled", false, null);
     expect(await store.getFlag("agent_enabled", "other")).toBe(false);
     await store.setFlag("agent_enabled", true, null);
+  });
+});
+
+describe("the journal's order on PostgreSQL (change-history spec «Порядок записей истории»)", () => {
+  const entryOf = (result: ExecutionResult): string => {
+    if (result.status !== "applied" && result.status !== "clamped") throw new Error(`not applied: ${result.message}`);
+    return result.entryId;
+  };
+
+  // Where PostgreSQL puts a row is not the order of writing; the next test pins that down deterministically.
+  it("takes the owner's change back at once when the agent's change of the same limit has the same virtual time", async () => {
+    await db.insert(schema.users).values({ id: "user-b2", googleSub: "sub-b2", email: "owner2@example.com", name: "Владелец" });
+    const store = new PgStore(db);
+    const sim = new SimulationDriver({ start: new Date("2026-11-02T00:00:00Z"), seed: 3, agent: new IdlePolicy(), store, locks: new PgLockManager(pool) });
+    const truth = { impressionsPerDay: 800, ctr: 0.06, cr: 0.1, costPerClick: rubles(20) };
+    await sim.launchBusiness({
+      id: "b2",
+      monthlyBudgetRub: 9_000,
+      launchedOn: "2026-11-02",
+      csoSource: { kind: "user", goal: rubles(800) },
+      directions: [{ name: "Маникюр — Сайты-партнёры", weeklyLimitRub: 2_000, ads: [{ title: "Маникюр у метро", truth }] }],
+    });
+    await sim.runDays(1);
+    const [direction] = await store.directions("b2");
+    if (!direction) throw new Error("no direction");
+
+    // Lowering is open to the agent; the limit is already cut to the month by the budget guard, so it starts from there.
+    const agentLimit = direction.weeklyLimit - rubles(100);
+    // The virtual clock stands between steps: the agent's change and the owner's one after it get the same time.
+    const agent = entryOf(
+      await sim.ctx.executor.execute({ businessId: "b2", command: { type: "SetSpendLimit", directionId: direction.id, weeklyLimit: agentLimit }, actor: "agent", reasonCode: "SCALE_EFFECTIVE", explanation: "Снизил лимит." }),
+    );
+    const owner = entryOf(
+      await sim.ctx.executor.execute({ businessId: "b2", command: { type: "SetSpendLimit", directionId: direction.id, weeklyLimit: agentLimit - rubles(100) }, actor: "user", reasonCode: "USER_CHANGE", explanation: "Вы снизили лимит." }),
+    );
+    const pair = (await store.changes("b2")).filter((c) => c.id === agent || c.id === owner);
+    expect(new Set(pair.map((c) => c.createdAt.getTime())).size).toBe(1);
+    expect(pair.map((c) => c.id)).toEqual([agent, owner]);
+
+    // Nothing of the same limit was written after the owner's change, so it goes back without a chain.
+    expect(await rollback(sim.ctx, { businessId: "b2", entryId: owner })).toMatchObject({ kind: "done" });
+    expect((await store.directions("b2"))[0]?.weeklyLimit).toBe(agentLimit);
+  });
+
+  it("keeps the order of writing when the later of two entries of one time is applied first", async () => {
+    const store = new PgStore(db);
+    const [sample] = await store.changes("b2");
+    if (!sample) throw new Error("no change");
+    const at = new Date("2026-11-20T07:00:00Z");
+    const entry = (explanation: string) => ({
+      businessId: "b2",
+      actor: sample.actor,
+      author: sample.author,
+      action: sample.action,
+      objectKind: sample.objectKind,
+      objectId: "tie",
+      before: sample.before,
+      after: sample.after,
+      status: "pending" as const,
+      reasonCode: sample.reasonCode,
+      explanation,
+      turnId: null,
+      createdAt: at,
+      error: null,
+      revertedById: null,
+      outcome: null,
+    });
+    const first = await store.appendChange(entry("первое"));
+    const second = await store.appendChange(entry("второе"));
+    await store.updateChange(second.id, { status: "applied" });
+    await store.updateChange(first.id, { status: "applied" });
+    expect((await store.changes("b2")).filter((c) => c.objectId === "tie").map((c) => c.explanation)).toEqual(["первое", "второе"]);
   });
 });

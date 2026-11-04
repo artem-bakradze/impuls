@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
@@ -303,5 +303,43 @@ describe("navigation in a simulation", () => {
     unmount();
     render(<AppHeader launched signOutAction={() => Promise.resolve()} />);
     expect(screen.queryByRole("link", { name: "Симуляция" })).toBeNull();
+  });
+});
+
+describe("a pressed step in the studio (simulation-mode spec: a step that is not over is not shown as lived)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the step going until the worker takes it, instead of «прожит» about the day before", async () => {
+    vi.useFakeTimers();
+    let server: SimulationStatus = status();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const body = url === "/api/simulation" && init?.method === "POST" ? { jobId: "j1" } : url.startsWith("/api/jobs/") ? { state: "running" } : server;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      }),
+    );
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Прожить следующий день" }));
+    // The worker has not taken the step yet: the server still says «paused» about day 10.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
+    expect(screen.queryByTestId("studio-review")).toBeNull();
+    server = status({ status: "stepping", step: { kind: "day", week: null } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_100);
+    });
+    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
+    server = status({ day: 11, daysLeft: 20 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_100);
+    });
+    expect(screen.getByTestId("studio-status")).toHaveTextContent("прожит");
+    expect(screen.getByTestId("studio-day")).toHaveTextContent("День 11");
   });
 });

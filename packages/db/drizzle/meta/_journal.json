@@ -92,6 +92,13 @@
       "when": 1793608661274,
       "tag": "0012_weekly_simulation_triggered_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793796414547,
+      "tag": "0013_stable_journal_order",
+      "breakpoints": true
     }
   ]
 }
