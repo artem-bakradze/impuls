@@ -3227,43 +3227,98 @@ button.log-link {
   flex-direction: column;
   padding: 22px 24px 20px;
 }
-.studio-total {
+/* The period's totals over the ads: three numbers side by side and the month's money as a bar with the plan mark. */
+.studio-summary {
+  order: 0;
+}
+.studio-summary-period {
+  margin: 0 0 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+/* The cost per lead carries the longest words, «за обращение · ориентир 1 000 ₽»: its column is the widest. */
+.studio-sum {
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.35fr) minmax(0, 1fr);
+}
+.studio-metric {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 18px;
+  border-left: 1px solid var(--border);
+}
+.studio-metric:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.studio-metric-value {
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding-bottom: 12px;
+  align-items: baseline;
+  column-gap: 8px;
+  font-size: var(--fs-xl);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.studio-metric-value[data-tone="danger"] {
+  color: var(--danger);
+}
+.studio-metric-value .studio-delta {
+  letter-spacing: 0;
+}
+.studio-metric-label {
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text-3);
+}
+.brief-bar.studio-budget {
+  margin: 18px 0 8px;
+}
+.brief-bar.studio-budget[data-plan] {
+  margin-bottom: 30px;
+}
+/* The ads as a table: the column words once, then one row per ad with its estimate, money, leads and cost. */
+.studio-ads {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 18px;
+}
+.studio-ads-head,
+.studio-ad {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 96px;
+  grid-template-areas: "main leads cost";
+  column-gap: 20px;
+}
+.studio-ads-head {
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
-.studio-total b {
-  font-size: var(--fs-2xl);
-  font-weight: 650;
-  letter-spacing: -0.04em;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.studio-total-sep {
-  color: var(--text-3);
-}
-.studio-stage-caption {
-  margin: 8px 0 0;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
+.studio-ads-col {
+  text-align: right;
 }
 .studio-ad {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
+  align-items: start;
   min-width: 0;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
+.studio-ad:last-child {
+  border-bottom: 0;
+}
 .studio-ad-main {
+  grid-area: main;
   min-width: 0;
-  flex: 1;
 }
 .studio-ad-name {
   display: block;
@@ -3275,16 +3330,46 @@ button.log-link {
   letter-spacing: -0.01em;
 }
 .studio-ad-sub {
-  display: block;
-  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin-top: 3px;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+/* The service's estimate: a dot and a word of the same colour as the money bar under it. */
+.studio-ad-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 550;
+}
+.studio-ad-verdict i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.studio-ad-verdict[data-verdict="effective"] { color: var(--success); }
+.studio-ad-verdict[data-verdict="borderline"] { color: var(--warning); }
+.studio-ad-verdict[data-verdict="ineffective"] { color: var(--danger); }
+.studio-ad-verdict[data-verdict="learning"] { color: var(--accent-ink); }
+.studio-ad-channel::before {
+  content: "·";
+  margin-right: 8px;
+}
+.studio-ad-spend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
 /* The ad's share of the week's money; the colour is the rules' estimate of it. */
 .studio-ad-bar {
-  display: block;
+  flex: 1;
+  min-width: 0;
   height: 6px;
-  margin-top: 8px;
   border-radius: 99px;
   background: var(--surface-3);
   overflow: hidden;
@@ -3300,22 +3385,52 @@ button.log-link {
 .studio-ad-bar i[data-verdict="borderline"] { background: var(--warning); }
 .studio-ad-bar i[data-verdict="ineffective"] { background: var(--danger); }
 .studio-ad-bar i[data-verdict="learning"] { background: var(--accent); opacity: 0.55; }
-.studio-ad-stats {
-  display: flex;
+.studio-ad-money {
   flex: 0 0 auto;
+  min-width: 64px;
+  text-align: right;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.studio-ad-leads,
+.studio-ad-cost {
+  display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 2px;
   text-align: right;
-  white-space: nowrap;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.studio-ad-stats > span {
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 5px;
+.studio-ad-leads { grid-area: leads; }
+.studio-ad-cost { grid-area: cost; }
+.studio-ad-leads b:not(.studio-delta) {
+  font-size: var(--fs-md);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.studio-ad-cost b:not(.studio-delta) {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+/* An ad without leads yet steps back: the eye goes to the rows that bring them. */
+.studio-ad[data-quiet] .studio-ad-leads b:not(.studio-delta) {
+  font-weight: 500;
+  color: var(--text-3);
+}
+.studio-ad-none {
+  color: var(--text-3);
+}
+/* The units of the columns: read aloud everywhere, shown only on a phone, where the columns have no heads. */
+.studio-unit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .studio-delta {
   font-weight: 650;
@@ -3323,9 +3438,6 @@ button.log-link {
 }
 .studio-delta.good { color: var(--success); }
 .studio-delta.bad { color: var(--danger); }
-.studio-total { order: 0; }
-.studio-stage-caption { order: 1; }
-.studio-ad,
 .studio-empty { order: 2; }
 /*
  * The day's button stays at the bottom of the screen while the list is longer than it (simulation-mode spec «Кнопка
@@ -3560,9 +3672,7 @@ button.log-link {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .studio-stage-caption { order: 2; }
-  .studio-ad,
-  .studio-empty { order: 3; }
+  .studio-ads { order: 3; }
 }
 @media (max-width: 720px) {
   body .workspace .page.studio-page {
@@ -3581,8 +3691,71 @@ button.log-link {
   .studio-go-real,
   .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
-  .studio-total b { font-size: var(--fs-xl); }
-  .studio-ad-stats { font-size: var(--fs-xs); }
+  /*
+   * On a phone the totals are two columns and the money a line of its own above its bar; the ads lose their columns:
+   * the name takes the width, and leads and the cost per lead are one line under the money bar, with their units.
+   */
+  .studio-sum {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    row-gap: 14px;
+  }
+  .studio-metric { padding: 0 14px; }
+  .studio-metric-value { font-size: var(--fs-lg); }
+  .studio-metric:nth-child(3) {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding: 14px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .studio-ads-head { grid-template-columns: minmax(0, 1fr); }
+  .studio-ads-col { display: none; }
+  .studio-ad {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "leads cost";
+    column-gap: 10px;
+    row-gap: 6px;
+  }
+  .studio-ad-name { white-space: normal; }
+  .studio-ad-leads,
+  .studio-ad-cost {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 6px;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+  }
+  .studio-ad-cost::before {
+    content: "·";
+    color: var(--text-3);
+  }
+  .studio-ad[data-quiet] .studio-ad-cost { display: none; }
+  .studio-ad-leads b:not(.studio-delta),
+  .studio-ad-cost b:not(.studio-delta) {
+    font-size: var(--fs-xs);
+    font-weight: 650;
+    letter-spacing: 0;
+    color: var(--text);
+  }
+  .studio-unit {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .studio-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px 18px;
+  }
+  .studio-primary {
+    flex: 1 0 100%;
+    white-space: nowrap;
+  }
   .studio-primary { min-height: 44px; }
   .studio-go-real { margin-left: 0; }
 }

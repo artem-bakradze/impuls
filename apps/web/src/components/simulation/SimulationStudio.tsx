@@ -6,7 +6,7 @@ import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { formatCount, formatLocalDate, formatRub, plural } from "@/lib/format";
+import { formatCount, formatLocalDate, formatRange, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import { agentTurnText, DIVERGED_TEXT, elapsedText, stepText, stepWeekLabel } from "@/lib/simulation-model";
@@ -14,6 +14,7 @@ import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model"
 import { noteExpect, noteSeen, noteSentence, noteTitle } from "@/lib/review-note";
 import { VERDICT_WORD } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
+import { goalComparable } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { useCountUp } from "./useCountUp";
@@ -31,6 +32,11 @@ const latestReview = (work: AdsWork): JournalEntry | null =>
     .filter((entry) => entry.kind === "agent" || entry.kind === "rules" || entry.kind === "quiet")
     .at(-1) ?? null;
 
+/**
+ * One ad as a row of a table: the name, the service's estimate as a coloured mark, the 7 days' money as a bar with its
+ * sum, then leads and the cost per lead in columns. The column words are said once above the rows; the units stay in the
+ * text for screen readers and show on a phone, where there are no columns.
+ */
 function StudioAd({ ad, before, maxSpend }: { ad: ShownAd; before: ShownAd | null; maxSpend: number }) {
   const leads = useCountUp(ad.leads);
   const cost = useCountUp(ad.costPerLead ?? 0);
@@ -39,27 +45,108 @@ function StudioAd({ ad, before, maxSpend }: { ad: ShownAd; before: ShownAd | nul
   const impressionsDelta = before === null ? 0 : ad.impressions - before.impressions;
   const share = maxSpend > 0 ? Math.max(2, Math.round((ad.spend / maxSpend) * 100)) : 0;
   return (
-    <div className="studio-ad" data-testid="studio-ad">
+    <div className="studio-ad" data-testid="studio-ad" data-quiet={ad.leads === 0 || undefined}>
       <div className="studio-ad-main">
-        <span className="studio-ad-name">{ad.title}</span>
+        <span className="studio-ad-name" title={ad.title}>
+          {ad.title}
+        </span>
         <span className="studio-ad-sub">
-          {channelName(ad.channel)} · <span data-testid="studio-ad-verdict">{VERDICT_WORD[ad.verdict]}</span> · потрачено {formatRub(ad.spend)}
-          {impressionsDelta > 0 ? ` · показы +${formatCount(impressionsDelta)}` : ""}
+          <span className="studio-ad-verdict" data-verdict={ad.verdict}>
+            <i aria-hidden="true" />
+            <span data-testid="studio-ad-verdict">{VERDICT_WORD[ad.verdict]}</span>
+          </span>
+          <span className="studio-ad-channel">{channelName(ad.channel)}</span>
+          {impressionsDelta > 0 ? <span className="studio-ad-channel">показы +{formatCount(impressionsDelta)}</span> : null}
         </span>
         {/* The ad's share of the 7 days' money against the most spending one, coloured by the estimate named above. */}
-        <span className="studio-ad-bar" aria-hidden="true">
-          <i style={{ width: `${share}%` }} data-verdict={ad.verdict} />
+        <span className="studio-ad-spend">
+          <span className="studio-ad-bar" aria-hidden="true">
+            <i style={{ width: `${share}%` }} data-verdict={ad.verdict} />
+          </span>
+          <span className="studio-ad-money">
+            <span className="sr-only">потрачено </span>
+            {formatRub(ad.spend)}
+          </span>
         </span>
       </div>
-      <div className="studio-ad-stats">
+      <div className="studio-ad-leads">
         <span>
-          {formatCount(leads)} {leadsWord(leads)}
-          {leadDelta !== 0 ? <b className={leadDelta > 0 ? "studio-delta good" : "studio-delta bad"}>{leadDelta > 0 ? "+" : "−"}{Math.abs(leadDelta)}</b> : null}
+          <b>{formatCount(leads)}</b>
+          <span className="studio-unit"> {leadsWord(leads)}</span>
         </span>
-        <span className="studio-ad-cost">
-          {ad.costPerLead === null ? "—" : `по ${formatRub(cost)}`}
-          {costDelta !== 0 ? <b className={costDelta < 0 ? "studio-delta good" : "studio-delta bad"}>{signedRub(costDelta)}</b> : null}
-        </span>
+        {leadDelta !== 0 ? <b className={leadDelta > 0 ? "studio-delta good" : "studio-delta bad"}>{leadDelta > 0 ? "+" : "−"}{Math.abs(leadDelta)}</b> : null}
+      </div>
+      <div className="studio-ad-cost">
+        {ad.costPerLead === null ? (
+          <span className="studio-ad-none">
+            —<span className="sr-only"> обращений пока нет</span>
+          </span>
+        ) : (
+          <span>
+            <span className="studio-unit">по </span>
+            <b>{formatRub(cost)}</b>
+          </span>
+        )}
+        {costDelta !== 0 ? <b className={costDelta < 0 ? "studio-delta good" : "studio-delta bad"}>{signedRub(costDelta)}</b> : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The totals of the period over the ads: leads, the cost per lead against the goal and the month's money with the plan
+ * mark, the same numbers and words as on the main screen (analytics spec «Сводка»). After a step each shows its change.
+ */
+function StudioSummary({ model, before, firstDay }: { model: SummaryModel; before: { leads: number; spend: number } | null; firstDay: boolean }) {
+  const leads = useCountUp(model.leads.value);
+  const spend = useCountUp(model.spentMonth);
+  const cost = useCountUp(model.goal.current ?? 0);
+  const leadDelta = before === null ? 0 : model.leads.value - before.leads;
+  const spendDelta = before === null ? 0 : model.spentMonth - before.spend;
+  const comparable = goalComparable(model.goal);
+  const over = comparable && model.goal.status === "above";
+  const share = model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0;
+  const planShare = model.monthBudget > 0 ? Math.min(100, (model.budgetPlan / model.monthBudget) * 100) : 0;
+  const tone = model.spentMonth >= model.monthBudget && model.monthBudget > 0 ? "danger" : model.budgetForecast !== null ? "warning" : undefined;
+  const today = model.dataPeriod?.to ?? "";
+  return (
+    <div className="studio-summary" data-testid="studio-summary">
+      {model.dataPeriod ? <p className="studio-summary-period">{formatRange(model.dataPeriod.from, model.dataPeriod.to)}</p> : null}
+      <div className="studio-sum">
+        <div className="studio-metric">
+          <span className="studio-metric-value">
+            {formatCount(leads)}
+            {leadDelta > 0 ? <b className="studio-delta good">+{formatCount(leadDelta)}</b> : null}
+          </span>
+          <span className="studio-metric-label">{leadsWord(leads)}</span>
+        </div>
+        <div className="studio-metric">
+          <span className="studio-metric-value" data-tone={over ? "danger" : undefined}>
+            {model.goal.current === null ? "—" : formatRub(cost)}
+          </span>
+          <span className="studio-metric-label">
+            за обращение · {comparable ? "цель" : "ориентир"} {formatRub(model.goal.cso)}
+          </span>
+        </div>
+        <div className="studio-metric">
+          <span className="studio-metric-value">
+            {formatRub(spend)}
+            {spendDelta > 0 ? <b className="studio-delta">+{formatRub(spendDelta)}</b> : null}
+          </span>
+          <span className="studio-metric-label">потрачено из {formatRub(model.monthBudget)}</span>
+        </div>
+      </div>
+      <div className="brief-bar studio-budget" data-tone={tone} data-plan={(model.monthBudget > 0 && !firstDay) || undefined} data-testid="studio-budget">
+        <i style={{ width: `${share}%` }} aria-hidden="true" />
+        {model.monthBudget > 0 && !firstDay ? (
+          <>
+            <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
+            <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined}>
+              <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
+              план {formatRub(model.budgetPlan)}
+            </span>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -145,12 +232,11 @@ function Review({ review, onRollback }: { review: JournalEntry; onRollback: (ite
 export function SimulationStudio({ model, work, initial }: { model: SummaryModel; work: AdsWork; initial: SimulationStatus }) {
   const router = useRouter();
   const { status, busy, error, act, turnSeenAt, now } = useSimulation(initial);
-  const [before, setBefore] = useState<AdsWork | null>(null);
+  // What the screen showed before the step, so the ads and the totals can say what the step changed.
+  const [before, setBefore] = useState<{ work: AdsWork; leads: number; spend: number } | null>(null);
   const [restartOpen, setRestartOpen] = useState(false);
   const [rollback, setRollback] = useState<HistoryItem | null>(null);
   const [modal, modalHolder] = Modal.useModal();
-  const totalLeads = useCountUp(model.leads.value);
-  const totalSpend = useCountUp(model.spentMonth);
   const review = latestReview(work);
   const stepping = status.status === "stepping" || status.agentTurn !== null;
   const firstDay = status.weeks === 0 && status.day === 1 && !stepping && !status.ended;
@@ -161,7 +247,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
   const weekLabel = stepWeekLabel(status.daysLeft);
 
   const run = (control: SimulationAction) => {
-    setBefore(work);
+    setBefore({ work, leads: model.leads.value, spend: model.spentMonth });
     void act(control);
   };
 
@@ -234,16 +320,18 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
 
       <div className="studio-grid">
         <section className="studio-stage panel" aria-label="День симуляции">
-          <div className="studio-total">
-            <span><b>{formatCount(totalLeads)}</b> {leadsWord(totalLeads)}</span>
-            <span className="studio-total-sep">·</span>
-            <span><b>{formatRub(totalSpend)}</b> из {formatRub(model.monthBudget)}</span>
+          <StudioSummary model={model} before={before} firstDay={firstDay} />
+          <div className="studio-ads">
+            <div className="studio-ads-head">
+              <span>Объявления · потрачено за 7 дней</span>
+              <span className="studio-ads-col" aria-hidden="true">обращения</span>
+              <span className="studio-ads-col" aria-hidden="true">за обращение</span>
+            </div>
+            {work.shown.length === 0 ? <p className="studio-empty">Сейчас ни одно объявление не показывается.</p> : null}
+            {work.shown.map((ad) => (
+              <StudioAd key={ad.id} ad={ad} maxSpend={maxSpend} before={before?.work.shown.find((item) => item.id === ad.id) ?? null} />
+            ))}
           </div>
-          <p className="studio-stage-caption">по объявлениям — за 7 дней</p>
-          {work.shown.length === 0 ? <p className="studio-empty">Сейчас ни одно объявление не показывается.</p> : null}
-          {work.shown.map((ad) => (
-            <StudioAd key={ad.id} ad={ad} maxSpend={maxSpend} before={before?.shown.find((item) => item.id === ad.id) ?? null} />
-          ))}
           <div className="studio-actions">
             <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
               {primaryLabel}

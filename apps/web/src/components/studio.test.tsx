@@ -193,6 +193,30 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(container.querySelector(".studio-ad-bar i")).toHaveAttribute("data-verdict", "effective");
   });
 
+  it("sums up leads, the cost per lead against the goal and the month's money with the plan mark", () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    const summary = screen.getByTestId("studio-summary");
+    const metrics = [...summary.querySelectorAll(".studio-metric")].map((m) => m.textContent?.replace(/ /g, " "));
+    expect(metrics).toEqual(["14обращений", "492 ₽за обращение · ориентир 1 000 ₽", "6 900 ₽потрачено из 30 000 ₽"]);
+    expect(summary.querySelector(".studio-summary-period")).toHaveTextContent("1–11 ноября");
+    expect(screen.getByTestId("studio-budget").textContent?.replace(/ /g, " ")).toBe("к 11 ноября план 11 000 ₽");
+    expect(screen.getByTestId("studio-budget").querySelector("i")).toHaveStyle({ width: "23%" });
+  });
+
+  it("marks a cost per lead over the goal and shows the ads as a table with the column words once", () => {
+    const quiet = ad({ id: "a3", title: "Настройка онлайн", leads: 0, spend: 39_500, costPerLead: null });
+    const { container } = render(
+      <SimulationStudio model={model({ goal: { mode: "user", cso: 100_000, learned: false, current: 140_000, status: "above" } })} work={work({ shown: [ad(), quiet] })} initial={status()} />,
+    );
+    expect(container.querySelector(".studio-metric-value[data-tone=danger]")?.textContent?.replace(/ /g, " ")).toBe("1 400 ₽");
+    expect(screen.getByTestId("studio-summary")).toHaveTextContent("за обращение · цель 1 000 ₽");
+    expect(container.querySelector(".studio-ads-head")?.textContent).toBe("Объявления · потрачено за 7 днейобращенияза обращение");
+    const [, last] = screen.getAllByTestId("studio-ad");
+    expect(last).toHaveAttribute("data-quiet", "true");
+    expect(last?.textContent?.replace(/ /g, " ")).toContain("потрачено 395 ₽");
+    expect(last?.querySelector(".studio-ad-cost")?.textContent).toBe("— обращений пока нет");
+  });
+
   it("names the calendar day, the scenario and each ad's estimate in words", () => {
     const sim = { comparison: null, result: null, decisionDays: [], day: 11, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
     render(<SimulationStudio model={model()} work={work({ sim })} initial={status()} />);
