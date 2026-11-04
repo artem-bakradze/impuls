@@ -83,7 +83,7 @@ test("from a change in the journal made by the agent the owner opens the turn wi
   await page.getByRole("button", { name: /История/ }).click();
   const change = page.getByTestId("agent-journal").getByTestId("journal-change").filter({ hasText: /Добавил денег рекламе .*3[\s\u00a0]600/ });
   // The facts of the decision behind one disclosure, right in its line (insights «Решение и его отмена в одной строке»).
-  await change.getByText("Факты").click();
+  await change.getByText("На чём основано").click();
   await expect(change.locator("dl")).toContainText("Осталось в этом месяце");
   await change.getByRole("link", { name: "Как сервис принял это решение" }).click();
 

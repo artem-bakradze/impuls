@@ -1,13 +1,16 @@
 "use client";
 
+import { CheckCircleFilled } from "@ant-design/icons";
 import { Drawer } from "antd";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatLocalDate, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
+import { noteExpect, noteSeen } from "@/lib/review-note";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { SummaryModel } from "@/lib/summary-model";
 import type { JournalChange, JournalEntry, JournalSection } from "@/lib/service-work";
+import { LogoMark } from "../ui/Logo";
 import type { Tone } from "../ui/primitives";
 
 const SHOWN_WEEKS = 8;
@@ -37,104 +40,132 @@ export function ComparisonNote({ sim }: { sim: NonNullable<AdsWork["sim"]> }) {
   );
 }
 
-function ChangeLine({ change, onRollback }: { change: JournalChange; onRollback: (item: HistoryItem) => void }) {
+/**
+ * One change as a done action, the same as in the studio's message: a check, the change in words, «Вернуть как было»
+ * when it can go back, and one «На чём основано» with its facts and the agent's turn (insights spec «Лента инсайтов и
+ * связь с историей»). The owner's and the cabinet's changes go without the check, in the owner's bubble.
+ */
+function ChangeLine({ change, owner, onRollback }: { change: JournalChange; owner: boolean; onRollback: (item: HistoryItem) => void }) {
   const item = change.item;
   const canRollBack = item !== null && !change.reverted && item.rollback.kind === "available";
   return (
-    <li data-reverted={change.reverted || undefined} data-testid="journal-change">
-      <div className="j-change">
-        <span className="j-mark" aria-hidden="true">→</span>
-        <span className="log-change-text j-change-text">
+    <li className={owner ? "j-owner-line" : "studio-msg-action j-action"} data-reverted={change.reverted || undefined} data-testid="journal-change">
+      {owner ? null : <CheckCircleFilled className="studio-msg-done" aria-label={change.reverted ? "отменено" : "сделано"} />}
+      <div className="j-action-main">
+        <span className={owner ? "log-change-text" : "studio-msg-action-text log-change-text"}>
           {change.text}
-          {change.reverted ? <span className="j-reverted"> · отменено</span> : null}
+          {change.reverted ? <span className="studio-msg-dim"> — отменено</span> : null}
         </span>
-        {canRollBack ? (
-          <button type="button" className="j-link" onClick={() => onRollback(item)}>
-            Вернуть как было
-          </button>
+        {item !== null && !change.reverted && item.rollback.kind === "unavailable" && item.reasonCode !== "LAUNCH" ? <p className="j-no-rollback">{item.rollback.reason}</p> : null}
+        {change.facts.length > 0 || change.turnId ? (
+          <details className="j-facts">
+            <summary>На чём основано</summary>
+            {change.facts.length > 0 ? (
+              <dl>
+                {change.facts.map((f) => (
+                  <div key={f.label}>
+                    <dt>{f.label}</dt>
+                    <dd>{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {change.turnId ? (
+              <Link href={`/history/turn/${change.turnId}`} className="j-turn">
+                Как сервис принял это решение
+              </Link>
+            ) : null}
+          </details>
         ) : null}
       </div>
-      {item !== null && !change.reverted && item.rollback.kind === "unavailable" && item.reasonCode !== "LAUNCH" ? <p className="j-no-rollback">{item.rollback.reason}</p> : null}
-      {change.facts.length > 0 || change.turnId ? (
-        <details className="j-facts">
-          <summary>Факты</summary>
-          {change.facts.length > 0 ? (
-            <dl>
-              {change.facts.map((f) => (
-                <div key={f.label}>
-                  <dt>{f.label}</dt>
-                  <dd>{f.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {change.turnId ? (
-            <Link href={`/history/turn/${change.turnId}`} className="j-link">
-              Как сервис принял это решение
-            </Link>
-          ) : null}
-        </details>
+      {canRollBack ? (
+        <button type="button" className="studio-msg-undo" onClick={() => onRollback(item)}>
+          Вернуть как было
+        </button>
       ) : null}
     </li>
   );
 }
 
-/** A day's records stand under one date (analytics spec «Сводка»): the next record of the same day keeps only its tags. */
+/**
+ * A record as a message (analytics spec «Сводка»): the service's in its bubble by its mark, with what it did first, then
+ * its reasoning, what it found out, what it expects and, in a simulation, the truth; the owner's on the other side. A
+ * day's records stand under one date, which the next record of the same day does not repeat.
+ */
 function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: boolean; onRollback: (item: HistoryItem) => void }) {
   const when = entry.from ? `${formatLocalDate(entry.from)} — ${formatLocalDate(entry.date)}` : `День ${entry.day} · ${formatLocalDate(entry.date)}`;
-  const [first, ...rest] = entry.paragraphs;
-  const tagged = entry.weekly || entry.kind === "rules";
-  return (
-    <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry" data-same-day={sameDay || undefined}>
-      {!sameDay || tagged ? (
-        <div className="j-when">
-          {sameDay ? null : <time dateTime={entry.date}>{when}</time>}
-          {entry.weekly ? <span className="j-tag">разбор недели</span> : null}
-          {entry.kind === "rules" ? <span className="j-tag j-tag-dim">страховочные правила</span> : null}
-        </div>
-      ) : null}
-      {entry.changes.length > 0 ? (
-        <ul className="j-changes" data-testid="journal-headline">
-          {entry.changes.map((c, i) => (
-            <ChangeLine key={c.historyId ?? i} change={c} onRollback={onRollback} />
-          ))}
-        </ul>
-      ) : entry.headline ? (
-        <p className="j-headline">{entry.headline}</p>
-      ) : null}
-      {first ? <p className="j-text">{first}</p> : null}
-      {rest.length > 0 ? (
-        <details className="j-more">
-          <summary>Ещё</summary>
-          {rest.map((p, i) => (
-            <p key={i} className="j-text">
+  const date = sameDay ? null : (
+    <p className="j-day">
+      <time dateTime={entry.date}>{when}</time>
+    </p>
+  );
+  const changes =
+    entry.changes.length > 0 ? (
+      <ul className="j-changes" data-testid="journal-headline">
+        {entry.changes.map((c, i) => (
+          <ChangeLine key={c.historyId ?? i} change={c} owner={entry.kind === "owner"} onRollback={onRollback} />
+        ))}
+      </ul>
+    ) : null;
+
+  if (entry.kind === "owner") {
+    return (
+      <article id={`log-${entry.id}`} className="j-entry j-owner" data-testid="journal-entry" data-same-day={sameDay || undefined}>
+        {date}
+        <div className="j-owner-bubble">
+          {changes}
+          {entry.paragraphs.map((p, i) => (
+            <p key={i} className="studio-msg-text">
               {p}
             </p>
           ))}
-        </details>
-      ) : null}
-      {entry.checking.map((h, i) => (
-        <div key={`c${i}`} className="j-line log-hypothesis">
-          <span className="j-mark" aria-hidden="true">?</span>
-          <span>
-            {/^провер/i.test(h.statement) ? h.statement : `Проверяю: ${h.statement}`} <span className="j-dim">— итог {formatLocalDate(h.checkOn)}</span>
-          </span>
         </div>
-      ))}
-      {entry.found.map((h, i) => (
-        <div key={`f${i}`} className="j-line">
-          <span className="j-mark" aria-hidden="true">✓</span>
-          <span>
-            Выяснил: {h.statement} — {h.outcome}.{h.result ? ` ${h.result}` : ""}
-          </span>
+      </article>
+    );
+  }
+
+  const [first, ...rest] = noteSeen({ headline: entry.headline, paragraphs: entry.paragraphs, found: [] });
+  const found = noteSeen({ headline: null, paragraphs: [], found: entry.found });
+  const expected = noteExpect(entry);
+  const tag = entry.weekly ? "разбор недели" : entry.kind === "rules" ? "страховочные правила" : null;
+  return (
+    <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry" data-same-day={sameDay || undefined}>
+      {date}
+      <div className="j-msg">
+        <span className="j-avatar">
+          <LogoMark size={28} />
+        </span>
+        <div className="j-msg-main">
+          <p className="j-msg-who">
+            Импульс{tag ? <span className="j-tag"> · {tag}</span> : null}
+          </p>
+          <div className="studio-bubble j-bubble">
+            {changes}
+            {first ? <p className="studio-msg-text">{first}</p> : null}
+            {rest.length > 0 ? (
+              <details className="j-more">
+                <summary>Читать дальше</summary>
+                {rest.map((p, i) => (
+                  <p key={i} className="studio-msg-text">
+                    {p}
+                  </p>
+                ))}
+              </details>
+            ) : null}
+            {found.map((p, i) => (
+              <p key={`f${i}`} className="studio-msg-text">
+                {p}
+              </p>
+            ))}
+            {expected.length > 0 ? <p className="studio-msg-text j-expect">{expected.join(" ")}</p> : null}
+            {entry.truths.map((t, i) => (
+              <p key={`t${i}`} className={`j-truth j-truth-${t.tone}`} data-testid="insight-truth">
+                {t.text}
+              </p>
+            ))}
+          </div>
         </div>
-      ))}
-      {entry.truths.map((t, i) => (
-        <div key={`t${i}`} className={`j-line j-truth j-truth-${t.tone}`} data-testid="insight-truth">
-          <span className="j-mark" aria-hidden="true">◆</span>
-          <span>{t.text}</span>
-        </div>
-      ))}
+      </div>
     </article>
   );
 }

@@ -2688,101 +2688,111 @@ button.log-link {
   font-weight: 600;
   color: var(--text);
 }
+/* The history reads as a conversation: a day's date once, the service's messages by its mark, the owner's on the right. */
 .j-entry {
-  padding: 18px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
 }
-/* Records of one day read as one block under its date. */
-.j-entry:has(+ .j-entry[data-same-day]) {
-  padding-bottom: 8px;
-  border-bottom: 0;
-}
-.j-entry[data-same-day] {
-  padding-top: 8px;
-}
-.j-when {
+.j-day {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  justify-content: center;
+  margin: 10px 0 12px;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
-.j-tag {
-  padding: 1px 6px;
+.j-day time {
+  padding: 2px 10px;
   border-radius: 99px;
   background: var(--surface-3);
-  font-size: var(--fs-xs);
 }
-.j-tag-dim {
+.j-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.j-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  border-radius: 9px;
+  box-shadow: 0 4px 12px -6px rgba(58, 44, 196, 0.5);
+}
+.j-avatar svg {
+  display: block;
+}
+.j-msg-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.j-msg-who {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  color: var(--text);
+}
+.j-tag {
+  font-weight: 400;
   color: var(--text-3);
 }
 .j-changes {
-  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.j-change {
+.j-action-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
 }
-.j-change-text {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-}
-.j-reverted {
-  color: var(--text-3);
-  font-weight: 400;
-}
-.j-link {
-  margin-left: auto;
-  flex: 0 0 auto;
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  font-size: var(--fs-xs);
-  color: var(--accent);
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
+/* An open «На чём основано» makes the action tall: its undo stays at the top, by the words it undoes. */
+.j-action .studio-msg-undo {
+  align-self: flex-start;
+  margin-top: 2px;
 }
 .j-no-rollback {
-  margin: 4px 0 0 22px;
+  margin: 0;
   font-size: var(--fs-xs);
+  font-weight: 400;
   color: var(--text-3);
 }
-.j-headline {
-  margin: 6px 0 0;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-}
-.j-text {
-  margin: 6px 0 0;
-  font-size: var(--fs-sm);
-  line-height: 1.55;
-  color: var(--text-2);
-}
-.j-more > summary {
-  margin-top: 4px;
+.j-more > summary,
+.j-facts > summary {
+  width: fit-content;
   font-size: var(--fs-xs);
-  color: var(--accent);
+  font-weight: 500;
+  color: var(--accent-ink);
+  cursor: pointer;
+  list-style: none;
+}
+.j-more > summary::-webkit-details-marker,
+.j-facts > summary::-webkit-details-marker {
+  display: none;
+}
+.j-more > summary::after,
+.j-facts > summary::after {
+  content: " ›";
+}
+.j-more[open] > summary,
+.j-facts[open] > summary {
+  margin-bottom: 6px;
+}
+.j-more .studio-msg-text + .studio-msg-text {
+  margin-top: 10px;
 }
 .j-facts {
-  margin: 6px 0 0 22px;
   font-size: var(--fs-xs);
+  font-weight: 400;
   color: var(--text-2);
 }
-.j-facts > summary {
-  font-size: var(--fs-xs);
-  color: var(--accent);
-}
 .j-facts dl {
-  margin: 6px 0 0;
+  margin: 0;
 }
 .j-facts dl > div {
   display: flex;
@@ -2798,20 +2808,15 @@ button.log-link {
   margin: 0;
   text-align: right;
 }
-.j-line {
-  display: flex;
-  gap: 8px;
+.j-turn {
+  display: inline-block;
   margin-top: 6px;
+  color: var(--accent-ink);
+}
+.j-truth {
+  margin: 0;
   font-size: var(--fs-xs);
   line-height: 1.5;
-  color: var(--text-2);
-}
-.j-mark {
-  flex: 0 0 10px;
-  color: var(--text-3);
-}
-.j-dim {
-  color: var(--text-3);
 }
 .j-truth-success {
   color: var(--success);
@@ -2821,6 +2826,36 @@ button.log-link {
 }
 .j-truth-danger {
   color: var(--danger);
+}
+/* The owner's and the cabinet's changes are the other side of the conversation. */
+.j-owner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.j-owner .j-day {
+  align-self: stretch;
+}
+.j-owner-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 88%;
+  padding: 12px 14px;
+  border-radius: 16px 4px 16px 16px;
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+.j-owner-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.j-owner-line .studio-msg-undo {
+  align-self: flex-start;
 }
 .j-earlier {
   margin: 16px 0 0;

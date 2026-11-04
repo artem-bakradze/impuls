@@ -385,11 +385,47 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     ]);
     expect(within(journal).getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(2);
     expect(within(journal).getByRole("region", { name: "Неделя 2" })).toBeTruthy();
-    fireEvent.click(within(journal).getByText("Факты"));
+    fireEvent.click(within(journal).getByText("На чём основано"));
     expect(plain(changes[1] ?? null)).toContain("Объявление «Маникюр без записи»: расход за 14 дней1 530 ₽");
     expect(within(journal).getByRole("link", { name: "Как сервис принял это решение" })).toHaveAttribute("href", "/history/turn/t1");
     fireEvent.click(within(journal).getAllByRole("button", { name: "Вернуть как было" })[0] as HTMLElement);
     expect(screen.getByText("Вернуть как было?")).toBeTruthy();
+  });
+
+  it("reads the history as messages: the service's by its mark with what it did first, the owner's on the other side", () => {
+    const week = {
+      ...decisionEntry,
+      id: "2026-11-09:week",
+      date: "2026-11-09",
+      day: 9,
+      weekly: true,
+      paragraphs: ["С компьютеров 3 обращения по 414 ₽ при цели 1 000 ₽.", "С телефонов обращения дороже."],
+      changes: [{ ...decisionEntry.changes[0]!, text: "Поднял цену перехода с компьютеров на 10%" }],
+      found: [{ statement: "Запрос «маникюр рядом» приводит обращения", outcome: "подтвердилось", result: null }],
+      checking: [{ statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16" }],
+      truths: [{ text: "На самом деле: обращение с компьютеров примерно за 443 ₽", tone: "success" as const }],
+    };
+    const owner = { ...ownerEntry, date: "2026-11-10", day: 10, changes: [{ ...ownerEntry.changes[0]!, reverted: true }] };
+    render(<SummaryView model={summary()} work={work({ journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [week, owner] }] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /История/ }));
+    const [first, second] = within(screen.getByTestId("agent-journal")).getAllByTestId("journal-entry");
+    // The owner's change, newest, stands on the other side, without the service's mark, and says it was undone.
+    expect(first).toHaveClass("j-owner");
+    expect(first?.querySelector(".j-avatar")).toBeNull();
+    expect(plain(first?.querySelector(".j-owner-bubble") ?? null)).toBe("Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00 — отменено");
+    // The service's message: its name and tag, the done action first, then its words, what it found and expects, the truth.
+    expect(second?.querySelector(".j-avatar")).not.toBeNull();
+    expect(plain(second?.querySelector(".j-msg-who") ?? null)).toBe("Импульс · разбор недели");
+    const bubble = second?.querySelector(".j-bubble");
+    expect([...(bubble?.children ?? [])].map((part) => part.className)).toEqual(["j-changes", "studio-msg-text", "j-more", "studio-msg-text", "studio-msg-text j-expect", "j-truth j-truth-success"]);
+    expect(bubble?.querySelector(".studio-msg-action [aria-label]")).toHaveAttribute("aria-label", "сделано");
+    expect(plain(bubble?.querySelector(".j-more summary") ?? null)).toBe("Читать дальше");
+    expect([...(bubble?.querySelectorAll(":scope > .studio-msg-text") ?? [])].map((p) => plain(p))).toEqual([
+      "С компьютеров 3 обращения по 414 ₽ при цели 1 000 ₽.",
+      "Выяснил: Запрос «маникюр рядом» приводит обращения — подтвердилось.",
+      "16 ноября проверю, останется ли стоимость обращений с компьютеров ниже цели.",
+    ]);
+    expect(plain(screen.getByTestId("agent-journal"))).not.toMatch(/→ Поднял|Факты|Ещё|Что вижу|Что сделал|Чего жду/);
   });
 
   it("reads the history newest first, with «Раньше» at the bottom", () => {
