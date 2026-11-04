@@ -1939,29 +1939,38 @@ button.log-link {
 
 /* ---------- One answer: the brief, its sheets and the light history ---------- */
 
+/* The answer is one panel; the ways deeper are a second; on a wide screen what the service did is a third beside them. */
 .brief-page {
-  max-width: 660px;
+  max-width: 720px;
   padding-top: 40px;
 }
 .brief {
   display: flex;
   flex-direction: column;
+  gap: 16px;
   min-width: 0;
+}
+.brief-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 26px 32px 28px;
 }
 .brief-date {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px 10px;
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  font-weight: 500;
+  color: var(--text-2);
   margin-bottom: 22px;
 }
 .brief-mode {
-  padding: 1px 8px;
+  padding: 3px 10px;
   border-radius: 99px;
-  background: var(--surface-2);
-  color: var(--text-2);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 /* The state of the ads: a calm dot that breathes while they run — the pulse the product is named after. */
 .brief-state {
@@ -1969,6 +1978,9 @@ button.log-link {
   align-items: center;
   gap: 7px;
   margin-left: auto;
+  padding: 3px 10px 3px 9px;
+  border-radius: 99px;
+  background: var(--surface-2);
   color: var(--text-2);
 }
 .brief-state i {
@@ -1977,13 +1989,26 @@ button.log-link {
   border-radius: 50%;
   background: var(--text-3);
 }
+.brief-state[data-state="running"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
 .brief-state[data-state="running"] i {
   background: var(--success);
   animation: briefPulse 2.4s ease-out infinite;
 }
+.brief-state[data-state="paused"],
+.brief-state[data-state="idle"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
 .brief-state[data-state="paused"] i,
 .brief-state[data-state="idle"] i {
   background: var(--warning);
+}
+.brief-state[data-state="review"] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 .brief-state[data-state="review"] i {
   background: var(--accent);
@@ -1998,10 +2023,10 @@ button.log-link {
   flex-direction: column;
 }
 .brief-number {
-  font-size: clamp(3.1rem, 8.4vw, 4.35rem);
-  font-weight: 600;
+  font-size: clamp(3.4rem, 8vw, 4.75rem);
+  font-weight: 650;
   letter-spacing: -0.055em;
-  line-height: 1;
+  line-height: 0.95;
   font-variant-numeric: tabular-nums;
 }
 .brief-number[data-tone="danger"] {
@@ -2012,14 +2037,14 @@ button.log-link {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 10px;
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   font-size: var(--fs-sm);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .brief-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 10px;
+  padding: 3px 10px;
   border-radius: 99px;
   background: var(--success-soft);
   color: var(--success);
@@ -2032,17 +2057,19 @@ button.log-link {
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-top: 34px;
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
 }
 .brief-metric {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 .brief-value {
   font-size: var(--fs-xl);
-  font-weight: 600;
+  font-weight: 650;
   letter-spacing: -0.035em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
@@ -2057,8 +2084,8 @@ button.log-link {
 /* The month's money as one wide bar, with the even pace to the data date marked «план». */
 .brief-bar {
   position: relative;
-  height: 6px;
-  margin: 14px 0 26px;
+  height: 8px;
+  margin: 16px 0 34px;
   border-radius: 99px;
   background: var(--surface-3);
 }
@@ -2066,7 +2093,7 @@ button.log-link {
   display: block;
   height: 100%;
   border-radius: 99px;
-  background: var(--accent);
+  background: linear-gradient(90deg, #8b7df3, var(--accent));
   transition: width 0.4s var(--ease);
 }
 .brief-bar[data-tone="warning"] > i {
@@ -2077,20 +2104,21 @@ button.log-link {
 }
 .brief-plan {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: -5px;
+  bottom: -5px;
   width: 2px;
   margin-left: -1px;
   border-radius: 1px;
   background: var(--text-2);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 .brief-plan-label {
   position: absolute;
-  top: 12px;
+  top: 16px;
   transform: translateX(-50%);
   font-size: var(--fs-xs);
   line-height: 1.2;
-  color: var(--text-3);
+  color: var(--text-2);
   white-space: nowrap;
 }
 .brief-plan-label[data-edge="end"] {
@@ -2113,7 +2141,7 @@ button.log-link {
 }
 .brief-term:hover,
 .brief-term:focus-visible {
-  color: var(--text-2);
+  color: var(--text);
 }
 .brief-explain {
   max-width: 280px;
@@ -2122,20 +2150,29 @@ button.log-link {
   line-height: 1.5;
   color: var(--text-2);
 }
-/* What the service does next: one line, after what it did. */
+/* What the service does next: a soft note of the brand colour, after what it did. */
 .brief-next {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
-  margin: 18px 0 0;
+  margin: 12px 0 0;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--accent-soft);
   font-size: var(--fs-xs);
   line-height: 1.5;
   color: var(--text-2);
 }
+.brief-next-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--accent);
+}
 .brief-next-label {
   flex: 0 0 auto;
   font-weight: 600;
-  color: var(--text);
+  color: var(--accent-ink);
 }
 .brief-next-text {
   min-width: 0;
@@ -2144,24 +2181,33 @@ button.log-link {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* An exception is a note of its tone with its one action on the right. */
 .brief-exception {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 30px;
-  min-height: 32px;
+  min-height: 52px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
   font-size: var(--fs-sm);
 }
 .brief-exception::before {
   content: "";
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex: 0 0 auto;
   background: var(--text-3);
 }
+.brief-exception[data-tone="warning"] {
+  background: var(--warning-soft);
+}
 .brief-exception[data-tone="warning"]::before {
   background: var(--warning);
+}
+.brief-exception[data-tone="danger"] {
+  background: var(--danger-soft);
 }
 .brief-exception[data-tone="danger"]::before {
   background: var(--danger);
@@ -2171,31 +2217,49 @@ button.log-link {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-2);
+  font-weight: 550;
+  color: var(--text);
 }
 .brief-exception-count {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: var(--fs-xs);
 }
 .brief-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
   margin-left: auto;
   flex: 0 0 auto;
   border: 0;
-  background: none;
-  padding: 0;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  padding: 0 14px;
   font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent-ink);
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s var(--ease);
+}
+.brief-action:hover,
+.brief-action:focus-visible {
+  background: #e3dffd;
+  color: var(--accent-ink);
+}
+.brief-exception .brief-action {
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(22, 22, 40, 0.06);
 }
 .brief-action:disabled {
   color: var(--text-3);
   cursor: default;
 }
 .brief-change {
-  margin-top: 30px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
 }
 .brief-when {
   display: block;
@@ -2204,10 +2268,10 @@ button.log-link {
 }
 .brief-change-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 3px;
+  margin-top: 2px;
 }
 .brief-what {
   font-size: var(--fs-md);
@@ -2230,27 +2294,60 @@ button.log-link {
   margin-top: 16px;
 }
 .brief-rows {
-  margin-top: 40px;
-  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
 }
 .brief-row {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 17px 0;
+  gap: 14px;
+  min-height: 60px;
+  padding: 10px 14px 10px 10px;
   border: 0;
-  border-bottom: 1px solid var(--border);
+  border-radius: 14px;
   background: transparent;
   font: inherit;
   font-size: var(--fs-sm);
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  transition: background 0.15s var(--ease);
 }
-.brief-row:hover {
+.brief-row + .brief-row {
+  position: relative;
+}
+.brief-row + .brief-row::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 62px;
+  right: 14px;
+  height: 1px;
+  background: var(--border);
+}
+.brief-row:hover,
+.brief-row:focus-visible {
+  background: var(--surface-2);
+}
+.brief-row:hover::before,
+.brief-row:hover + .brief-row::before {
+  opacity: 0;
+}
+.brief-row-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--accent-soft);
   color: var(--accent);
+  font-size: var(--fs-md);
+}
+.brief-row-title {
+  font-weight: 550;
 }
 .brief-row-end {
   display: inline-flex;
@@ -2262,58 +2359,102 @@ button.log-link {
 }
 .brief-chev {
   color: var(--text-3);
-  font-size: var(--fs-md);
-  line-height: 1;
+  font-size: 12px;
+  transition: transform 0.15s var(--ease);
 }
-/* «Что сделал сервис»: a quiet column beside the answer on a wide screen; on a narrow one the answer keeps one line. */
+.brief-row:hover .brief-chev {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+/* «Что сделал сервис»: a panel beside the answer on a wide screen, the changes on a quiet line of time. */
 .brief-side {
   display: none;
 }
 .brief-side-title {
-  margin: 0 0 2px;
-  font-size: var(--fs-xs);
+  margin: 0 0 4px;
+  font-size: var(--fs-sm);
   font-weight: 600;
-  color: var(--text-2);
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 .brief-side-all {
-  align-self: flex-start;
-  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 6px;
+  padding: 14px 0 0;
   border: 0;
+  border-top: 1px solid var(--border);
   background: none;
-  padding: 0;
   font: inherit;
   font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--accent);
+  font-weight: 600;
+  color: var(--accent-ink);
   cursor: pointer;
+}
+.brief-side-all .anticon {
+  font-size: 11px;
 }
 @media (min-width: 1080px) {
   .workspace .page.brief-page:has(.brief-layout[data-side]) {
     max-width: 1128px;
   }
+  /* The answer on the left; what the service did and the ways deeper share the right column. */
   .brief-layout[data-side] {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 72px;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "card side" "card rows";
+    gap: 16px 24px;
     align-items: start;
+  }
+  .brief-layout[data-side] .brief {
+    display: contents;
+  }
+  .brief-layout[data-side] .brief-card {
+    grid-area: card;
+  }
+  .brief-layout[data-side] .brief-rows {
+    grid-area: rows;
   }
   .brief-layout[data-side] .brief .brief-change {
     display: none;
   }
   .brief-side {
+    grid-area: side;
     display: flex;
     flex-direction: column;
-    position: sticky;
-    top: calc(var(--header-h) + 24px);
-    margin-top: 4px;
-    padding: 20px 22px 18px;
-    border-radius: 16px;
-    background: var(--surface-2);
+    padding: 22px 24px 18px;
   }
   .brief-side .brief-change {
-    margin-top: 0;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--border);
+    position: relative;
+    padding: 12px 0 14px 24px;
+    border-radius: 0;
+    background: none;
+  }
+  .brief-side .brief-change::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 17px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .brief-side .brief-change::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 34px;
+    bottom: -14px;
+    width: 1px;
+    background: var(--border-strong);
+  }
+  .brief-side .brief-change:last-of-type::after {
+    display: none;
   }
   .brief-side .brief-what {
     font-size: var(--fs-sm);
@@ -2354,18 +2495,52 @@ button.log-link {
   font-size: var(--fs-xs);
   color: var(--danger);
 }
+/* A group of ads under the colour of its estimate, the same colours as the studio's bars. */
 .sheet-group {
-  margin: 26px 0 0;
-  font-size: var(--fs-xs);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 28px 0 0;
+  font-size: var(--fs-sm);
   font-weight: 600;
-  color: var(--text-2);
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
+.sheet-group::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.sheet-group[data-verdict="effective"]::before { background: var(--success); }
+.sheet-group[data-verdict="borderline"]::before { background: var(--warning); }
+.sheet-group[data-verdict="learning"]::before { background: var(--accent); }
+.sheet-group[data-verdict="ineffective"]::before { background: var(--danger); }
 /* Why an ad is in its group, in rubles of the goal: the estimate is a rule, not a mood. */
 .sheet-group-rule {
-  margin: 2px 0 0;
+  margin: 3px 0 0 16px;
   font-size: var(--fs-xs);
   line-height: 1.45;
   color: var(--text-3);
+}
+/* In the sheet each ad is a framed card, as one result of a search. */
+.sheet .ad-row {
+  margin: 10px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.sheet .ad-row::after {
+  display: none;
+}
+.sheet .ad-row:hover,
+.sheet .ad-row:focus-within {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 20px -14px rgba(22, 22, 40, 0.3);
 }
 
 /* Ads sheet: each ad looks as it does in Yandex, and every number says what it is. */
@@ -2502,9 +2677,9 @@ button.log-link {
   flex-direction: column;
   gap: 4px;
   margin: 16px 0 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: var(--accent-soft);
   font-size: var(--fs-xs);
   line-height: 1.45;
   color: var(--text-2);
@@ -2519,12 +2694,17 @@ button.log-link {
 .j-verdict[data-tone="danger"] {
   color: var(--danger);
 }
+/* The week's header stays at the top of the sheet while its records scroll under it. */
 .j-week {
-  padding: 24px 0 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 20px 0 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
   font-size: var(--fs-xs);
   font-weight: 600;
-  color: var(--text-2);
+  color: var(--text);
 }
 .j-entry {
   padding: 18px 0;
@@ -2679,46 +2859,72 @@ button.log-link {
 
 @media (max-width: 720px) {
   .brief-page {
-    padding-top: 20px;
+    padding-top: 16px;
+  }
+  .brief {
+    gap: 12px;
+  }
+  .brief-card {
+    padding: 18px 18px 20px;
   }
   .brief-date {
-    margin-bottom: 22px;
+    margin-bottom: 18px;
   }
   .brief-number {
-    font-size: clamp(2.8rem, 15vw, 3.6rem);
+    font-size: clamp(2.9rem, 15vw, 3.7rem);
   }
   .brief-metrics {
     gap: 18px;
-    margin-top: 32px;
+    margin-top: 22px;
+    padding-top: 18px;
   }
   .brief-value {
     font-size: var(--fs-lg);
   }
+  .brief-change,
+  .brief-next {
+    padding: 12px 14px;
+  }
+  /* On a phone «Дальше» heads its note and the text takes the whole width under it. */
+  .brief-next {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .brief-next-text {
+    flex-basis: 100%;
+  }
+  .brief-action {
+    min-height: 36px;
+  }
   .brief-rows {
-    margin-top: 40px;
+    padding: 4px;
   }
   .brief-row {
-    padding: 15px 0;
+    min-height: 56px;
+    padding: 8px 12px 8px 8px;
+  }
+  .brief-row + .brief-row::before {
+    left: 60px;
   }
   .sheet-body {
-    padding: 2px 20px 40px;
+    padding: 2px 16px 40px;
   }
   .sheet .ant-drawer-header {
-    padding: 16px 20px;
+    padding: 16px 16px 16px 20px;
   }
 }
 
-/* The brief keeps its own narrow column inside the open workspace. */
+/* The brief keeps its own column inside the workspace. */
 .workspace .page.brief-page {
   width: 100%;
-  max-width: 708px;
+  max-width: 756px;
   margin: 0 auto;
-  padding: 44px 24px 80px;
+  padding: 36px 24px 80px;
 }
 @media (max-width: 720px) {
   .workspace .page.brief-page {
     max-width: 100%;
-    padding: 20px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 48px);
+    padding: 16px 12px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 32px);
   }
 }
 
@@ -2740,16 +2946,28 @@ button.log-link {
 
 /* One line on the brief: the cost of a lead against its goal; no axes, no legend. Days without leads are marks. */
 .sparkline {
-  margin: 24px 0 0;
+  position: relative;
+  margin: 28px 0 0;
+  border-radius: 12px;
+}
+.sparkline:focus {
+  outline: none;
+}
+.sparkline:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 8px;
 }
 .spark-title {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
 .spark-plot {
   position: relative;
-  height: 72px;
+  height: 132px;
+  margin: 0 8px;
+  cursor: crosshair;
+  touch-action: pan-y;
 }
 .spark-plot svg {
   position: absolute;
@@ -2759,89 +2977,163 @@ button.log-link {
   overflow: visible;
 }
 .spark-goal {
-  stroke: var(--border-strong);
-  stroke-width: 1;
-  stroke-dasharray: 4 5;
+  stroke: #c4c4d2;
+  stroke-width: 1.25;
+  stroke-dasharray: 5 6;
 }
 .spark-line {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .spark-area-top {
   stop-color: var(--accent);
-  stop-opacity: 0.14;
+  stop-opacity: 0.2;
 }
 .spark-area-bottom {
   stop-color: var(--accent);
   stop-opacity: 0;
 }
 .spark-dot,
-.spark-point {
+.spark-point,
+.spark-focus {
   position: absolute;
   width: 8px;
   height: 8px;
   margin: -4px 0 0 -4px;
   border-radius: 50%;
   background: var(--accent);
+  pointer-events: none;
 }
 .spark-dot {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid var(--surface);
   box-shadow: 0 0 0 4px var(--accent-ring);
 }
 .spark-point {
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+}
+.spark-focus {
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 3px solid var(--accent);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgba(22, 22, 40, 0.18);
+}
+.spark-guide {
+  position: absolute;
+  top: -6px;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--border-strong);
+  pointer-events: none;
 }
 .spark-miss,
 .spark-miss-key {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   border: 2px solid var(--warning);
   background: var(--surface);
 }
 .spark-miss {
   position: absolute;
-  bottom: -4px;
-  margin-left: -4px;
+  bottom: -4.5px;
+  margin-left: -4.5px;
+  pointer-events: none;
+  transition: transform 0.15s var(--ease);
 }
+.spark-miss[data-active] {
+  transform: scale(1.35);
+  background: var(--warning);
+}
+/* The goal's value on a plate over its dashed line, so the line never strikes through it. */
 .spark-goal-label {
   position: absolute;
   right: 0;
   transform: translateY(-100%);
-  padding-bottom: 3px;
+  margin-top: -5px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.94);
   font-size: var(--fs-xs);
-  line-height: 1.2;
-  color: var(--text-3);
+  line-height: 1.3;
+  color: var(--text-2);
+  pointer-events: none;
 }
 .spark-goal-label[data-below] {
   transform: none;
-  padding: 3px 0 0;
+  margin-top: 5px;
+}
+/* One day's numbers over the chart; it covers the chart's caption while it is open. */
+.spark-tip {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  padding: 6px 11px;
+  border-radius: 10px;
+  background: #1d1e27;
+  color: #fff;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px -8px rgba(22, 22, 40, 0.45);
+  pointer-events: none;
+}
+.spark-tip[data-edge="start"] {
+  transform: translateX(-14px);
+}
+.spark-tip[data-edge="end"] {
+  transform: translateX(calc(-100% + 14px));
 }
 .spark-axis {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
+  margin: 12px 8px 0;
   font-size: var(--fs-xs);
   color: var(--text-3);
+  white-space: nowrap;
 }
 .spark-axis-miss {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
+@media (max-width: 720px) {
+  .spark-plot {
+    height: 112px;
+  }
+  /* On a phone the hint spans the chart, so it never leaves the panel. */
+  .spark-tip,
+  .spark-tip[data-edge] {
+    left: 0 !important;
+    right: 0;
+    transform: none;
+    white-space: normal;
+    text-align: center;
+  }
+}
 
 /* ---------- Simulation studio: the day, its counters and the review ---------- */
 
 .workspace .page.studio-page {
   width: calc(100% - 96px);
-  max-width: 1080px;
+  max-width: 1128px;
   margin: 0 auto;
-  padding: 40px 0 80px;
+  padding: 36px 0 80px;
 }
 .studio-head {
   display: flex;
@@ -2896,15 +3188,15 @@ button.log-link {
 }
 .studio-strip {
   display: grid;
-  gap: 3px;
-  height: 3px;
-  margin: 14px 0 8px;
+  gap: 4px;
+  height: 6px;
+  margin: 16px 0 10px;
 }
 .studio-strip i {
   display: block;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--border);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
 }
 .studio-strip i[data-state="done"] { background: var(--accent); }
 .studio-strip i[data-state="now"] {
@@ -2926,13 +3218,14 @@ button.log-link {
 .studio-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 48px;
+  gap: 24px;
   align-items: start;
 }
 .studio-stage {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding: 22px 24px 20px;
 }
 .studio-total {
   display: flex;
@@ -2945,7 +3238,7 @@ button.log-link {
   color: var(--text-3);
 }
 .studio-total b {
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
   font-weight: 650;
   letter-spacing: -0.04em;
   color: var(--text);
@@ -2965,7 +3258,7 @@ button.log-link {
   justify-content: space-between;
   gap: 18px;
   min-width: 0;
-  padding: 13px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
 .studio-ad-main {
@@ -2990,7 +3283,7 @@ button.log-link {
 /* The ad's share of the week's money; the colour is the rules' estimate of it. */
 .studio-ad-bar {
   display: block;
-  height: 4px;
+  height: 6px;
   margin-top: 8px;
   border-radius: 99px;
   background: var(--surface-3);
@@ -3034,23 +3327,42 @@ button.log-link {
 .studio-stage-caption { order: 1; }
 .studio-ad,
 .studio-empty { order: 2; }
+/*
+ * The day's button stays at the bottom of the screen while the list is longer than it (simulation-mode spec «Кнопка
+ * дня под рукой»): sticky in the flow, so at the end of the list it stands in its place and covers no ad.
+ */
 .studio-actions {
   order: 3;
+  position: sticky;
+  bottom: 16px;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-top: 18px;
+  margin: 16px -10px 0;
+  padding: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 28px -16px rgba(22, 22, 40, 0.35);
 }
 .studio-primary {
+  min-height: 44px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 12px;
   background: var(--accent);
   color: #fff;
   font: inherit;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  padding: 10px 18px;
+  padding: 0 22px;
   cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+.studio-primary:not(:disabled):hover {
+  background: var(--accent-hover);
 }
 .studio-primary:disabled {
   background: var(--surface-3);
@@ -3076,10 +3388,11 @@ button.log-link {
   cursor: default;
 }
 .studio-rail {
+  position: sticky;
+  top: calc(var(--header-h) + 24px);
   min-width: 0;
-  min-height: 300px;
-  border-left: 1px solid var(--border);
-  padding-left: 36px;
+  min-height: 280px;
+  padding: 22px 24px 24px;
 }
 .studio-eyebrow {
   margin: 0 0 12px;
@@ -3275,18 +3588,27 @@ button.log-link {
   }
   /* On a phone the review comes first: the decision must not wait under eight ad rows. */
   .studio-rail {
+    position: static;
     order: -1;
-    border-left: 0;
-    border-bottom: 1px solid var(--border);
-    padding: 0 0 20px;
+    padding: 18px 18px 20px;
     min-height: 0;
+  }
+  .studio-stage {
+    padding: 18px 18px 16px;
   }
   .studio-rail[data-state="empty"] {
     display: none;
   }
   .studio-actions {
+    position: static;
     order: 1;
-    margin-top: 14px;
+    margin: 14px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   .studio-stage-caption { order: 2; }
   .studio-ad,
@@ -3296,14 +3618,20 @@ button.log-link {
   body .workspace .page.studio-page {
     width: 100%;
     margin: 0;
-    padding: 20px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 48px);
+    padding: 16px 12px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 32px);
+  }
+  .studio-head,
+  .studio-strip,
+  .studio-disclaimer {
+    margin-left: 4px;
+    margin-right: 4px;
   }
   .studio-head { flex-wrap: wrap; }
   .studio-scenario { order: 1; flex-basis: 100%; margin-top: -6px; }
   .studio-go-real,
   .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
-  .studio-total b { font-size: var(--fs-lg); }
+  .studio-total b { font-size: var(--fs-xl); }
   .studio-ad-stats { font-size: var(--fs-xs); }
   .studio-primary { min-height: 44px; }
   .studio-secondary { min-height: 40px; }

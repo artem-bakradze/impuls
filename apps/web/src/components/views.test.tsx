@@ -180,6 +180,40 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(container.querySelectorAll(".spark-point")).toHaveLength(1);
   });
 
+  const hintDays = [
+    { date: "2026-10-24", leads: 2, spend: 120_000, decision: false },
+    { date: "2026-10-25", leads: 0, spend: 61_000, decision: false },
+    { date: "2026-10-26", leads: 3, spend: 124_200, decision: false },
+  ];
+
+  it("tells a day's price and leads under the pointer and hides the hint when it leaves", () => {
+    const { container } = render(<SummaryView model={summary({ daily: hintDays })} work={work()} />);
+    const plot = container.querySelector(".spark-plot") as HTMLElement;
+    expect(screen.queryByTestId("chart-hint")).toBeNull();
+    // jsdom has no layout, so the pointer lands on the last day.
+    fireEvent.pointerMove(plot, { clientX: 0 });
+    expect(screen.getByTestId("chart-hint")).toHaveTextContent("26 октября · 414 ₽ за обращение · 3 обращения");
+    expect(container.querySelector(".spark-guide")).not.toBeNull();
+    fireEvent.pointerLeave(plot);
+    expect(screen.queryByTestId("chart-hint")).toBeNull();
+  });
+
+  it("walks the chart's days with the arrow keys, a day without leads by its spend, and hides the hint on blur", () => {
+    render(<SummaryView model={summary({ daily: hintDays })} work={work()} />);
+    const chart = screen.getByRole("group", { name: /Цена обращения/ });
+    fireEvent.focus(chart);
+    expect(screen.getByTestId("chart-hint")).toHaveTextContent("26 октября · 414 ₽ за обращение · 3 обращения");
+    fireEvent.keyDown(chart, { key: "ArrowLeft" });
+    expect(screen.getByTestId("chart-hint")).toHaveTextContent("25 октября · без обращений · потрачено 610 ₽");
+    fireEvent.keyDown(chart, { key: "ArrowLeft" });
+    fireEvent.keyDown(chart, { key: "ArrowLeft" });
+    expect(screen.getByTestId("chart-hint")).toHaveTextContent("24 октября · 600 ₽ за обращение · 2 обращения");
+    fireEvent.keyDown(chart, { key: "ArrowRight" });
+    expect(screen.getByTestId("chart-hint")).toHaveTextContent("25 октября");
+    fireEvent.blur(chart);
+    expect(screen.queryByTestId("chart-hint")).toBeNull();
+  });
+
   it("hides the trend until there are two days with leads", () => {
     render(<SummaryView model={summary({ daily: [{ date: "2026-10-24", leads: 2, spend: 120_000, decision: false }] })} work={work()} />);
     expect(screen.queryByTestId("cost-chart")).toBeNull();

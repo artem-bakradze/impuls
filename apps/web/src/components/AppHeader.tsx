@@ -27,7 +27,7 @@ export function AppHeader({ launched, simulated = false, signOutAction }: { laun
         {launched ? (
           <nav className="app-nav" aria-label="Разделы">
             {links.map((link) => (
-              <Link key={link.href} href={link.href} aria-current={pathname.startsWith(link.href) ? "page" : undefined}>
+              <Link key={link.href} href={link.href} aria-current={pathname.startsWith(link.href) || (link === ADS && pathname.startsWith("/history")) ? "page" : undefined}>
                 <span className="nav-icon" aria-hidden="true">
                   {link.icon}
                 </span>

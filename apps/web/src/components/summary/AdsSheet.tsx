@@ -117,7 +117,7 @@ export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void
         {groups.length === 0 ? <p className="sheet-empty">Сейчас ни одно объявление не показывается.</p> : null}
         {groups.map((g) => (
           <section key={g.verdict} data-testid={`ads-${g.verdict}`}>
-            <h3 className="sheet-group">
+            <h3 className="sheet-group" data-verdict={g.verdict}>
               {VERDICT_GROUPS[g.verdict]} · {g.ads.length}
             </h3>
             <p className="sheet-group-rule">{verdictRule(g.verdict, work.cso)}</p>

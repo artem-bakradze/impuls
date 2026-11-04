@@ -266,7 +266,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
       {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
 
       <div className="studio-grid">
-        <section className="studio-stage" aria-label="День симуляции">
+        <section className="studio-stage panel" aria-label="День симуляции">
           <div className="studio-total">
             <span><b>{formatCount(totalLeads)}</b> {leadsWord(totalLeads)}</span>
             <span className="studio-total-sep">·</span>
@@ -291,7 +291,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           ) : null}
         </section>
 
-        <aside className="studio-rail" aria-label="Разбор" data-state={stepping ? "thinking" : review !== null ? "review" : "empty"}>
+        <aside className="studio-rail panel" aria-label="Разбор" data-state={stepping ? "thinking" : review !== null ? "review" : "empty"}>
           <h2 className="studio-eyebrow">{review?.weekly ? "Разбор недели" : "Разбор дня"}</h2>
           {stepping ? (
             <Thinking status={status} elapsed={elapsed} />

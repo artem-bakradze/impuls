@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarOutlined, HistoryOutlined, NotificationOutlined, RightOutlined } from "@ant-design/icons";
 import { addDays } from "@impuls/core";
 import { Alert, Popover } from "antd";
 import Link from "next/link";
@@ -124,123 +125,132 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
     <div className="page brief-page">
       <h1 className="sr-only">Реклама</h1>
       <div className="brief-layout" data-side={work.recentChanges.length > 0 || undefined}>
-      <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
-        <div className="brief-date">
-          <span data-testid="data-period">{period}</span>
-          {model.simulation ? <span className="brief-mode">{work.sim ? `симуляция · день ${work.sim.day} из ${work.sim.totalDays}` : "симуляция"}</span> : null}
-          <span className="brief-state" data-state={state.kind} data-testid="ads-state">
-            <i aria-hidden="true" />
-            {adsStateText(state)}
-          </span>
-        </div>
+        <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
+          <div className="brief-card panel">
+            <div className="brief-date">
+              <span data-testid="data-period">{period}</span>
+              {model.simulation ? <span className="brief-mode">{work.sim ? `симуляция · день ${work.sim.day} из ${work.sim.totalDays}` : "симуляция"}</span> : null}
+              <span className="brief-state" data-state={state.kind} data-testid="ads-state">
+                <i aria-hidden="true" />
+                {adsStateText(state)}
+              </span>
+            </div>
 
-        <div className="brief-hero">
-          <div className="brief-number" data-tone={over ? "danger" : undefined}>
-            {firstDay ? "Запуск" : number}
-          </div>
-          <p className="brief-caption" data-testid="goal-line">
-            {caption !== null ? (
-              <span>{caption}</span>
-            ) : (
-              <span>
-                за обращение ·{" "}
-                <Popover trigger="click" placement="bottomLeft" content={<p className="brief-explain">{goalExplanation(model.goal)}</p>}>
-                  <button type="button" className="brief-term" data-testid="goal-term">
-                    {goalText}
+            <div className="brief-hero">
+              <div className="brief-number" data-tone={over ? "danger" : undefined}>
+                {firstDay ? "Запуск" : number}
+              </div>
+              <p className="brief-caption" data-testid="goal-line">
+                {caption !== null ? (
+                  <span>{caption}</span>
+                ) : (
+                  <span>
+                    за обращение ·{" "}
+                    <Popover trigger="click" placement="bottomLeft" content={<p className="brief-explain">{goalExplanation(model.goal)}</p>}>
+                      <button type="button" className="brief-term" data-testid="goal-term">
+                        {goalText}
+                      </button>
+                    </Popover>
+                  </span>
+                )}
+                {badge !== null ? (
+                  <span className="brief-badge" data-testid="goal-badge">
+                    {badge}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+            <Sparkline points={trend} goal={model.goal.cso} goalLabel={comparable ? "цель" : "ориентир"} />
+
+            <div className="brief-metrics">
+              <div className="brief-metric">
+                <span className="brief-value">{formatCount(model.leads.value)}</span>
+                <span className="brief-label">{plural(model.leads.value, "обращение", "обращения", "обращений")}</span>
+              </div>
+              <div className="brief-metric brief-budget" data-testid="budget-tile">
+                <span className="brief-value">{formatRub(model.spentMonth)}</span>
+                <span className="brief-label">из {formatRub(model.monthBudget)}</span>
+              </div>
+            </div>
+            <div className="brief-bar" data-tone={budgetTone} data-testid="budget-bar">
+              <i style={{ width: `${share}%` }} aria-hidden="true" />
+              {model.monthBudget > 0 && !firstDay ? (
+                <>
+                  <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
+                  <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined} data-testid="budget-plan">
+                    <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
+                    план {formatRub(model.budgetPlan)}
+                  </span>
+                </>
+              ) : null}
+            </div>
+
+            {exception !== null ? (
+              <div className="brief-exception" data-tone={exception.tone} data-testid="brief-exception">
+                <span className="brief-exception-text" title={exception.title ?? exception.text}>
+                  {exception.text}
+                </span>
+                {exception.count !== undefined && exception.count > 1 ? <span className="brief-exception-count">+{exception.count - 1}</span> : null}
+                {exception.action === undefined ? null : "href" in exception.action ? (
+                  <Link className="brief-action" href={exception.action.href}>
+                    {exception.action.label}
+                  </Link>
+                ) : (
+                  <button type="button" className="brief-action" onClick={exception.action.onClick} disabled={busy === "resume"}>
+                    {exception.action.label}
                   </button>
-                </Popover>
-              </span>
-            )}
-            {badge !== null ? (
-              <span className="brief-badge" data-testid="goal-badge">
-                {badge}
-              </span>
+                )}
+              </div>
+            ) : last !== null ? (
+              <ChangeItem change={last} today={today} onRollback={setRollback} testId="last-change" />
             ) : null}
-          </p>
-        </div>
-        <Sparkline points={trend} goal={model.goal.cso} goalLabel={comparable ? "цель" : "ориентир"} />
 
-        <div className="brief-metrics">
-          <div className="brief-metric">
-            <span className="brief-value">{formatCount(model.leads.value)}</span>
-            <span className="brief-label">{plural(model.leads.value, "обращение", "обращения", "обращений")}</span>
+            {next !== null ? (
+              <p className="brief-next" data-testid="next-step" title={next}>
+                <CalendarOutlined className="brief-next-icon" aria-hidden="true" />
+                <span className="brief-next-label">Дальше</span>
+                <span className="brief-next-text">{next}</span>
+              </p>
+            ) : null}
+
+            {error !== null ? <Alert className="brief-error" type="error" showIcon title={error} /> : null}
           </div>
-          <div className="brief-metric brief-budget" data-testid="budget-tile">
-            <span className="brief-value">{formatRub(model.spentMonth)}</span>
-            <span className="brief-label">из {formatRub(model.monthBudget)}</span>
-          </div>
-        </div>
-        <div className="brief-bar" data-tone={budgetTone} data-testid="budget-bar">
-          <i style={{ width: `${share}%` }} aria-hidden="true" />
-          {model.monthBudget > 0 && !firstDay ? (
-            <>
-              <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
-              <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined} data-testid="budget-plan">
-                <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
-                план {formatRub(model.budgetPlan)}
+
+          <div className="brief-rows panel">
+            <button type="button" className="brief-row" onClick={() => setSheet("ads")}>
+              <span className="brief-row-icon" aria-hidden="true">
+                <NotificationOutlined />
               </span>
-            </>
-          ) : null}
-        </div>
-
-        {exception !== null ? (
-          <div className="brief-exception" data-tone={exception.tone} data-testid="brief-exception">
-            <span className="brief-exception-text" title={exception.title ?? exception.text}>
-              {exception.text}
-            </span>
-            {exception.count !== undefined && exception.count > 1 ? <span className="brief-exception-count">+{exception.count - 1}</span> : null}
-            {exception.action === undefined ? null : "href" in exception.action ? (
-              <Link className="brief-action" href={exception.action.href}>
-                {exception.action.label}
-              </Link>
-            ) : (
-              <button type="button" className="brief-action" onClick={exception.action.onClick} disabled={busy === "resume"}>
-                {exception.action.label}
-              </button>
-            )}
+              <span className="brief-row-title">Объявления</span>
+              <span className="brief-row-end">
+                {work.shown.length}
+                <RightOutlined className="brief-chev" aria-hidden="true" />
+              </span>
+            </button>
+            <button type="button" className="brief-row" onClick={() => setSheet("history")}>
+              <span className="brief-row-icon" aria-hidden="true">
+                <HistoryOutlined />
+              </span>
+              <span className="brief-row-title">История</span>
+              <span className="brief-row-end" data-testid="history-count">
+                {work.changesLast7 > 0 ? `${work.changesLast7} ${plural(work.changesLast7, "изменение", "изменения", "изменений")} за неделю` : null}
+                <RightOutlined className="brief-chev" aria-hidden="true" />
+              </span>
+            </button>
           </div>
-        ) : last !== null ? (
-          <ChangeItem change={last} today={today} onRollback={setRollback} testId="last-change" />
-        ) : null}
-
-        {next !== null ? (
-          <p className="brief-next" data-testid="next-step" title={next}>
-            <span className="brief-next-label">Дальше</span>
-            <span className="brief-next-text">{next}</span>
-          </p>
-        ) : null}
-
-        {error !== null ? <Alert className="brief-error" type="error" showIcon title={error} /> : null}
-
-        <div className="brief-rows">
-          <button type="button" className="brief-row" onClick={() => setSheet("ads")}>
-            <span>Объявления</span>
-            <span className="brief-row-end">
-              {work.shown.length}
-              <span className="brief-chev" aria-hidden="true">›</span>
-            </span>
-          </button>
-          <button type="button" className="brief-row" onClick={() => setSheet("history")}>
-            <span>История</span>
-            <span className="brief-row-end" data-testid="history-count">
-              {work.changesLast7 > 0 ? `${work.changesLast7} ${plural(work.changesLast7, "изменение", "изменения", "изменений")} за неделю` : null}
-              <span className="brief-chev" aria-hidden="true">›</span>
-            </span>
-          </button>
         </div>
-      </div>
 
-      {work.recentChanges.length > 0 ? (
-        <aside className="brief-side" aria-label="Что сделал сервис" data-testid="service-changes">
-          <h2 className="brief-side-title">Что сделал сервис</h2>
-          {work.recentChanges.map((change) => (
-            <ChangeItem key={change.historyId ?? change.text} change={change} today={today} onRollback={setRollback} testId="service-change" />
-          ))}
-          <button type="button" className="brief-side-all" onClick={() => setSheet("history")}>
-            Вся история <span aria-hidden="true">›</span>
-          </button>
-        </aside>
-      ) : null}
+        {work.recentChanges.length > 0 ? (
+          <aside className="brief-side panel" aria-label="Что сделал сервис" data-testid="service-changes">
+            <h2 className="brief-side-title">Что сделал сервис</h2>
+            {work.recentChanges.map((change) => (
+              <ChangeItem key={change.historyId ?? change.text} change={change} today={today} onRollback={setRollback} testId="service-change" />
+            ))}
+            <button type="button" className="brief-side-all" onClick={() => setSheet("history")}>
+              Вся история <RightOutlined aria-hidden="true" />
+            </button>
+          </aside>
+        ) : null}
       </div>
 
       {sheet === "ads" ? <AdsSheet work={work} onClose={() => setSheet(null)} /> : null}
