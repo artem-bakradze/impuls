@@ -8,9 +8,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const model: SettingsModel = {
   timeZone: "Europe/Moscow", card: { category: "Маникюр", services: [{ name: "Маникюр", priceRub: 1800 }], advantages: [] },
   city: "Москва", schedule: { raw: "Пн–Вс 10:00–20:00", days: "Пн–Вс", from: "10:00", to: "20:00" }, monthlyBudgetRub: 15000, goal: { mode: "auto", rub: 500, learned: false },
-  paused: false, supportEmail: "support@impuls.test", siteUrl: "https://example.test", directions: [],
+  paused: false, supportEmail: "support@impuls.test", siteUrl: "https://example.test",
   miniSite: { published: false, slug: "", businessName: "", phone: "", address: "", hours: "", telegram: "", metrikaCounterId: null, advertiserName: "", advertiserInn: "", services: [] },
-  goals: ["Заявка или запись с сайта"], budgetAdjustments: [],
+  goals: ["Заявка или запись с сайта"],
   ads: [{ id: "a1", title: "Первый вариант", text: "Запишитесь онлайн", direction: "Поиск", status: "active", moderation: "accepted" }, { id: "a2", title: "Второй вариант", text: "Без выходных", direction: "Поиск", status: "paused", moderation: "accepted" }],
 };
 
@@ -36,15 +36,17 @@ describe("settings disclosure", () => {
     request.mockRestore();
   });
 
-  it("has the four sections, the site and the account in one line, and no ads or training-market notes", () => {
-    const { container } = render(<SettingsView model={{ ...model, budgetAdjustments: [{ id: "b1", at: "2026-11-01T06:00:00Z", text: "Реклама в поиске: было 2 700 ₽ в неделю → стало 2 574 ₽ в неделю" }] }} simulated />);
+  it("has the four sections, the site and the account in one line, and no ads, training-market notes or specialist block", () => {
+    const { container } = render(<SettingsView model={model} simulated />);
     expect([...container.querySelectorAll(".settings-section h2")].map((h) => h.textContent)).toEqual(["Что рекламируем", "Где и когда", "Бюджет и цель", "Что считаем обращением"]);
     expect(screen.getByTestId("leads-section")).toHaveTextContent("Заявка или запись с сайта");
     expect(document.getElementById("ads")).toBeNull();
     expect(screen.getByTestId("site-change")).toHaveTextContent("Объявления ведут на example.test. Сменить сайт или удалить аккаунт — напишите на support@impuls.test.");
     expect(container.textContent).not.toMatch(/учебном рынке/);
-    fireEvent.click(screen.getByText("Для специалистов"));
-    expect(screen.getByTestId("budget-adjustments")).toHaveTextContent("Реклама в поиске: было 2 700 ₽ в неделю → стало 2 574 ₽ в неделю");
+    // The service sets the technical parameters itself: no block «Для специалистов», strategies, limits or limit cuts.
+    expect(screen.queryByText(/Для специалистов/)).toBeNull();
+    expect(screen.queryByTestId("budget-adjustments")).toBeNull();
+    expect(container.textContent).not.toMatch(/Стратегия|Недельный лимит|подстройки/);
   });
 
   it("shows services and advantages as chips with one «Изменить» by the section title", () => {

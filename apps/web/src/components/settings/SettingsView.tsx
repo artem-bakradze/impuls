@@ -1,22 +1,20 @@
 "use client";
 
 import {
-  CodeOutlined,
   DeleteOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Collapse, Input, InputNumber, Select } from "antd";
+import { Alert, Button, Input, InputNumber, Select } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob, runWebJobs } from "@/lib/client-api";
 import type { CommandResult, JobOutcome } from "@/lib/client-api";
-import { formatDateTime, formatRub, sentence } from "@/lib/format";
+import { formatRub, sentence } from "@/lib/format";
 import { DAY_OPTIONS, HOUR_OPTIONS, MIN_BUDGET_RUB } from "@/lib/onboarding";
 import type { SettingsModel } from "@/lib/settings-model";
-import { channelLabel } from "@/lib/summary-model";
 import { Note, PageHead } from "../ui/primitives";
 import { MeasurementNotice } from "../MeasurementNotice";
 
@@ -433,52 +431,6 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
             </div>
           </Section>
 
-          <Collapse
-            items={[
-              {
-                key: "pro",
-                label: (
-                  <span>
-                    <CodeOutlined style={{ marginRight: 8 }} />
-                    Для специалистов
-                  </span>
-                ),
-                children: (
-                  <div className="stack" style={{ "--gap": "16px" } as React.CSSProperties}>
-                    <span className="t-small">Только для просмотра. Эти параметры сервис настраивает сам.</span>
-                    {model.budgetAdjustments.length > 0 ? (
-                      <div className="stack" style={{ "--gap": "6px" } as React.CSSProperties} data-testid="budget-adjustments">
-                        <span style={{ fontWeight: 600 }}>Защита бюджета: подстройки недельных лимитов · {model.budgetAdjustments.length}</span>
-                        <span className="t-small">Лимит пересчитывается сам по остатку бюджета месяца, поэтому вернуть подстройку нельзя.</span>
-                        <ul className="t-small" style={{ margin: 0, paddingLeft: 18 }}>
-                          {model.budgetAdjustments.slice(-30).reverse().map((b) => <li key={b.id}>{formatDateTime(b.at, model.timeZone)} — {b.text}</li>)}
-                        </ul>
-                      </div>
-                    ) : null}
-                    {model.directions.map((d) => (
-                      <div key={d.id} className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
-                        <span style={{ fontWeight: 600 }}>{d.name}</span>
-                        <dl className="kv">
-                          <dt>Площадка</dt>
-                          <dd>{channelLabel(d.channel)}</dd>
-                          <dt>Статус</dt>
-                          <dd>{d.status === "active" ? "работает" : "на паузе"}</dd>
-                          <dt>Стратегия</dt>
-                          <dd>{d.strategy}</dd>
-                          <dt>Недельный лимит</dt>
-                          <dd>{formatRub(d.weeklyLimit)}</dd>
-                          <dt>Расписание</dt>
-                          <dd>{d.schedule || "—"}</dd>
-                          <dt>Город</dt>
-                          <dd>{d.city || "—"}</dd>
-                        </dl>
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-            ]}
-          />
           <p className="t-small" data-testid="site-change">
             {model.siteUrl ? <>Объявления ведут на <a href={model.siteUrl} target="_blank" rel="noreferrer">{model.siteUrl.replace(/^https?:\/\//, "")}</a>. </> : null}
             Сменить сайт или <span data-testid="account-deletion">удалить аккаунт</span> — напишите на <a href={`mailto:${model.supportEmail}`}>{model.supportEmail}</a>.

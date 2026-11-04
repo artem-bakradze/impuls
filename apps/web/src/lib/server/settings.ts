@@ -1,7 +1,6 @@
 import "server-only";
 import { loadBusinessView } from "@impuls/worker";
 import { GOAL_OPTIONS } from "../onboarding";
-import { buildHistory } from "./history";
 import { measurementFromCard } from "../measurement";
 import type { SettingsModel } from "../settings-model";
 import { parseSchedule } from "../settings-model";
@@ -48,11 +47,10 @@ const miniSiteModel = (business: Awaited<ReturnType<ReturnType<typeof store>["ge
 
 export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> => {
   const s = store();
-  const [business, directions, ads, history] = await Promise.all([s.getBusiness(row.id), s.directions(row.id), s.ads(row.id), buildHistory(row.id)]);
+  const [business, directions, ads] = await Promise.all([s.getBusiness(row.id), s.directions(row.id), s.ads(row.id)]);
   // The same goal the main screen shows: the reference until the automatic goal is refined, then the refined one.
   const view = await loadBusinessView(s, row.id, readOnlyContext(await businessClock(row.id)).clock, platformCapabilities(business.mode));
   const draft = readDraft(row);
-  const strategies = new Map(platformCapabilities(business.mode).strategies.map((st) => [st.id, st.title]));
   const names = new Map(directions.map((d) => [d.id, d.name]));
   const first = directions[0];
   return {
@@ -72,18 +70,5 @@ export const buildSettings = async (row: BusinessRow): Promise<SettingsModel> =>
     supportEmail: supportEmail(),
     ads: ads.map((a) => ({ id: a.id, title: a.title, text: a.text, status: a.status, moderation: a.moderation, direction: names.get(a.directionId) ?? "" })),
     goals: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label),
-    budgetAdjustments: history.items
-      .filter((h) => h.budgetAdjustment)
-      .map((h) => ({ id: h.id, at: h.at, text: `${h.object}: ${h.diff.map((d) => `было ${d.before} → стало ${d.after}`).join("; ")}` })),
-    directions: directions.map((d) => ({
-      id: d.id,
-      name: d.name,
-      channel: d.channel,
-      strategy: strategies.get(d.strategyId) ?? d.strategyId,
-      weeklyLimit: d.weeklyLimit,
-      status: d.status,
-      schedule: d.schedule,
-      city: d.city,
-    })),
   };
 };
