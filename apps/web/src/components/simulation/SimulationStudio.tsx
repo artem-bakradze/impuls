@@ -1,7 +1,7 @@
 "use client";
 
-import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
-import { Alert, Button, Dropdown, Modal } from "antd";
+import { ExperimentOutlined, InfoCircleOutlined, MoreOutlined } from "@ant-design/icons";
+import { Alert, Button, Dropdown, Modal, Popover } from "antd";
 import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,9 @@ import type { AdsWork } from "@/lib/server/simulation-screen";
 import { agentTurnText, DIVERGED_TEXT, elapsedText, stepText, stepWeekLabel } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 import { noteExpect, noteSeen, noteSentence, noteTitle } from "@/lib/review-note";
-import { VERDICT_WORD } from "@/lib/service-work";
+import { adResult } from "@/lib/ad-result";
+import type { GoalWord } from "@/lib/ad-result";
+import { VERDICT_WORD, verdictRule } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
 import { goalComparable } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
@@ -21,9 +23,7 @@ import { useCountUp } from "./useCountUp";
 import { useSimulation } from "./useSimulation";
 
 const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
-const channelName = (channel: ShownAd["channel"]): string => (channel === "search" ? "поиск Яндекса" : "сайты-партнёры на Яндексе");
-
-const signedRub = (delta: number): string => `${delta < 0 ? "−" : "+"}${formatRub(Math.abs(delta))}`;
+const channelName = (channel: ShownAd["channel"]): string => (channel === "search" ? "поиск" : "сайты-партнёры");
 
 /** The review is the service's latest entry, not the owner's change or the launch. */
 const latestReview = (work: AdsWork): JournalEntry | null =>
@@ -32,64 +32,76 @@ const latestReview = (work: AdsWork): JournalEntry | null =>
     .filter((entry) => entry.kind === "agent" || entry.kind === "rules" || entry.kind === "quiet")
     .at(-1) ?? null;
 
-/**
- * One ad as a row of a table: the name, the service's estimate as a coloured mark, the 7 days' money as a bar with its
- * sum, then leads and the cost per lead in columns. The column words are said once above the rows; the units stay in the
- * text for screen readers and show on a phone, where there are no columns.
- */
-function StudioAd({ ad, before, maxSpend }: { ad: ShownAd; before: ShownAd | null; maxSpend: number }) {
-  const leads = useCountUp(ad.leads);
-  const cost = useCountUp(ad.costPerLead ?? 0);
-  const leadDelta = before === null ? 0 : ad.leads - before.leads;
-  const costDelta = before !== null && ad.costPerLead !== null && before.costPerLead !== null ? ad.costPerLead - before.costPerLead : 0;
-  const impressionsDelta = before === null ? 0 : ad.impressions - before.impressions;
-  const share = maxSpend > 0 ? Math.max(2, Math.round((ad.spend / maxSpend) * 100)) : 0;
+/** The ad's 7 days in numbers with the rule of its estimate: what opens on its result (simulation-mode spec «Подписи студии»). */
+function AdNumbers({ ad, cso, goalWord }: { ad: ShownAd; cso: number; goalWord: GoalWord }) {
+  const word = VERDICT_WORD[ad.verdict];
+  const rows: [string, string][] = [
+    ["Потрачено", formatRub(ad.spend)],
+    ["Обращения", formatCount(ad.leads)],
+    ["Цена обращения", ad.costPerLead === null ? "—" : formatRub(ad.costPerLead)],
+    [goalWord === "цели" ? "Цель" : "Ориентир", formatRub(cso)],
+    ["Переходы на сайт", formatCount(ad.clicks)],
+    ["Показы", formatCount(ad.impressions)],
+  ];
   return (
-    <div className="studio-ad" data-testid="studio-ad" data-quiet={ad.leads === 0 || undefined}>
-      <div className="studio-ad-main">
-        <span className="studio-ad-name" title={ad.title}>
-          {ad.title}
-        </span>
-        <span className="studio-ad-sub">
+    <div className="studio-ad-numbers" data-testid="studio-ad-numbers">
+      <p className="studio-ad-numbers-title">За 7 дней</p>
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="studio-ad-numbers-rule">
+        <b>{`${word.slice(0, 1).toUpperCase()}${word.slice(1)}`}</b> — {verdictRule(ad.verdict, cso)}.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * One ad as people see it in Yandex — the site, the title, the text — with one result under it: its cost per lead against
+ * the goal in words, its leads and the service's estimate. The numbers behind the result open on it, by hover or tap.
+ */
+function StudioAd({ ad, before, site, cso, goalWord }: { ad: ShownAd; before: ShownAd | null; site: string; cso: number; goalWord: GoalWord }) {
+  const leads = useCountUp(ad.leads);
+  const leadDelta = before === null ? 0 : ad.leads - before.leads;
+  const result = adResult(ad, cso, goalWord);
+  return (
+    <article className="studio-ad" data-testid="studio-ad">
+      <div className="studio-ad-meta">
+        {site === "" ? null : (
+          <span className="ad-row-favicon" aria-hidden="true">
+            {site.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <span className="studio-ad-site">{site === "" ? channelName(ad.channel) : `${site} · ${channelName(ad.channel)}`}</span>
+      </div>
+      <h3 className="studio-ad-title">{ad.title}</h3>
+      <p className="studio-ad-text">{ad.text}</p>
+      <div className="studio-ad-foot">
+        <Popover trigger={["hover", "click"]} placement="top" content={<AdNumbers ad={ad} cso={cso} goalWord={goalWord} />}>
+          <button type="button" className="studio-ad-result" data-tone={result.tone} data-testid="studio-ad-result">
+            {result.text}
+            <InfoCircleOutlined aria-hidden="true" />
+          </button>
+        </Popover>
+        <p className="studio-ad-state">
           <span className="studio-ad-verdict" data-verdict={ad.verdict}>
             <i aria-hidden="true" />
             <span data-testid="studio-ad-verdict">{VERDICT_WORD[ad.verdict]}</span>
           </span>
-          <span className="studio-ad-channel">{channelName(ad.channel)}</span>
-          {impressionsDelta > 0 ? <span className="studio-ad-channel">показы +{formatCount(impressionsDelta)}</span> : null}
-        </span>
-        {/* The ad's share of the 7 days' money against the most spending one, coloured by the estimate named above. */}
-        <span className="studio-ad-spend">
-          <span className="studio-ad-bar" aria-hidden="true">
-            <i style={{ width: `${share}%` }} data-verdict={ad.verdict} />
-          </span>
-          <span className="studio-ad-money">
-            <span className="sr-only">потрачено </span>
-            {formatRub(ad.spend)}
-          </span>
-        </span>
+          {ad.leads > 0 ? (
+            <span className="studio-ad-leads">
+              {formatCount(leads)} {leadsWord(leads)}
+              {leadDelta > 0 ? <b className="studio-delta good">+{formatCount(leadDelta)}</b> : null}
+            </span>
+          ) : null}
+        </p>
       </div>
-      <div className="studio-ad-leads">
-        <span>
-          <b>{formatCount(leads)}</b>
-          <span className="studio-unit"> {leadsWord(leads)}</span>
-        </span>
-        {leadDelta !== 0 ? <b className={leadDelta > 0 ? "studio-delta good" : "studio-delta bad"}>{leadDelta > 0 ? "+" : "−"}{Math.abs(leadDelta)}</b> : null}
-      </div>
-      <div className="studio-ad-cost">
-        {ad.costPerLead === null ? (
-          <span className="studio-ad-none">
-            —<span className="sr-only"> обращений пока нет</span>
-          </span>
-        ) : (
-          <span>
-            <span className="studio-unit">по </span>
-            <b>{formatRub(cost)}</b>
-          </span>
-        )}
-        {costDelta !== 0 ? <b className={costDelta < 0 ? "studio-delta good" : "studio-delta bad"}>{signedRub(costDelta)}</b> : null}
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -271,7 +283,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
       if (key === "restart") setRestartOpen(true);
     },
   };
-  const maxSpend = Math.max(0, ...work.shown.map((ad) => ad.spend));
+  const goalWord: GoalWord = goalComparable(model.goal) ? "цели" : "ориентира";
 
   const primaryLabel = status.ended
     ? "Продолжить ещё 30 дней"
@@ -322,15 +334,13 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
         <section className="studio-stage panel" aria-label="День симуляции">
           <StudioSummary model={model} before={before} firstDay={firstDay} />
           <div className="studio-ads">
-            <div className="studio-ads-head">
-              <span>Объявления · потрачено за 7 дней</span>
-              <span className="studio-ads-col" aria-hidden="true">обращения</span>
-              <span className="studio-ads-col" aria-hidden="true">за обращение</span>
-            </div>
+            <h2 className="studio-ads-head">Объявления · за 7 дней</h2>
             {work.shown.length === 0 ? <p className="studio-empty">Сейчас ни одно объявление не показывается.</p> : null}
-            {work.shown.map((ad) => (
-              <StudioAd key={ad.id} ad={ad} maxSpend={maxSpend} before={before?.work.shown.find((item) => item.id === ad.id) ?? null} />
-            ))}
+            <div className="studio-ad-grid">
+              {work.shown.map((ad) => (
+                <StudioAd key={ad.id} ad={ad} site={work.site} cso={work.cso} goalWord={goalWord} before={before?.work.shown.find((item) => item.id === ad.id) ?? null} />
+              ))}
+            </div>
           </div>
           <div className="studio-actions">
             <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>

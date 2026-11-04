@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -168,7 +168,7 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
   it("tells a quiet day in one paragraph, without empty ones", () => {
     const quiet: JournalEntry = { ...review, kind: "quiet", headline: null, paragraphs: ["Посмотрели рекламу — менять ничего не нужно."], changes: [] };
     render(<SimulationStudio model={model()} work={work({ journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [quiet] }] })} initial={status()} />);
-    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Что вижу"]);
+    expect(within(screen.getByTestId("studio-review")).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Что вижу"]);
   });
 
   it("says the market is a training one without sounding like a failure", () => {
@@ -184,13 +184,26 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(screen.getByText(/Данные симуляции удалятся без возможности вернуть/)).toBeTruthy();
   });
 
-  it("labels each ad's cost per lead and shows its share of the money", () => {
-    const { container } = render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+  it("shows each ad as in Yandex with one result: its cost per lead against the goal in words and its leads", () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
     const [first, second] = screen.getAllByTestId("studio-ad");
-    expect(first?.textContent?.replace(/\u00a0/g, " ")).toContain("по 346 ₽");
-    expect(first?.textContent?.replace(/\u00a0/g, " ")).toContain("потрачено 1 730 ₽");
-    expect(second?.querySelector(".studio-ad-bar i")).toHaveStyle({ width: "93%" });
-    expect(container.querySelector(".studio-ad-bar i")).toHaveAttribute("data-verdict", "effective");
+    expect(first?.querySelector(".studio-ad-site")).toHaveTextContent("goulash.tech · поиск");
+    expect(first?.querySelector("h3")).toHaveTextContent("Автоматизация ресторанов доставки");
+    expect(first?.querySelector(".studio-ad-text")).toHaveTextContent("Подключение платформы");
+    expect(screen.getAllByTestId("studio-ad-result").map((r) => r.textContent)).toEqual(["на 65% дешевле ориентира", "на 59% дешевле ориентира"]);
+    expect(screen.getAllByTestId("studio-ad-result")[0]).toHaveAttribute("data-tone", "good");
+    expect(first?.querySelector(".studio-ad-state")?.textContent).toBe("работает хорошо5 обращений");
+    expect(second?.textContent).not.toMatch(/потрачено|по \d/);
+    expect(document.querySelector(".studio-ad-bar")).toBeNull();
+  });
+
+  it("opens an ad's numbers of the 7 days and the rule of its estimate on its result", async () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    fireEvent.click(screen.getAllByTestId("studio-ad-result")[0]!);
+    const numbers = await screen.findByTestId("studio-ad-numbers");
+    const rows = [...numbers.querySelectorAll("dl div")].map((row) => row.textContent?.replace(/ /g, " "));
+    expect(rows).toEqual(["Потрачено1 730 ₽", "Обращения5", "Цена обращения346 ₽", "Ориентир1 000 ₽", "Переходы на сайт30", "Показы1 240"]);
+    expect(numbers.querySelector(".studio-ad-numbers-rule")?.textContent?.replace(/ /g, " ")).toBe("Работает хорошо — 3 обращения и больше, в среднем не дороже 700 ₽.");
   });
 
   it("sums up leads, the cost per lead against the goal and the month's money with the plan mark", () => {
@@ -203,18 +216,21 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(screen.getByTestId("studio-budget").querySelector("i")).toHaveStyle({ width: "23%" });
   });
 
-  it("marks a cost per lead over the goal and shows the ads as a table with the column words once", () => {
-    const quiet = ad({ id: "a3", title: "Настройка онлайн", leads: 0, spend: 39_500, costPerLead: null });
+  it("marks a cost per lead over the goal, an ad dearer than it and an ad without leads", () => {
+    const dear = ad({ id: "a2", verdict: "borderline", leads: 2, spend: 240_000, costPerLead: 120_000 });
+    const quiet = ad({ id: "a3", title: "Настройка онлайн", verdict: "learning", leads: 0, spend: 39_500, costPerLead: null });
     const { container } = render(
-      <SimulationStudio model={model({ goal: { mode: "user", cso: 100_000, learned: false, current: 140_000, status: "above" } })} work={work({ shown: [ad(), quiet] })} initial={status()} />,
+      <SimulationStudio model={model({ goal: { mode: "user", cso: 100_000, learned: false, current: 140_000, status: "above" } })} work={work({ shown: [ad(), dear, quiet] })} initial={status()} />,
     );
     expect(container.querySelector(".studio-metric-value[data-tone=danger]")?.textContent?.replace(/ /g, " ")).toBe("1 400 ₽");
     expect(screen.getByTestId("studio-summary")).toHaveTextContent("за обращение · цель 1 000 ₽");
-    expect(container.querySelector(".studio-ads-head")?.textContent).toBe("Объявления · потрачено за 7 днейобращенияза обращение");
-    const [, last] = screen.getAllByTestId("studio-ad");
-    expect(last).toHaveAttribute("data-quiet", "true");
-    expect(last?.textContent?.replace(/ /g, " ")).toContain("потрачено 395 ₽");
-    expect(last?.querySelector(".studio-ad-cost")?.textContent).toBe("— обращений пока нет");
+    expect(container.querySelector(".studio-ads-head")?.textContent).toBe("Объявления · за 7 дней");
+    const results = screen.getAllByTestId("studio-ad-result");
+    expect(results.map((r) => r.textContent)).toEqual(["на 65% дешевле цели", "на 20% дороже цели", "пока без обращений"]);
+    expect(results.map((r) => r.getAttribute("data-tone"))).toEqual(["good", "bad", "neutral"]);
+    const [, , last] = screen.getAllByTestId("studio-ad");
+    expect(last?.querySelector(".studio-ad-state")?.textContent).toBe("собирает данные");
+    expect(last?.querySelector(".studio-ad-verdict")).toHaveAttribute("data-verdict", "learning");
   });
 
   it("names the calendar day, the scenario and each ad's estimate in words", () => {

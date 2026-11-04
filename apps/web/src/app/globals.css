@@ -3283,62 +3283,128 @@ button.log-link {
 .brief-bar.studio-budget[data-plan] {
   margin-bottom: 30px;
 }
-/* The ads as a table: the column words once, then one row per ad with its estimate, money, leads and cost. */
+/* The ads as people see them in Yandex, two cards a row, each with one result; the numbers open on the result. */
 .studio-ads {
   order: 2;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  margin-top: 18px;
-}
-.studio-ads-head,
-.studio-ad {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 84px 96px;
-  grid-template-areas: "main leads cost";
-  column-gap: 20px;
+  margin-top: 20px;
 }
 .studio-ads-head {
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
+  margin: 0 0 12px;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-3);
+}
+.studio-ad-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.studio-ad {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.studio-ad:hover,
+.studio-ad:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 20px -14px rgba(22, 22, 40, 0.3);
+}
+.studio-ad-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
-.studio-ads-col {
-  text-align: right;
-}
-.studio-ad {
-  align-items: start;
-  min-width: 0;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-}
-.studio-ad:last-child {
-  border-bottom: 0;
-}
-.studio-ad-main {
-  grid-area: main;
-  min-width: 0;
-}
-.studio-ad-name {
-  display: block;
+.studio-ad-site {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
-.studio-ad-sub {
+.studio-ad-title {
+  display: -webkit-box;
+  margin: 6px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.3;
+  color: #2a20b8;
+}
+.studio-ad-text {
+  display: -webkit-box;
+  margin: 4px 0 12px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-2);
+}
+/* The result sits at the bottom, so the cards of a row line up whatever the length of their texts. */
+.studio-ad-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+/* The ad's result: a chip of its tone that opens its numbers; it reads as a fact, not as a button to press. */
+.studio-ad-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 99px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  text-align: left;
+  cursor: help;
+}
+.studio-ad-result[data-tone="good"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.studio-ad-result[data-tone="bad"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.studio-ad-result .anticon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.studio-ad-result:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.studio-ad-state {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 8px;
-  margin-top: 3px;
+  gap: 2px 10px;
+  margin: 0;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
-/* The service's estimate: a dot and a word of the same colour as the money bar under it. */
+/* The service's estimate: a dot and a word of its colour. */
 .studio-ad-verdict {
   display: inline-flex;
   align-items: center;
@@ -3355,82 +3421,56 @@ button.log-link {
 .studio-ad-verdict[data-verdict="borderline"] { color: var(--warning); }
 .studio-ad-verdict[data-verdict="ineffective"] { color: var(--danger); }
 .studio-ad-verdict[data-verdict="learning"] { color: var(--accent-ink); }
-.studio-ad-channel::before {
-  content: "·";
-  margin-right: 8px;
-}
-.studio-ad-spend {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-/* The ad's share of the week's money; the colour is the rules' estimate of it. */
-.studio-ad-bar {
-  flex: 1;
-  min-width: 0;
-  height: 6px;
-  border-radius: 99px;
-  background: var(--surface-3);
-  overflow: hidden;
-}
-.studio-ad-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: var(--text-3);
-  transition: width 0.5s var(--ease);
-}
-.studio-ad-bar i[data-verdict="effective"] { background: var(--success); }
-.studio-ad-bar i[data-verdict="borderline"] { background: var(--warning); }
-.studio-ad-bar i[data-verdict="ineffective"] { background: var(--danger); }
-.studio-ad-bar i[data-verdict="learning"] { background: var(--accent); opacity: 0.55; }
-.studio-ad-money {
-  flex: 0 0 auto;
-  min-width: 64px;
-  text-align: right;
-  font-size: var(--fs-xs);
+.studio-ad-leads {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.studio-ad-leads,
-.studio-ad-cost {
+.studio-ad-leads::before {
+  content: "·";
+  margin-right: 5px;
+  color: var(--text-3);
+}
+/* The numbers behind a result: a short list of the 7 days and the rule of the estimate. */
+.studio-ad-numbers {
+  width: 248px;
+}
+.studio-ad-numbers-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  color: var(--text);
+}
+.studio-ad-numbers dl {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  gap: 4px;
+  margin: 0;
 }
-.studio-ad-leads { grid-area: leads; }
-.studio-ad-cost { grid-area: cost; }
-.studio-ad-leads b:not(.studio-delta) {
-  font-size: var(--fs-md);
-  font-weight: 650;
-  letter-spacing: -0.02em;
+.studio-ad-numbers dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-xs);
 }
-.studio-ad-cost b:not(.studio-delta) {
-  font-size: var(--fs-sm);
+.studio-ad-numbers dt {
+  color: var(--text-3);
+}
+.studio-ad-numbers dd {
+  margin: 0;
+  color: var(--text);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-/* An ad without leads yet steps back: the eye goes to the rows that bring them. */
-.studio-ad[data-quiet] .studio-ad-leads b:not(.studio-delta) {
-  font-weight: 500;
-  color: var(--text-3);
-}
-.studio-ad-none {
-  color: var(--text-3);
-}
-/* The units of the columns: read aloud everywhere, shown only on a phone, where the columns have no heads. */
-.studio-unit {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+.studio-ad-numbers-rule {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-2);
 }
 .studio-delta {
   font-weight: 650;
@@ -3692,8 +3732,7 @@ button.log-link {
   .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
   /*
-   * On a phone the totals are two columns and the money a line of its own above its bar; the ads lose their columns:
-   * the name takes the width, and leads and the cost per lead are one line under the money bar, with their units.
+   * On a phone the totals are two columns and the money a line of its own above its bar; the ads are one card a row.
    */
   .studio-sum {
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
@@ -3710,43 +3749,7 @@ button.log-link {
     border-left: 0;
     border-top: 1px solid var(--border);
   }
-  .studio-ads-head { grid-template-columns: minmax(0, 1fr); }
-  .studio-ads-col { display: none; }
-  .studio-ad {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "main main" "leads cost";
-    column-gap: 10px;
-    row-gap: 6px;
-  }
-  .studio-ad-name { white-space: normal; }
-  .studio-ad-leads,
-  .studio-ad-cost {
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: flex-start;
-    gap: 6px;
-    font-size: var(--fs-xs);
-    color: var(--text-2);
-  }
-  .studio-ad-cost::before {
-    content: "·";
-    color: var(--text-3);
-  }
-  .studio-ad[data-quiet] .studio-ad-cost { display: none; }
-  .studio-ad-leads b:not(.studio-delta),
-  .studio-ad-cost b:not(.studio-delta) {
-    font-size: var(--fs-xs);
-    font-weight: 650;
-    letter-spacing: 0;
-    color: var(--text);
-  }
-  .studio-unit {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
-  }
+  .studio-ad-grid { grid-template-columns: minmax(0, 1fr); }
   .studio-actions {
     flex-wrap: wrap;
     justify-content: center;
