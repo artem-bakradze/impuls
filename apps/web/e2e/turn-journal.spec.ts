@@ -4,7 +4,7 @@ import { e2eDatabaseUrl } from "./env";
 import { launchNewBusiness, uniqueEmail } from "./helpers";
 
 /** Seeds an agent turn, the history entry it created and its insight, as the worker would after an agent action. */
-const seedAgentTurn = async (email: string): Promise<void> => {
+const seedAgentTurn = async (email: string): Promise<string> => {
   const client = new pg.Client({ connectionString: e2eDatabaseUrl() });
   await client.connect();
   try {
@@ -69,23 +69,24 @@ const seedAgentTurn = async (email: string): Promise<void> => {
         insightId,
       ],
     );
+    return turnId;
   } finally {
     await client.end();
   }
 };
 
-test("from a change in the journal made by the agent the owner opens the turn with guard verdicts", async ({ page }) => {
+test("a change made by the agent is in the journal, and its turn with guard verdicts opens at its address", async ({ page }) => {
   const email = uniqueEmail("turn");
   await launchNewBusiness(page, "turn", email);
-  await seedAgentTurn(email);
+  const turnId = await seedAgentTurn(email);
 
   await page.reload();
   await page.getByRole("button", { name: /История/ }).click();
   const change = page.getByTestId("agent-journal").getByTestId("journal-change").filter({ hasText: /Добавил денег рекламе .*3[\s\u00a0]600/ });
-  // The facts of the decision behind one disclosure, right in its line (insights «Решение и его отмена в одной строке»).
-  await change.getByText("На чём основано").click();
-  await expect(change.locator("dl")).toContainText("Осталось в этом месяце");
-  await change.getByRole("link", { name: "Как сервис принял это решение" }).click();
+  // The change is a done action of the assistant's message, with no disclosure of facts (insights «Лента инсайтов»).
+  await expect(change).toBeVisible();
+  await expect(change.getByText("На чём основано")).toHaveCount(0);
+  await page.goto(`/history/turn/${turnId}`);
 
   await expect(page.getByRole("heading", { name: "Как сервис принял решение" })).toBeVisible();
   await expect(page.getByTestId("turn-summary")).toContainText("Ежедневный разбор");

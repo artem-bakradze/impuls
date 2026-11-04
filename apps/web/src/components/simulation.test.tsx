@@ -100,7 +100,7 @@ const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy())
   const story = await storyOf(4);
   const directions = await store.directions("b1");
   const work = buildServiceWork({ ads, directions, stats: await store.stats("b1", "2026-12-01", "2026-12-30"), today: "2026-12-31", startedOn: "2026-12-01", timeZone: "Europe/Moscow", cso: rubles(500), reviews: days, history, changes, openChecks: (await store.hypotheses("b1")).filter((h) => h.status === "checking"), weeks: livedWeeks(simulation, "Europe/Moscow") });
-  const screenModel: AdsWork = { ...work, site: "nogotok.example", history, names: { directions: {}, channels: {}, ads: {}, strategies: {} }, sim: { comparison: model.comparison, result: model.result, decisionDays: model.decisionDays, day: model.day, totalDays: model.totalDays, scenarioTitle: model.scenarioTitle, ended: model.result !== null } };
+  const screenModel: AdsWork = { ...work, site: "nogotok.example", history, names: { directions: {}, channels: {}, ads: {}, strategies: {} }, sim: { comparison: model.comparison, result: model.result, decisionDays: model.decisionDays, day: model.day, totalDays: model.totalDays, scenarioTitle: model.scenarioTitle, ended: model.result !== null, startedOn: "2026-12-01" } };
   return { ...model, work, screenModel, feed: { timeZone: "Europe/Moscow", check: null, days, names: { directions: {}, channels: {}, ads: {}, strategies: {} } }, ads, truthOf, story, storyOf };
 };
 

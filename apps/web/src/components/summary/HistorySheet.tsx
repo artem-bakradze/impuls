@@ -2,15 +2,16 @@
 
 import { CheckCircleFilled } from "@ant-design/icons";
 import { Drawer } from "antd";
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatLocalDate, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
+import { capitalize } from "@/lib/day-words";
 import { noteExpect, noteSeen } from "@/lib/review-note";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { SummaryModel } from "@/lib/summary-model";
 import type { JournalChange, JournalEntry, JournalSection } from "@/lib/service-work";
-import { LogoMark } from "../ui/Logo";
+import { AgentAvatar } from "../ui/AgentAvatar";
+import { useDayWords } from "../ui/DayWordsContext";
 import type { Tone } from "../ui/primitives";
 
 const SHOWN_WEEKS = 8;
@@ -41,11 +42,12 @@ export function ComparisonNote({ sim }: { sim: NonNullable<AdsWork["sim"]> }) {
 }
 
 /**
- * One change as a done action, the same as in the studio's message: a check, the change in words, «Вернуть как было»
- * when it can go back, and one «На чём основано» with its facts and the agent's turn (insights spec «Лента инсайтов и
- * связь с историей»). The owner's and the cabinet's changes go without the check, in the owner's bubble.
+ * One change as a done action, the same as in the review on «Реклама»: a check, the change in words and «Вернуть как
+ * было» when it can go back (insights spec «Лента инсайтов и связь с историей»). The owner's and the cabinet's changes go
+ * without the check, in the owner's bubble.
  */
 function ChangeLine({ change, owner, onRollback }: { change: JournalChange; owner: boolean; onRollback: (item: HistoryItem) => void }) {
+  const words = useDayWords();
   const item = change.item;
   const canRollBack = item !== null && !change.reverted && item.rollback.kind === "available";
   return (
@@ -53,30 +55,10 @@ function ChangeLine({ change, owner, onRollback }: { change: JournalChange; owne
       {owner ? null : <CheckCircleFilled className="studio-msg-done" aria-label={change.reverted ? "отменено" : "сделано"} />}
       <div className="j-action-main">
         <span className={owner ? "log-change-text" : "studio-msg-action-text log-change-text"}>
-          {change.text}
+          {words.text(change.text)}
           {change.reverted ? <span className="studio-msg-dim"> — отменено</span> : null}
         </span>
         {item !== null && !change.reverted && item.rollback.kind === "unavailable" && item.reasonCode !== "LAUNCH" ? <p className="j-no-rollback">{item.rollback.reason}</p> : null}
-        {change.facts.length > 0 || change.turnId ? (
-          <details className="j-facts">
-            <summary>На чём основано</summary>
-            {change.facts.length > 0 ? (
-              <dl>
-                {change.facts.map((f) => (
-                  <div key={f.label}>
-                    <dt>{f.label}</dt>
-                    <dd>{f.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
-            {change.turnId ? (
-              <Link href={`/history/turn/${change.turnId}`} className="j-turn">
-                Как сервис принял это решение
-              </Link>
-            ) : null}
-          </details>
-        ) : null}
       </div>
       {canRollBack ? (
         <button type="button" className="studio-msg-undo" onClick={() => onRollback(item)}>
@@ -93,7 +75,14 @@ function ChangeLine({ change, owner, onRollback }: { change: JournalChange; owne
  * day's records stand under one date, which the next record of the same day does not repeat.
  */
 function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: boolean; onRollback: (item: HistoryItem) => void }) {
-  const when = entry.from ? `${formatLocalDate(entry.from)} — ${formatLocalDate(entry.date)}` : `День ${entry.day} · ${formatLocalDate(entry.date)}`;
+  const words = useDayWords();
+  const when = words.simulation
+    ? entry.from
+      ? capitalize(words.range(entry.from, entry.date))
+      : `День ${entry.day}`
+    : entry.from
+      ? `${formatLocalDate(entry.from)} — ${formatLocalDate(entry.date)}`
+      : `День ${entry.day} · ${formatLocalDate(entry.date)}`;
   const date = sameDay ? null : (
     <p className="j-day">
       <time dateTime={entry.date}>{when}</time>
@@ -116,7 +105,7 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
           {changes}
           {entry.paragraphs.map((p, i) => (
             <p key={i} className="studio-msg-text">
-              {p}
+              {words.text(p)}
             </p>
           ))}
         </div>
@@ -124,16 +113,16 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
     );
   }
 
-  const [first, ...rest] = noteSeen({ headline: entry.headline, paragraphs: entry.paragraphs, found: [] });
-  const found = noteSeen({ headline: null, paragraphs: [], found: entry.found });
-  const expected = noteExpect(entry);
+  const [first, ...rest] = noteSeen({ headline: entry.headline, paragraphs: entry.paragraphs, found: [] }, words);
+  const found = noteSeen({ headline: null, paragraphs: [], found: entry.found }, words);
+  const expected = noteExpect(entry, words);
   const tag = entry.weekly ? "разбор недели" : entry.kind === "rules" ? "страховочные правила" : null;
   return (
     <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry" data-same-day={sameDay || undefined}>
       {date}
       <div className="j-msg">
         <span className="j-avatar">
-          <LogoMark size={28} />
+          <AgentAvatar size={28} />
         </span>
         <div className="j-msg-main">
           <p className="j-msg-who">
@@ -160,7 +149,7 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
             {expected.length > 0 ? <p className="studio-msg-text j-expect">{expected.join(" ")}</p> : null}
             {entry.truths.map((t, i) => (
               <p key={`t${i}`} className={`j-truth j-truth-${t.tone}`} data-testid="insight-truth">
-                {t.text}
+                {words.text(t.text)}
               </p>
             ))}
           </div>
@@ -171,7 +160,12 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
 }
 
 function Section({ section, children }: { section: JournalSection; children: React.ReactNode }) {
-  const dates = section.from === section.to ? formatLocalDate(section.from) : `${formatLocalDate(section.from)} — ${formatLocalDate(section.to)}`;
+  const words = useDayWords();
+  const dates = words.simulation
+    ? words.range(section.from, section.to)
+    : section.from === section.to
+      ? formatLocalDate(section.from)
+      : `${formatLocalDate(section.from)} — ${formatLocalDate(section.to)}`;
   // A week is reviewed the morning after its days; the header names that morning, so its record does not look misplaced.
   const review = section.week === null ? undefined : section.entries.find((e) => e.weekly && e.date > section.to)?.date;
   return (
@@ -179,7 +173,7 @@ function Section({ section, children }: { section: JournalSection; children: Rea
       <div className="j-week" data-testid="journal-week">
         {section.week ? `Неделя ${section.week} · ` : ""}
         {dates}
-        {review ? ` · разбор ${formatLocalDate(review)}` : ""}
+        {review ? ` · разбор ${words.simulation ? words.on(review) : formatLocalDate(review)}` : ""}
       </div>
       {children}
     </section>

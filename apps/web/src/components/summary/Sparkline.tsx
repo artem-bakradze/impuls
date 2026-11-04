@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
-import { formatLocalDate, formatRub, plural } from "@/lib/format";
+import { calendarWords } from "@/lib/day-words";
+import type { DayWords } from "@/lib/day-words";
+import { formatRub, plural } from "@/lib/format";
+import { useDayWords } from "../ui/DayWordsContext";
 
 export interface TrendPoint {
   date: string;
@@ -37,8 +40,8 @@ export const trendOf = (daily: readonly { date: string; leads: number | null; sp
 };
 
 /** The day's hint in the analytics spec's words: the price and leads of a day with leads, the spend of one without. */
-export const dayHint = (point: TrendPoint): string => {
-  const date = formatLocalDate(point.date);
+export const dayHint = (point: TrendPoint, words: DayWords = calendarWords): string => {
+  const date = words.date(point.date);
   if (point.value !== null && point.leads !== null) {
     return `${date} · ${formatRub(point.value)} за обращение · ${point.leads} ${plural(point.leads, "обращение", "обращения", "обращений")}`;
   }
@@ -91,6 +94,7 @@ const monotone = (pts: readonly Pt[]): string => {
  * their size on a phone.
  */
 export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendPoint[]; goal: number; goalLabel: "цель" | "ориентир" }) {
+  const words = useDayWords();
   const [active, setActive] = useState<number | null>(null);
   const seen = points.filter((p) => p.value !== null);
   if (seen.length < 2) return null;
@@ -127,7 +131,7 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
   const firstDate = points[0]?.date ?? "";
   const lastDate = points.at(-1)?.date ?? "";
   const current = active !== null ? points[active] : undefined;
-  const hint = current ? dayHint(current) : "";
+  const hint = current ? dayHint(current, words) : "";
   const share = active !== null ? x(active) / WIDTH : 0;
 
   const nearest = (event: PointerEvent<HTMLDivElement>): number | null => {
@@ -150,7 +154,7 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
       data-testid="cost-chart"
       role="group"
       tabIndex={0}
-      aria-label={`Цена обращения с ${formatLocalDate(firstDate)} по ${formatLocalDate(lastDate)}, ${goalLabel} ${formatRub(goal)}${misses.length > 0 ? `, дней без обращений: ${misses.length}` : ""}. Стрелки показывают цифры дня.`}
+      aria-label={`Цена обращения: ${words.range(firstDate, lastDate)}, ${goalLabel} ${formatRub(goal)}${misses.length > 0 ? `, дней без обращений: ${misses.length}` : ""}. Стрелки показывают цифры дня.`}
       onKeyDown={onKey}
       onFocus={() => setActive((value) => value ?? days.at(-1) ?? null)}
       onBlur={() => setActive(null)}
@@ -199,13 +203,13 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
         {hint}
       </span>
       <figcaption className="spark-axis" aria-hidden="true">
-        <span>{formatLocalDate(firstDate)}</span>
+        <span>{words.date(firstDate)}</span>
         {misses.length > 0 ? (
           <span className="spark-axis-miss">
             <i className="spark-miss-key" /> без обращений
           </span>
         ) : null}
-        <span>{formatLocalDate(lastDate)}</span>
+        <span>{words.date(lastDate)}</span>
       </figcaption>
     </figure>
   );

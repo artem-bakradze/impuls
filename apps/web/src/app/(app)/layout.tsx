@@ -14,7 +14,7 @@ export default async function SignedInLayout({ children }: { children: ReactNode
     <>
       {/* In a simulation the pult says the ads are not real; one such mark on the screen, not two. */}
       {!simulated && isTestMode(webConfig()) ? <TestModeBanner /> : null}
-      <AppHeader launched={Boolean(business?.launchedOn)} simulated={simulated} signOutAction={signOutAction} />
+      <AppHeader launched={Boolean(business?.launchedOn)} signOutAction={signOutAction} />
       <main className={business?.launchedOn ? "workspace" : undefined}>{children}</main>
     </>
   );

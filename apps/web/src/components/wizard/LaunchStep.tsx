@@ -60,7 +60,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });
     } else if (outcome.kind === "done") {
-      router.push(simulation ? "/simulation" : "/summary");
+      router.push("/summary");
       router.refresh();
     } else if (outcome.kind === "pending") {
       setState({ kind: "pending" });

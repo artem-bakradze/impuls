@@ -3,10 +3,10 @@ import type { Locator } from "@playwright/test";
 import { choose, expectStep, fillBudget, fillFirstSteps, login, next, uniqueEmail } from "./helpers";
 
 /**
- * The simulation mode end to end with the test agent: the studio as a separate tab, a day and a week by the owner's
- * press, the review on the right, the brief with one chart, the history with rollback, and a real launch.
+ * The simulation mode end to end with the test agent: one «Реклама» with the player over the answer, a day and a week by
+ * the owner's press, the assistant's review beside the answer, the history with rollback, and a real launch.
  */
-test("an owner runs the simulation in the studio and goes on to a real launch", async ({ page }, testInfo) => {
+test("an owner plays the simulation on «Реклама» and goes on to a real launch", async ({ page }, testInfo) => {
   test.setTimeout(360_000);
   await login(page, uniqueEmail("simulation"));
   await page.waitForURL("**/wizard");
@@ -21,15 +21,16 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await page.getByRole("button", { name: /Другие сценарии/ }).click();
   await expect(page.getByTestId("scenarios")).toContainText("Нужно хотя бы 2 объявления в поиске — сейчас 1");
   await page.getByRole("button", { name: "Запустить симуляцию" }).click();
-  await page.waitForURL("**/simulation", { timeout: 150_000 });
+  await page.waitForURL("**/summary", { timeout: 150_000 });
 
-  // The simulation is a place with its own tab, not a floating strip over every screen.
+  // The simulation is played on «Реклама» itself: two sections, the player over the answer.
   await expect(page.getByTestId("simulation-bar")).toHaveCount(0);
   await expect(page.getByTestId("test-mode-banner")).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Симуляция", "Настройки"]);
+  await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);
+  await expect(page.getByTestId("sim-player")).toBeVisible();
   await expect(page.getByTestId("studio-day")).toHaveText("День 1");
   await expect(page.getByTestId("studio-status")).toHaveText("впереди");
-  await expect(page.getByTestId("studio-ad")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /Объявления/ })).toContainText("2");
   await expect(page.getByRole("button", { name: "Прожить день" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Прожить неделю" })).toBeVisible();
   await expect(page.getByTestId("studio-review")).toHaveCount(0);
@@ -66,17 +67,14 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await step(page.getByRole("button", { name: "Прожить неделю" }));
   await page.screenshot({ path: testInfo.outputPath("studio-review.png"), fullPage: true });
 
-  // The brief: one answer, one chart, the mode mark, no pult.
-  await page.getByRole("link", { name: "Реклама" }).click();
-  await page.waitForURL("**/summary");
+  // The answer: one chart, the player's day, the period by days, no month (simulation-mode «Дни симуляции вместо дат»).
   await expect(page.getByTestId("brief")).toBeVisible();
-  await expect(page.locator(".brief-mode")).toHaveText(/^симуляция · день \d+ из 30$/);
-  // The numbers name their period, and the service says what it does next.
-  await expect(page.getByTestId("data-period")).toHaveText(/^\d+–\d+ \S+$/);
+  await expect(page.getByTestId("studio-day")).toHaveText(/^День \d+$/);
+  await expect(page.getByTestId("data-period")).toHaveText(/^дни \d+–\d+$/);
+  await expect(page.getByTestId("review-rail")).not.toContainText(/января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря/);
   await expect(page.getByTestId("next-step")).toContainText("Дальше");
   await expect(page.getByTestId("simulation-bar")).toHaveCount(0);
   await expect(page.getByTestId("cost-chart")).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Симуляция", "Настройки"]);
   await expect(page.getByTestId("ads-state")).toContainText("идёт");
   await expect(page.getByTestId("budget-pace")).toContainText(/план|хватит до|бюджет месяца потрачен/);
 
@@ -131,13 +129,13 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await expect(page.getByTestId("agent-journal").getByTestId("journal-change").filter({ hasText: "отменено" })).toHaveCount(1);
   await page.getByRole("button", { name: "Закрыть" }).click();
 
-  // Back to the studio: the real launch is a visible button of its head, not a menu item and not on every screen.
+  // The old address of the studio opens «Реклама»; the real launch is a visible button of the player, not a menu item.
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole("link", { name: "Симуляция" }).click();
-  await page.waitForURL("**/simulation");
+  await page.goto("/simulation");
+  await page.waitForURL("**/summary");
   await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
   await expect(page.getByTestId("studio-scenario")).toContainText("сценарий «");
-  await page.locator(".studio-head").getByRole("button", { name: "Запустить по-настоящему" }).click();
+  await page.getByTestId("sim-player").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");
   await expectStep(page, 3, "Объявления и запуск");

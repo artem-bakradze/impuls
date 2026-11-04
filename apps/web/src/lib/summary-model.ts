@@ -1,6 +1,8 @@
 import { addDays, daysBetween } from "@impuls/core";
 import type { Kopecks, LocalDate } from "@impuls/core";
-import { formatLocalDate, formatRub, plural } from "./format";
+import { calendarWords } from "./day-words";
+import type { DayWords } from "./day-words";
+import { formatRub, plural } from "./format";
 import type { InsightFeedModel } from "./insights-model";
 
 import type { MeasurementModel } from "./measurement";
@@ -123,10 +125,10 @@ export const goalBadge = (goal: SummaryModel["goal"]): string | null => {
  * «Дальше» on the main screen (analytics spec «Сводка»): the nearest open check with its day, or the next morning's look,
  * which the daily evaluation makes with or without the agent. «Проверяю, останется ли …» → «16 ноября сервис проверит, останется ли …».
  */
-export const nextStepText = (next: { statement: string; checkOn: LocalDate; more: number } | null, today: LocalDate): string => {
+export const nextStepText = (next: { statement: string; checkOn: LocalDate; more: number } | null, today: LocalDate, words: DayWords = calendarWords): string => {
   if (next === null) return "завтра утром сервис снова посмотрит рекламу";
-  const when = next.checkOn < today ? "скоро" : next.checkOn === today ? "сегодня" : next.checkOn === addDays(today, 1) ? "завтра" : formatLocalDate(next.checkOn);
-  const statement = next.statement.trim().replace(/[.…]+$/, "");
+  const when = next.checkOn < today ? "скоро" : next.checkOn === today ? "сегодня" : next.checkOn === addDays(today, 1) ? "завтра" : words.on(next.checkOn);
+  const statement = words.text(next.statement.trim().replace(/[.…]+$/, ""));
   const asked = /^провер(?:яю|ю|яем|им)\s*[,:—-]?\s*/i.exec(statement);
   const lowered = `${statement[0]?.toLowerCase() ?? ""}${statement.slice(1)}`;
   const text = asked ? `${when} сервис проверит, ${statement.slice(asked[0].length)}` : `${when} — итог проверки: ${lowered}`;

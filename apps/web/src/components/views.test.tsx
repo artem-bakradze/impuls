@@ -239,16 +239,14 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("lists up to three service changes in «Что сделал сервис» beside the answer", () => {
+  it("puts the service's review beside the answer instead of «Что сделал сервис», and the last change in the answer", () => {
     const change = (id: string, text: string, date: string) => ({ text, date, reason: `Причина ${id}.`, entryId: null, historyId: id, item: { ...rollbackItem, id } });
-    const recent = [change("c1", "Цена перехода +10%", "2026-10-27"), change("c2", "Лимит 1 077 ₽", "2026-10-26"), change("c3", "Пауза объявления", "2026-10-20")];
+    const recent = [change("c1", "Цена перехода +10%", "2026-10-27"), change("c2", "Лимит 1 077 ₽", "2026-10-26")];
     render(<SummaryView model={summary()} work={work({ lastChange: recent[0] ?? null, recentChanges: recent, changesLast7: 2 })} />);
-    const side = screen.getByTestId("service-changes");
-    expect(within(side).getByRole("heading", { name: "Что сделал сервис" })).toBeTruthy();
-    expect(within(side).getAllByTestId("service-change").map((c) => plain(c.querySelector(".brief-what")))).toEqual(["Цена перехода +10%", "Лимит 1 077 ₽", "Пауза объявления"]);
-    expect(plain(within(side).getAllByTestId("service-change")[2] ?? null)).toContain("20 октября");
-    fireEvent.click(within(side).getByRole("button", { name: /Вся история/ }));
-    expect(screen.getByTestId("agent-journal")).toBeTruthy();
+    expect(screen.queryByTestId("service-changes")).toBeNull();
+    expect(screen.getByTestId("review-rail")).toBeTruthy();
+    // No review says this change yet, so it stands in the answer (change-history spec «Последнее изменение на главном экране»).
+    expect(plain(screen.getByTestId("last-change"))).toContain("Цена перехода +10%");
   });
 
   it("has no «Что сделал сервис» before the first change", () => {
@@ -372,7 +370,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(plain(screen.getByTestId("ad-stats"))).toBe("потрачено 610 ₽ · обращений нет");
   });
 
-  it("opens the history sheet with changes, rollback, facts and the turn", () => {
+  it("opens the history sheet with changes and rollback, without a disclosure of facts", () => {
     render(<SummaryView model={summary()} work={work({ journal: [{ week: 2, from: "2026-10-26", to: "2026-11-01", entries: [decisionEntry, ownerEntry] }] })} />);
     fireEvent.click(screen.getByRole("button", { name: /История/ }));
     const journal = screen.getByTestId("agent-journal");
@@ -385,9 +383,9 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     ]);
     expect(within(journal).getAllByRole("button", { name: "Вернуть как было" })).toHaveLength(2);
     expect(within(journal).getByRole("region", { name: "Неделя 2" })).toBeTruthy();
-    fireEvent.click(within(journal).getByText("На чём основано"));
-    expect(plain(changes[1] ?? null)).toContain("Объявление «Маникюр без записи»: расход за 14 дней1 530 ₽");
-    expect(within(journal).getByRole("link", { name: "Как сервис принял это решение" })).toHaveAttribute("href", "/history/turn/t1");
+    // No disclosure of facts and no link to the agent's turn in the history (insights spec «Лента инсайтов и связь с историей»).
+    expect(within(journal).queryByText("На чём основано")).toBeNull();
+    expect(within(journal).queryByRole("link", { name: "Как сервис принял это решение" })).toBeNull();
     fireEvent.click(within(journal).getAllByRole("button", { name: "Вернуть как было" })[0] as HTMLElement);
     expect(screen.getByText("Вернуть как было?")).toBeTruthy();
   });
@@ -441,13 +439,15 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(within(sheet).getAllByRole("region").at(-1)).toHaveAttribute("aria-label", "Неделя 1");
   });
 
-  it("names the period of the numbers and the simulated day", () => {
+  it("names the period of the numbers, by days in a simulation", () => {
     const { unmount } = render(<SummaryView model={summary()} work={work()} />);
     expect(plain(screen.getByTestId("data-period"))).toBe("1–27 октября");
     unmount();
-    const sim = { comparison: null, result: null, decisionDays: [], day: 9, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
-    render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
-    expect(screen.getByText("симуляция · день 9 из 30")).toBeTruthy();
+    const sim = { comparison: null, result: null, decisionDays: [], day: 9, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false, startedOn: "2026-10-01" };
+    const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
+    // In a simulation the days are numbers (simulation-mode spec «Дни симуляции вместо дат»); the player names the day.
+    expect(plain(screen.getByTestId("data-period"))).toBe("дни 1–27");
+    expect(container.querySelector(".brief-mode")).toBeNull();
   });
 
   it("explains a reference behind its words", () => {
@@ -502,7 +502,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
   });
 
   it("keeps the comparison with the control run in the history, not on the brief", () => {
-    const sim = { comparison: { service: [3, 6], baseline: [3, 5], serviceNow: { spend: 100_000, leads: 6, costPerLead: 16_667 }, baselineNow: { spend: 100_000, leads: 5, costPerLead: 20_000 } }, result: null, decisionDays: [2], day: 3, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
+    const sim = { comparison: { service: [3, 6], baseline: [3, 5], serviceNow: { spend: 100_000, leads: 6, costPerLead: 16_667 }, baselineNow: { spend: 100_000, leads: 5, costPerLead: 20_000 } }, result: null, decisionDays: [2], day: 3, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false, startedOn: "2026-10-01" };
     const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
     expect(screen.queryByTestId("sim-comparison")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /История/ }));

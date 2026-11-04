@@ -5,11 +5,12 @@ import { Alert, Button, Drawer, Dropdown, Input } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
 import type { EffectivenessClass } from "@impuls/core";
-import { formatLocalDate, formatRub, plural } from "@/lib/format";
+import { formatRub, plural } from "@/lib/format";
 import { AD_TEXT_MAX, AD_TITLE_MAX } from "@/lib/onboarding";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import { VERDICT_GROUPS, verdictRule } from "@/lib/service-work";
 import type { ShownAd } from "@/lib/service-work";
+import { useDayWords } from "../ui/DayWordsContext";
 import { useCommands } from "./useCommands";
 
 const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
@@ -21,6 +22,7 @@ export const adStatsText = (ad: Pick<ShownAd, "spend" | "leads" | "costPerLead">
 const ORDER: EffectivenessClass[] = ["effective", "borderline", "learning", "ineffective"];
 
 function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: ReturnType<typeof useCommands> }) {
+  const words = useDayWords();
   const [edit, setEdit] = useState<{ title: string; text: string } | null>(null);
   const changed = edit !== null && (edit.title.trim() !== ad.title || edit.text.trim() !== ad.text);
   const feedback = commands.feedback && (commands.feedback.id === `text-${ad.id}` || commands.feedback.id === `status-${ad.id}`) ? commands.feedback : null;
@@ -52,7 +54,7 @@ function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: Re
           {labels.length > 0 ? <p className="ad-row-labels">{labels.join(" · ")}</p> : null}
           {ad.change ? (
             <span className="ad-mark" data-testid="change-mark">
-              ↻ {ad.change.text} · {formatLocalDate(ad.change.date)}
+              ↻ {ad.change.text} · {words.date(ad.change.date)}
             </span>
           ) : null}
         </div>
@@ -98,6 +100,7 @@ function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: Re
 
 /** The ads sheet: money first, one group per estimate, actions behind one menu instead of two buttons per ad. */
 export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void }) {
+  const words = useDayWords();
   const commands = useCommands();
   const groups = ORDER.map((verdict) => ({ verdict, ads: work.shown.filter((a) => a.verdict === verdict) })).filter((g) => g.ads.length > 0);
   const paused = work.hidden.filter((h) => h.paused);
@@ -109,7 +112,7 @@ export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void
           <div className="ad-direction-changes" data-testid="direction-changes">
             {work.directionChanges.map((mark, i) => (
               <span key={i} className="ad-mark" data-testid="change-mark">
-                ↻ {mark.text} · {formatLocalDate(mark.date)}
+                ↻ {mark.text} · {words.date(mark.date)}
               </span>
             ))}
           </div>

@@ -2348,98 +2348,47 @@ button.log-link {
   transform: translateX(2px);
   color: var(--accent);
 }
-/* «Что сделал сервис»: a panel beside the answer on a wide screen, the changes on a quiet line of time. */
-.brief-side {
-  display: none;
-}
-.brief-side-title {
-  margin: 0 0 4px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.brief-side-all {
+/*
+ * The service's review beside the answer: the assistant's message on the right of a wide screen, under the answer on a
+ * narrow one, before the ways deeper (analytics spec «Сводка»).
+ */
+.brief-layout {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin-top: 6px;
-  padding: 14px 0 0;
-  border: 0;
-  border-top: 1px solid var(--border);
-  background: none;
-  font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--accent-ink);
-  cursor: pointer;
+  flex-direction: column;
+  gap: 16px;
 }
-.brief-side-all .anticon {
-  font-size: 11px;
+.brief-layout .brief {
+  display: contents;
+}
+.brief-card { order: 1; }
+.brief-side { order: 2; }
+.brief-rows { order: 3; }
+.brief-side {
+  min-width: 0;
+  padding: 18px 18px 20px;
 }
 @media (min-width: 1080px) {
-  .workspace .page.brief-page:has(.brief-layout[data-side]) {
+  /* Outweighs the later narrow width of the page: the answer and the review side by side. */
+  .workspace .page.brief-page:has(.brief-layout) {
     max-width: 1128px;
   }
-  /* The answer on the left; what the service did and the ways deeper share the right column. */
-  .brief-layout[data-side] {
+  .brief-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-rows: auto 1fr;
-    grid-template-areas: "card side" "card rows";
+    grid-template-areas: "card side" "rows side";
     gap: 16px 24px;
     align-items: start;
   }
-  .brief-layout[data-side] .brief {
-    display: contents;
-  }
-  .brief-layout[data-side] .brief-card {
+  .brief-card {
     grid-area: card;
   }
-  .brief-layout[data-side] .brief-rows {
+  .brief-rows {
     grid-area: rows;
-  }
-  .brief-layout[data-side] .brief .brief-change {
-    display: none;
   }
   .brief-side {
     grid-area: side;
-    display: flex;
-    flex-direction: column;
-    padding: 22px 24px 18px;
-  }
-  .brief-side .brief-change {
-    position: relative;
-    padding: 12px 0 14px 24px;
-    border-radius: 0;
-    background: none;
-  }
-  .brief-side .brief-change::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 17px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-soft);
-  }
-  .brief-side .brief-change::after {
-    content: "";
-    position: absolute;
-    left: 4px;
-    top: 34px;
-    bottom: -14px;
-    width: 1px;
-    background: var(--border-strong);
-  }
-  .brief-side .brief-change:last-of-type::after {
-    display: none;
-  }
-  .brief-side .brief-what {
-    font-size: var(--fs-sm);
+    padding: 22px 24px 24px;
   }
 }
 
@@ -2878,7 +2827,7 @@ button.log-link {
   .brief-page {
     padding-top: 16px;
   }
-  .brief {
+  .brief-layout {
     gap: 12px;
   }
   .brief-card {
@@ -3144,19 +3093,8 @@ button.log-link {
   }
 }
 
-/* ---------- Simulation studio: the day, its counters and the review ---------- */
+/* ---------- Simulation: the player over «Реклама» and the assistant's messages ---------- */
 
-.workspace .page.studio-page {
-  width: calc(100% - 96px);
-  max-width: 1128px;
-  margin: 0 auto;
-  padding: 36px 0 80px;
-}
-.studio-head {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-}
 .studio-day {
   display: flex;
   align-items: baseline;
@@ -3232,171 +3170,6 @@ button.log-link {
 .studio-alert {
   margin: 0 0 16px;
 }
-.studio-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-.studio-stage {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 22px 24px 20px;
-}
-/* The period's totals as two cards that read like an ad's: a number, a line and one result in words. */
-.studio-summary {
-  order: 0;
-}
-.studio-sum {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.studio-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface-2);
-}
-.studio-tile-label {
-  margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--text-3);
-}
-.studio-tile-value {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 8px;
-  margin: 0;
-  font-size: var(--fs-xl);
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.035em;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.studio-tile-of {
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-3);
-}
-.studio-tile-value .studio-delta {
-  letter-spacing: 0;
-}
-.studio-tile-sub {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-/* The share of the month's budget spent: no marks, its words are the pace under it. */
-.studio-tile-bar {
-  align-self: stretch;
-  height: 6px;
-  margin: 4px 0 2px;
-  border-radius: 99px;
-  background: var(--surface-3);
-  overflow: hidden;
-}
-.studio-tile-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: var(--grad-accent);
-  transition: width 0.4s var(--ease);
-}
-.studio-tile-bar[data-tone="warning"] i { background: var(--warning); }
-.studio-tile-bar[data-tone="danger"] i { background: var(--danger); }
-.studio-tile .result-chip {
-  margin-top: auto;
-}
-/* The ads as people see them in Yandex, two cards a row, each with one result; the numbers open on the result. */
-.studio-ads {
-  order: 2;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  margin-top: 20px;
-}
-.studio-ads-head {
-  margin: 0 0 12px;
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  color: var(--text-3);
-}
-.studio-ad-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.studio-ad {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 14px 16px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
-}
-.studio-ad:hover,
-.studio-ad:focus-within {
-  border-color: var(--border-strong);
-  box-shadow: 0 8px 20px -14px rgba(22, 22, 40, 0.3);
-}
-.studio-ad-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-.studio-ad-site {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.studio-ad-title {
-  display: -webkit-box;
-  margin: 6px 0 0;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  line-height: 1.3;
-  color: #2a20b8;
-}
-.studio-ad-text {
-  display: -webkit-box;
-  margin: 4px 0 12px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  font-size: var(--fs-xs);
-  line-height: 1.45;
-  color: var(--text-2);
-}
-/* The result sits at the bottom, so the cards of a row line up whatever the length of their texts. */
-.studio-ad-foot {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
 /* A result in words: a chip of its tone that opens its numbers; it reads as a fact, not as a button to press. */
 .result-chip {
   display: inline-flex;
@@ -3434,39 +3207,6 @@ button.log-link {
 .result-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-.studio-ad-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 14px;
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-/* The service's estimate: a dot and a word of its colour. */
-.studio-ad-verdict {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 550;
-}
-.studio-ad-verdict i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.studio-ad-verdict[data-verdict="effective"] { color: var(--success); }
-.studio-ad-verdict[data-verdict="borderline"] { color: var(--warning); }
-.studio-ad-verdict[data-verdict="ineffective"] { color: var(--danger); }
-.studio-ad-verdict[data-verdict="learning"] { color: var(--accent-ink); }
-.studio-ad-leads {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
 }
 /* The numbers behind a result: a short list and one sentence on what they mean. */
 .numbers-card {
@@ -3507,34 +3247,6 @@ button.log-link {
   line-height: 1.45;
   color: var(--text-2);
 }
-.studio-delta {
-  font-weight: 650;
-  font-size: var(--fs-xs);
-}
-.studio-delta.good { color: var(--success); }
-.studio-delta.bad { color: var(--danger); }
-.studio-empty { order: 2; }
-/*
- * The day's button stays at the bottom of the screen while the list is longer than it (simulation-mode spec «Кнопка
- * дня под рукой»): sticky in the flow, so at the end of the list it stands in its place and covers no ad.
- */
-.studio-actions {
-  order: 3;
-  position: sticky;
-  bottom: 16px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  margin: 16px -10px 0;
-  padding: 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 12px 28px -16px rgba(22, 22, 40, 0.35);
-}
 .studio-primary {
   min-height: 44px;
   border: 0;
@@ -3569,11 +3281,6 @@ button.log-link {
 .studio-link:disabled {
   color: var(--text-3);
   cursor: default;
-}
-.studio-rail {
-  min-width: 0;
-  min-height: 280px;
-  padding: 22px 24px 24px;
 }
 /* The rail is the service speaking: its mark and name, then its message in a bubble (simulation-mode spec). */
 .studio-msg-head {
@@ -3734,11 +3441,6 @@ button.log-link {
   font-size: var(--fs-xs);
   color: var(--text-2);
 }
-.studio-empty {
-  padding: 18px 0;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
 .studio-modal {
   display: flex;
   flex-direction: column;
@@ -3765,80 +3467,77 @@ button.log-link {
     animation: none;
   }
 }
-@media (max-width: 900px) {
-  .workspace .page.studio-page {
-    width: calc(100% - 48px);
-    padding: 28px 0 64px;
-  }
-  .studio-grid {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 24px;
-  }
-  .studio-stage,
-  .studio-rail {
-    width: 100%;
-  }
-  /* On a phone the review comes first: the decision must not wait under eight ad rows. */
-  .studio-rail {
-    order: -1;
-    padding: 18px 18px 20px;
-    min-height: 0;
-  }
-  .studio-stage {
-    padding: 18px 18px 16px;
-  }
-  .studio-rail[data-state="empty"] {
-    display: none;
-  }
-  .studio-actions {
-    position: static;
-    order: 1;
-    margin: 14px 0 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-  .studio-ads { order: 3; }
+
+/* The simulation's player over «Реклама»: its day and state, the step's buttons, the real launch and the days strip. */
+.sim-player {
+  margin: 0 0 16px;
+  padding: 16px 20px 12px;
+}
+.sim-player-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.sim-player-end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.sim-player .studio-strip {
+  margin-top: 14px;
+}
+/* The step's buttons under the days, the note about the training market at the other end. */
+.sim-player-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 18px;
+  margin-top: 14px;
+}
+.sim-player-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sim-player .studio-disclaimer {
+  margin: 0;
+}
+/* Beside the answer the message is narrow: an action's undo goes under its words. */
+.review-rail .studio-msg-action {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.review-rail .studio-msg-undo {
+  flex-basis: 100%;
+  align-self: flex-start;
+  padding-left: 26px;
+  text-align: left;
+}
+.sim-player .studio-alert {
+  margin: 12px 0 0;
+}
+.studio-msg-more-button {
+  border: 0;
+  background: none;
+  padding: 0 0 0 2px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
 }
 @media (max-width: 720px) {
-  body .workspace .page.studio-page {
-    width: 100%;
-    margin: 0;
-    padding: 16px 12px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 32px);
+  .sim-player {
+    padding: 14px 14px 10px;
   }
-  .studio-head,
-  .studio-strip,
-  .studio-disclaimer {
-    margin-left: 4px;
-    margin-right: 4px;
-  }
-  .studio-head { flex-wrap: wrap; }
-  .studio-scenario { order: 1; flex-basis: 100%; margin-top: -6px; }
-  .studio-go-real,
-  .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
-  /*
-   * On a phone the totals and the ads are one card a row.
-   */
-  .studio-sum { grid-template-columns: minmax(0, 1fr); }
+  .studio-scenario { flex-basis: 100%; order: 1; margin-top: -4px; }
+  .sim-player-end { margin-left: auto; }
+  .sim-player-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: center; gap: 10px 18px; }
+  .sim-player-actions .studio-primary { flex: 1 0 100%; white-space: nowrap; }
+  .sim-player .studio-disclaimer { flex: 1 0 100%; justify-content: center; }
   /* On a phone the undo goes under the action's words, so they keep the width. */
   .studio-msg-action { flex-wrap: wrap; row-gap: 4px; }
   .studio-msg-undo { flex-basis: 100%; align-self: flex-start; padding-left: 26px; text-align: left; }
-  .studio-ad-grid { grid-template-columns: minmax(0, 1fr); }
-  .studio-actions {
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 12px 18px;
-  }
-  .studio-primary {
-    flex: 1 0 100%;
-    white-space: nowrap;
-  }
-  .studio-primary { min-height: 44px; }
-  .studio-go-real { margin-left: 0; }
 }

@@ -17,7 +17,11 @@ export type AdsWork = ServiceWorkModel & {
   history: HistoryItem[];
   names: Names;
   /** Only in a simulation: the run without the service (simulation-mode «Контрольный прогон»). */
-  sim: (Pick<DecisionScreenModel, "comparison" | "result" | "decisionDays" | "day" | "totalDays" | "scenarioTitle"> & { ended: boolean }) | null;
+  sim: (Pick<DecisionScreenModel, "comparison" | "result" | "decisionDays" | "day" | "totalDays" | "scenarioTitle"> & {
+    ended: boolean;
+    /** The simulation's first day: day 1 of «Дни симуляции вместо дат» (simulation-mode spec). */
+    startedOn: LocalDate;
+  }) | null;
 };
 
 const median = (values: readonly number[]): Kopecks | null => {
@@ -87,7 +91,7 @@ export const loadAdsWork = async (businessId: string): Promise<AdsWork> => {
   let sim: AdsWork["sim"] = null;
   if (simulation) {
     const m = buildDecisionScreen({ observed, simulation, timeZone: business.timeZone, monthlyBudgetRub: business.monthlyBudgetRub, directions, changes });
-    sim = { comparison: m.comparison, result: m.result, decisionDays: m.decisionDays, day: m.day, totalDays: m.totalDays, scenarioTitle: m.scenarioTitle, ended: m.result !== null };
+    sim = { comparison: m.comparison, result: m.result, decisionDays: m.decisionDays, day: m.day, totalDays: m.totalDays, scenarioTitle: m.scenarioTitle, ended: m.result !== null, startedOn };
   }
   return { ...work, site, history: history.items, names: history.names, sim };
 };

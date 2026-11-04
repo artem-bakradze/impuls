@@ -6,17 +6,25 @@ import { callApi, runWebJob } from "@/lib/client-api";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 
 /**
- * The studio's clock: polls the virtual day, refreshes the server page only when a step is over, and sends the
- * owner's steps. It never walks the time by itself: every day is a deliberate press.
+ * The simulation's clock on «Реклама»: polls the virtual day, refreshes the server page only when a step is over, and
+ * sends the owner's steps. It never walks the time by itself: every day is a deliberate press. Without a simulation
+ * (Direct) it is given null and does nothing, so the screen calls it the same way in both modes.
  */
-export const useSimulation = (initial: SimulationStatus) => {
+export const useSimulation = (initial: SimulationStatus | null) => {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [turnSeenAt, setTurnSeenAt] = useState<number | null>(initial.agentTurn ? Date.now() : null);
+  const [turnSeenAt, setTurnSeenAt] = useState<number | null>(initial?.agentTurn ? Date.now() : null);
   const [now, setNow] = useState(() => Date.now());
-  const seen = useRef({ changes: initial.changes, day: initial.day, status: initial.status, thinking: initial.agentTurn !== null, weeks: initial.weeks });
+  const simulated = useRef(initial !== null);
+  const seen = useRef({
+    changes: initial?.changes ?? 0,
+    day: initial?.day ?? 0,
+    status: initial?.status ?? "paused",
+    thinking: (initial?.agentTurn ?? null) !== null,
+    weeks: initial?.weeks ?? 0,
+  });
   /**
    * A step the owner pressed that the worker has not taken yet: until then the server still says «paused» about the day
    * before, and that must not put «прожит» back on the screen (simulation-mode spec: a step that is not over is not shown
@@ -25,6 +33,7 @@ export const useSimulation = (initial: SimulationStatus) => {
   const pressed = useRef<{ day: number; weeks: number } | null>(null);
 
   useEffect(() => {
+    if (!simulated.current) return;
     const timer = window.setInterval(() => {
       setNow(Date.now());
       void callApi<SimulationStatus>("/api/simulation", "GET").then((result) => {
@@ -50,15 +59,20 @@ export const useSimulation = (initial: SimulationStatus) => {
   }, [router]);
 
   const act = async (control: SimulationAction) => {
+    if (status === null) return;
     setBusy(control.action);
     setError(null);
     if (control.action === "step_week" || control.action === "step_day") {
-      setStatus((current) => ({
-        ...current,
-        failed: false,
-        status: "stepping",
-        step: { kind: control.action === "step_week" ? "week" : "day", week: control.action === "step_week" ? current.weeks + 1 : null },
-      }));
+      setStatus((current) =>
+        current === null
+          ? current
+          : {
+              ...current,
+              failed: false,
+              status: "stepping",
+              step: { kind: control.action === "step_week" ? "week" : "day", week: control.action === "step_week" ? current.weeks + 1 : null },
+            },
+      );
       seen.current = { ...seen.current, status: "stepping" };
       pressed.current = { day: status.day, weeks: status.weeks };
     }
@@ -75,8 +89,8 @@ export const useSimulation = (initial: SimulationStatus) => {
       return;
     }
     if (control.action === "restart") {
-      // A new run starts from day 1 with a new journal: a full load is simpler than patching the studio state.
-      window.location.assign("/simulation");
+      // A new run starts from day 1 with a new journal: a full load is simpler than patching the screen's state.
+      window.location.assign("/summary");
       return;
     }
     router.refresh();

@@ -1,4 +1,5 @@
-import { formatLocalDate } from "./format";
+import { calendarWords } from "./day-words";
+import type { DayWords } from "./day-words";
 
 export interface BudgetPace {
   tone: "good" | "bad" | "warning" | "neutral";
@@ -19,11 +20,11 @@ export const budgetPace = (input: {
   forecast: { left: number; exhaustOn: string | null } | null;
   /** The month of the data, «2026-11»: a forecast day after it is not a warning for this month. */
   month: string;
-}): BudgetPace | null => {
+}, words: DayWords = calendarWords): BudgetPace | null => {
   if (input.monthBudget <= 0) return null;
   if (input.spent >= input.monthBudget) return { tone: "bad", text: "бюджет месяца потрачен" };
   const exhaustOn = input.forecast?.exhaustOn ?? null;
-  if (exhaustOn !== null && exhaustOn.slice(0, 7) === input.month) return { tone: "warning", text: `хватит до ${formatLocalDate(exhaustOn)}` };
+  if (exhaustOn !== null && exhaustOn.slice(0, 7) === input.month) return { tone: "warning", text: `хватит ${words.until(exhaustOn)}` };
   if (input.plan <= 0) return null;
   const off = Math.round(((input.spent - input.plan) / input.plan) * 100);
   if (Math.abs(off) < ON_PLAN_PERCENT) return { tone: "good", text: "тратим по плану" };

@@ -18,7 +18,7 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
   await page.getByLabel("Симуляция").check();
   await expect(page.getByLabel("Обычный месяц")).toBeChecked();
   await page.getByRole("button", { name: "Запустить симуляцию" }).click();
-  await page.waitForURL("**/simulation", { timeout: 150_000 });
+  await page.waitForURL("**/summary", { timeout: 150_000 });
 
   const day = () => page.getByTestId("studio-day").textContent();
   const state = () => page.getByTestId("studio-status").textContent();
@@ -35,16 +35,12 @@ test("the test agent cuts a junk query with an insight and reviews the week", as
     await step(page.getByRole("button", { name: /Прожить неделю/ }));
   }
 
-  await page.getByRole("link", { name: "Реклама" }).click();
-  await page.waitForURL("**/summary");
   await page.getByRole("button", { name: /История/ }).click();
   const journal = page.getByTestId("agent-journal");
   const negative = journal.getByTestId("journal-change").filter({ hasText: /Убрал показы по запросам .*«(идеи|форум)»/ }).first();
   await expect(negative).toBeVisible();
   await expect(negative.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
-  await negative.getByText("На чём основано").click();
-  await expect(negative.locator("dl")).toContainText(/запрос/i);
   await expect(journal.getByText("разбор недели").first()).toBeVisible();
-  // Open checks are said in the message with their day: «16 ноября проверю, …».
-  await expect(journal.locator(".j-expect").filter({ hasText: /\d+ \S+ проверю, / }).first()).toBeVisible();
+  // Open checks are said in the message with their day, a number in a simulation: «В день 16 проверю, …».
+  await expect(journal.locator(".j-expect").filter({ hasText: /[Вв] день \d+ проверю, / }).first()).toBeVisible();
 });
