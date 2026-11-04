@@ -3227,61 +3227,80 @@ button.log-link {
   flex-direction: column;
   padding: 22px 24px 20px;
 }
-/* The period's totals over the ads: three numbers side by side and the month's money as a bar with the plan mark. */
+/* The period's totals as two cards that read like an ad's: a number, a line and one result in words. */
 .studio-summary {
   order: 0;
 }
-.studio-summary-period {
-  margin: 0 0 10px;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
-/* The cost per lead carries the longest words, «за обращение · ориентир 1 000 ₽»: its column is the widest. */
 .studio-sum {
   display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
-.studio-metric {
+.studio-tile {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
-  padding: 0 18px;
-  border-left: 1px solid var(--border);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
 }
-.studio-metric:first-child {
-  padding-left: 0;
-  border-left: 0;
+.studio-tile-label {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-3);
 }
-.studio-metric-value {
+.studio-tile-value {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   column-gap: 8px;
+  margin: 0;
   font-size: var(--fs-xl);
   font-weight: 650;
-  line-height: 1.1;
+  line-height: 1.15;
   letter-spacing: -0.035em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.studio-metric-value[data-tone="danger"] {
-  color: var(--danger);
-}
-.studio-metric-value .studio-delta {
-  letter-spacing: 0;
-}
-.studio-metric-label {
+.studio-tile-of {
   font-size: var(--fs-xs);
-  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--text-3);
 }
-.brief-bar.studio-budget {
-  margin: 18px 0 8px;
+.studio-tile-value .studio-delta {
+  letter-spacing: 0;
 }
-.brief-bar.studio-budget[data-plan] {
-  margin-bottom: 30px;
+.studio-tile-sub {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+/* The share of the month's budget spent: no marks, its words are the pace under it. */
+.studio-tile-bar {
+  align-self: stretch;
+  height: 6px;
+  margin: 4px 0 2px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.studio-tile-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--grad-accent);
+  transition: width 0.4s var(--ease);
+}
+.studio-tile-bar[data-tone="warning"] i { background: var(--warning); }
+.studio-tile-bar[data-tone="danger"] i { background: var(--danger); }
+.studio-tile .studio-chip {
+  margin-top: auto;
 }
 /* The ads as people see them in Yandex, two cards a row, each with one result; the numbers open on the result. */
 .studio-ads {
@@ -3361,8 +3380,8 @@ button.log-link {
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-/* The ad's result: a chip of its tone that opens its numbers; it reads as a fact, not as a button to press. */
-.studio-ad-result {
+/* A result in words: a chip of its tone that opens its numbers; it reads as a fact, not as a button to press. */
+.studio-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -3379,19 +3398,23 @@ button.log-link {
   text-align: left;
   cursor: help;
 }
-.studio-ad-result[data-tone="good"] {
+.studio-chip[data-tone="good"] {
   background: var(--success-soft);
   color: var(--success);
 }
-.studio-ad-result[data-tone="bad"] {
+.studio-chip[data-tone="bad"] {
   background: var(--danger-soft);
   color: var(--danger);
 }
-.studio-ad-result .anticon {
+.studio-chip[data-tone="warning"] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.studio-chip .anticon {
   font-size: 12px;
   opacity: 0.7;
 }
-.studio-ad-result:focus-visible {
+.studio-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -3433,38 +3456,38 @@ button.log-link {
   margin-right: 5px;
   color: var(--text-3);
 }
-/* The numbers behind a result: a short list of the 7 days and the rule of the estimate. */
-.studio-ad-numbers {
+/* The numbers behind a result: a short list and one sentence on what they mean. */
+.studio-numbers {
   width: 248px;
 }
-.studio-ad-numbers-title {
+.studio-numbers-title {
   margin: 0 0 6px;
   font-size: var(--fs-xs);
   font-weight: 650;
   color: var(--text);
 }
-.studio-ad-numbers dl {
+.studio-numbers dl {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin: 0;
 }
-.studio-ad-numbers dl div {
+.studio-numbers dl div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-size: var(--fs-xs);
 }
-.studio-ad-numbers dt {
+.studio-numbers dt {
   color: var(--text-3);
 }
-.studio-ad-numbers dd {
+.studio-numbers dd {
   margin: 0;
   color: var(--text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.studio-ad-numbers-rule {
+.studio-numbers-note {
   margin: 10px 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--border);
@@ -3732,23 +3755,9 @@ button.log-link {
   .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
   /*
-   * On a phone the totals are two columns and the money a line of its own above its bar; the ads are one card a row.
+   * On a phone the totals and the ads are one card a row.
    */
-  .studio-sum {
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-    row-gap: 14px;
-  }
-  .studio-metric { padding: 0 14px; }
-  .studio-metric-value { font-size: var(--fs-lg); }
-  .studio-metric:nth-child(3) {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: baseline;
-    gap: 8px;
-    padding: 14px 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
+  .studio-sum { grid-template-columns: minmax(0, 1fr); }
   .studio-ad-grid { grid-template-columns: minmax(0, 1fr); }
   .studio-actions {
     flex-wrap: wrap;

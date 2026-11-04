@@ -6,6 +6,7 @@ import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { formatCount, formatLocalDate, formatRange, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -16,7 +17,8 @@ import { adResult } from "@/lib/ad-result";
 import type { GoalWord } from "@/lib/ad-result";
 import { VERDICT_WORD, verdictRule } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
-import { goalComparable } from "@/lib/summary-model";
+import { budgetPace } from "@/lib/budget-pace";
+import { goalComparable, goalExplanation } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { useCountUp } from "./useCountUp";
@@ -32,6 +34,36 @@ const latestReview = (work: AdsWork): JournalEntry | null =>
     .filter((entry) => entry.kind === "agent" || entry.kind === "rules" || entry.kind === "quiet")
     .at(-1) ?? null;
 
+/** The numbers behind a result and one sentence on what they mean: what opens on a result chip of the studio. */
+function NumbersCard({ title, rows, note, testId }: { title: string; rows: [string, string][]; note: ReactNode; testId: string }) {
+  return (
+    <div className="studio-numbers" data-testid={testId}>
+      <p className="studio-numbers-title">{title}</p>
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="studio-numbers-note">{note}</p>
+    </div>
+  );
+}
+
+/** A result in words, coloured by its tone, that opens its numbers by hover or tap (simulation-mode spec «Итог студии»). */
+function ResultChip({ result, numbers, testId }: { result: { tone: string; text: string }; numbers: ReactNode; testId: string }) {
+  return (
+    <Popover trigger={["hover", "click"]} placement="top" content={numbers}>
+      <button type="button" className="studio-chip" data-tone={result.tone} data-testid={testId}>
+        {result.text}
+        <InfoCircleOutlined aria-hidden="true" />
+      </button>
+    </Popover>
+  );
+}
+
 /** The ad's 7 days in numbers with the rule of its estimate: what opens on its result (simulation-mode spec «Подписи студии»). */
 function AdNumbers({ ad, cso, goalWord }: { ad: ShownAd; cso: number; goalWord: GoalWord }) {
   const word = VERDICT_WORD[ad.verdict];
@@ -43,22 +75,12 @@ function AdNumbers({ ad, cso, goalWord }: { ad: ShownAd; cso: number; goalWord: 
     ["Переходы на сайт", formatCount(ad.clicks)],
     ["Показы", formatCount(ad.impressions)],
   ];
-  return (
-    <div className="studio-ad-numbers" data-testid="studio-ad-numbers">
-      <p className="studio-ad-numbers-title">За 7 дней</p>
-      <dl>
-        {rows.map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="studio-ad-numbers-rule">
-        <b>{`${word.slice(0, 1).toUpperCase()}${word.slice(1)}`}</b> — {verdictRule(ad.verdict, cso)}.
-      </p>
-    </div>
+  const note = (
+    <>
+      <b>{`${word.slice(0, 1).toUpperCase()}${word.slice(1)}`}</b> — {verdictRule(ad.verdict, cso)}.
+    </>
   );
+  return <NumbersCard title="За 7 дней" rows={rows} note={note} testId="studio-ad-numbers" />;
 }
 
 /**
@@ -82,12 +104,7 @@ function StudioAd({ ad, before, site, cso, goalWord }: { ad: ShownAd; before: Sh
       <h3 className="studio-ad-title">{ad.title}</h3>
       <p className="studio-ad-text">{ad.text}</p>
       <div className="studio-ad-foot">
-        <Popover trigger={["hover", "click"]} placement="top" content={<AdNumbers ad={ad} cso={cso} goalWord={goalWord} />}>
-          <button type="button" className="studio-ad-result" data-tone={result.tone} data-testid="studio-ad-result">
-            {result.text}
-            <InfoCircleOutlined aria-hidden="true" />
-          </button>
-        </Popover>
+        <ResultChip result={result} numbers={<AdNumbers ad={ad} cso={cso} goalWord={goalWord} />} testId="studio-ad-result" />
         <p className="studio-ad-state">
           <span className="studio-ad-verdict" data-verdict={ad.verdict}>
             <i aria-hidden="true" />
@@ -106,8 +123,9 @@ function StudioAd({ ad, before, site, cso, goalWord }: { ad: ShownAd; before: Sh
 }
 
 /**
- * The totals of the period over the ads: leads, the cost per lead against the goal and the month's money with the plan
- * mark, the same numbers and words as on the main screen (analytics spec «Сводка»). After a step each shows its change.
+ * The totals of the period over the ads as two cards that read like an ad's (simulation-mode spec «Итог студии»): leads
+ * with their cost against the goal in words, and the month's money with its pace against the even plan in words. The
+ * numbers and what the goal and the plan are open on the words. After a step the leads and the money show what it added.
  */
 function StudioSummary({ model, before, firstDay }: { model: SummaryModel; before: { leads: number; spend: number } | null; firstDay: boolean }) {
   const leads = useCountUp(model.leads.value);
@@ -115,50 +133,65 @@ function StudioSummary({ model, before, firstDay }: { model: SummaryModel; befor
   const cost = useCountUp(model.goal.current ?? 0);
   const leadDelta = before === null ? 0 : model.leads.value - before.leads;
   const spendDelta = before === null ? 0 : model.spentMonth - before.spend;
-  const comparable = goalComparable(model.goal);
-  const over = comparable && model.goal.status === "above";
-  const share = model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0;
-  const planShare = model.monthBudget > 0 ? Math.min(100, (model.budgetPlan / model.monthBudget) * 100) : 0;
-  const tone = model.spentMonth >= model.monthBudget && model.monthBudget > 0 ? "danger" : model.budgetForecast !== null ? "warning" : undefined;
+  const goalWord: GoalWord = goalComparable(model.goal) ? "цели" : "ориентира";
+  const result = adResult({ leads: model.leads.value, costPerLead: model.goal.current }, model.goal.cso, goalWord);
   const today = model.dataPeriod?.to ?? "";
+  const day = today === "" ? "сегодня" : formatLocalDate(today);
+  const period = model.dataPeriod ? formatRange(model.dataPeriod.from, model.dataPeriod.to) : null;
+  const pace = firstDay ? null : budgetPace({ monthBudget: model.monthBudget, spent: model.spentMonth, plan: model.budgetPlan, forecast: model.budgetForecast, month: today.slice(0, 7) });
+  const share = model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0;
+  const barTone = model.monthBudget > 0 && model.spentMonth >= model.monthBudget ? "danger" : model.budgetForecast !== null ? "warning" : undefined;
+  const exhaustOn = model.budgetForecast?.exhaustOn ?? null;
+
+  const leadsNumbers = (
+    <NumbersCard
+      title={period ?? "Обращения"}
+      rows={[
+        ["Обращения", formatCount(model.leads.value)],
+        ["Цена обращения", model.goal.current === null ? "—" : formatRub(model.goal.current)],
+        [goalWord === "цели" ? "Цель" : "Ориентир", formatRub(model.goal.cso)],
+      ]}
+      note={goalExplanation(model.goal)}
+      testId="studio-leads-numbers"
+    />
+  );
+  const moneyRows: [string, string][] = [
+    ["Бюджет месяца", formatRub(model.monthBudget)],
+    [`План к ${day}`, formatRub(model.budgetPlan)],
+    ["Потрачено", formatRub(model.spentMonth)],
+    // Whole rubles of the budget less the whole rubles shown as spent, so the two lines add up to the budget on screen.
+    ["Осталось", formatRub(Math.max(0, Math.floor(model.monthBudget / 100) - Math.floor(model.spentMonth / 100)) * 100)],
+    ...(exhaustOn === null ? [] : ([["Хватит до", formatLocalDate(exhaustOn)]] as [string, string][])),
+  ];
+  const moneyNumbers = (
+    <NumbersCard title={`К ${day}`} rows={moneyRows} note={`План — сколько ушло бы к ${day}, если тратить бюджет месяца поровну каждый день.`} testId="studio-money-numbers" />
+  );
+
   return (
     <div className="studio-summary" data-testid="studio-summary">
-      {model.dataPeriod ? <p className="studio-summary-period">{formatRange(model.dataPeriod.from, model.dataPeriod.to)}</p> : null}
+      <h2 className="studio-ads-head">{period === null ? "Итог" : `Итог · ${period}`}</h2>
       <div className="studio-sum">
-        <div className="studio-metric">
-          <span className="studio-metric-value">
+        <section className="studio-tile" data-testid="studio-leads">
+          <h3 className="studio-tile-label">Обращения</h3>
+          <p className="studio-tile-value">
             {formatCount(leads)}
             {leadDelta > 0 ? <b className="studio-delta good">+{formatCount(leadDelta)}</b> : null}
-          </span>
-          <span className="studio-metric-label">{leadsWord(leads)}</span>
-        </div>
-        <div className="studio-metric">
-          <span className="studio-metric-value" data-tone={over ? "danger" : undefined}>
-            {model.goal.current === null ? "—" : formatRub(cost)}
-          </span>
-          <span className="studio-metric-label">
-            за обращение · {comparable ? "цель" : "ориентир"} {formatRub(model.goal.cso)}
-          </span>
-        </div>
-        <div className="studio-metric">
-          <span className="studio-metric-value">
+          </p>
+          {model.goal.current === null ? null : <p className="studio-tile-sub">по {formatRub(cost)} за обращение</p>}
+          <ResultChip result={result} numbers={leadsNumbers} testId="studio-leads-result" />
+        </section>
+        <section className="studio-tile" data-testid="studio-money">
+          <h3 className="studio-tile-label">Потрачено</h3>
+          <p className="studio-tile-value">
             {formatRub(spend)}
+            <span className="studio-tile-of">из {formatRub(model.monthBudget)}</span>
             {spendDelta > 0 ? <b className="studio-delta">+{formatRub(spendDelta)}</b> : null}
+          </p>
+          <span className="studio-tile-bar" data-tone={barTone} aria-hidden="true">
+            <i style={{ width: `${share}%` }} />
           </span>
-          <span className="studio-metric-label">потрачено из {formatRub(model.monthBudget)}</span>
-        </div>
-      </div>
-      <div className="brief-bar studio-budget" data-tone={tone} data-plan={(model.monthBudget > 0 && !firstDay) || undefined} data-testid="studio-budget">
-        <i style={{ width: `${share}%` }} aria-hidden="true" />
-        {model.monthBudget > 0 && !firstDay ? (
-          <>
-            <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
-            <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined}>
-              <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
-              план {formatRub(model.budgetPlan)}
-            </span>
-          </>
-        ) : null}
+          {pace === null ? null : <ResultChip result={pace} numbers={moneyNumbers} testId="studio-pace" />}
+        </section>
       </div>
     </div>
   );
