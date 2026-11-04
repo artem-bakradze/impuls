@@ -63,4 +63,20 @@ describe("settings disclosure", () => {
     render(<SettingsView model={{ ...model, goal: { mode: "auto", rub: 600, learned: true } }} />);
     expect(document.body.textContent?.replace(/\u00a0/g, " ")).toContain("Подбираем сами · сейчас до 600 ₽");
   });
+
+  it("explains where the automatic goal comes from, and nothing for one's own", () => {
+    const { unmount } = render(<SettingsView model={{ ...model, goal: { mode: "auto", rub: 1000, learned: false } }} />);
+    expect(screen.getByTestId("settings-hint")).toHaveTextContent("Пока это ориентир: бюджет месяца, делённый на 30");
+    unmount();
+    const { unmount: learned } = render(<SettingsView model={{ ...model, goal: { mode: "auto", rub: 600, learned: true } }} />);
+    expect(screen.getByTestId("settings-hint")).toHaveTextContent("Рассчитано по вашим обращениям за последние 30 дней");
+    learned();
+    render(<SettingsView model={{ ...model, goal: { mode: "user", rub: 500, learned: false } }} />);
+    expect(screen.queryByTestId("settings-hint")).toBeNull();
+  });
+
+  it("lists the lead actions as one phrase", () => {
+    render(<SettingsView model={{ ...model, goals: ["Заявка или запись с сайта", "Нажатие на номер телефона"] }} />);
+    expect(screen.getByText("Заявка или запись с сайта, нажатие на номер телефона")).toBeTruthy();
+  });
 });

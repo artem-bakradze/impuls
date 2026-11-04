@@ -33,7 +33,7 @@ export function DirectStep({ directApiMode, connected, outcome, onConnect }: Pro
           </span>
           <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
             <h2 className="t-h3">На этом стенде Яндекс Директ не подключён</h2>
-            <p className="t-body t-muted">Здесь доступна только тестовая копия Директа: настоящая реклама не запускается, деньги не списываются. Для учебного рынка с решениями по неделям выберите «Симуляция».</p>
+            <p className="t-body t-muted">Здесь доступна только тестовая копия Директа: настоящая реклама не запускается, деньги не списываются. Для учебного рынка, где месяц проходит по дням, выберите «Симуляция».</p>
           </div>
         </div>
         {connected ? null : (

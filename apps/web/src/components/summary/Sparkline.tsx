@@ -69,6 +69,9 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
 
   return (
     <figure className="sparkline" data-testid="cost-chart" aria-label={`Цена обращения с ${formatLocalDate(firstDate)} по ${formatLocalDate(lastDate)}, ${goalLabel} ${formatRub(goal)}${misses.length > 0 ? `, дней без обращений: ${misses.length}` : ""}`} role="img">
+      <div className="spark-title" aria-hidden="true">
+        цена обращения по дням
+      </div>
       <div className="spark-plot">
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
           <defs>

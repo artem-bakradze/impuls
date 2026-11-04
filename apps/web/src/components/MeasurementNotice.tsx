@@ -24,7 +24,7 @@ export function MeasurementNotice({ model, compact = false, readOnly = false }: 
     if (outcome.kind === "done") { setCheck(measurementState(outcome.output)); router.refresh(); }
     else setError(outcome.kind === "error" ? outcome.message : "Проверка ещё выполняется. Обновите страницу чуть позже.");
   };
-  if (compact && shown.simulated) return <details className="context-details" data-testid="measurement-status"><summary>Учебные данные</summary><p className="t-small">{text.detail}</p></details>;
+  if (compact && shown.simulated) return <details className="context-details" data-testid="measurement-status"><summary>Откуда обращения в симуляции</summary><p className="t-small">{text.detail}</p></details>;
   return <Note tone={shown.simulated || shown.status === "found" ? "neutral" : "warning"} data-testid="measurement-status">
     <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
       <strong>{text.title}</strong><span>{text.detail}</span>

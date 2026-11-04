@@ -6,11 +6,12 @@ import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { formatCount, formatRub, plural } from "@/lib/format";
+import { formatCount, formatLocalDate, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import { agentTurnText, DIVERGED_TEXT, elapsedText, stepText, stepWeekLabel } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
+import { VERDICT_WORD } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
@@ -48,10 +49,10 @@ function StudioAd({ ad, before, maxSpend }: { ad: ShownAd; before: ShownAd | nul
       <div className="studio-ad-main">
         <span className="studio-ad-name">{ad.title}</span>
         <span className="studio-ad-sub">
-          {channelName(ad.channel)} · потрачено {formatRub(ad.spend)}
+          {channelName(ad.channel)} · <span data-testid="studio-ad-verdict">{VERDICT_WORD[ad.verdict]}</span> · потрачено {formatRub(ad.spend)}
           {impressionsDelta > 0 ? ` · показы +${formatCount(impressionsDelta)}` : ""}
         </span>
-        {/* The ad's share of the 7 days' money against the most spending one: where the money goes, at a glance. */}
+        {/* The ad's share of the 7 days' money against the most spending one, coloured by the estimate named above. */}
         <span className="studio-ad-bar" aria-hidden="true">
           <i style={{ width: `${share}%` }} data-verdict={ad.verdict} />
         </span>
@@ -243,10 +244,13 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
       <div className="studio-head">
         <div className="studio-day">
           <span className="studio-day-num" data-testid="studio-day">День {shownDay}</span>
-          <span className="studio-day-of">из {status.totalDays}</span>
+          <span className="studio-day-of">
+            из {status.totalDays}
+            {model.dataPeriod ? ` · ${formatLocalDate(model.dataPeriod.to)}` : ""}
+          </span>
           <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : status.ended ? "done" : firstDay ? "muted" : "done"}`} data-testid="studio-status">{tag}</span>
         </div>
-        <span className="studio-scenario">{work.sim?.scenarioTitle ?? "Симуляция"}</span>
+        <span className="studio-scenario" data-testid="studio-scenario">{work.sim?.scenarioTitle ? `сценарий «${work.sim.scenarioTitle}»` : "симуляция"}</span>
         <Button className="studio-go-real" onClick={() => void confirmGoReal()} disabled={stepping}>
           Запустить по-настоящему
         </Button>
@@ -319,13 +323,13 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           </Button>
           <span className="t-small">
             {status.replay.available
-              ? "Сервис повторит те же решения без новых запросов к модели — цифры совпадут, если вы будете действовать так же."
-              : "Повторять пока нечего: в этом прогоне сервис ещё не принимал решений на модели."}
+              ? "Сервис повторит те же решения — цифры совпадут, если вы будете действовать так же."
+              : "Повторять пока нечего: в этом прогоне сервис ещё не принимал своих решений."}
           </span>
           <Button block onClick={() => restart("fresh")}>
             Прогнать заново
           </Button>
-          <span className="t-small">Сервис будет решать заново — рынок будет тем же, но агент может решить иначе.</span>
+          <span className="t-small">Рынок будет тем же, но сервис будет решать заново и может решить иначе.</span>
         </div>
       </Modal>
 

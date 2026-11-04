@@ -79,16 +79,20 @@ function ChangeLine({ change, onRollback }: { change: JournalChange; onRollback:
   );
 }
 
-function Entry({ entry, onRollback }: { entry: JournalEntry; onRollback: (item: HistoryItem) => void }) {
+/** A day's records stand under one date (analytics spec «Сводка»): the next record of the same day keeps only its tags. */
+function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: boolean; onRollback: (item: HistoryItem) => void }) {
   const when = entry.from ? `${formatLocalDate(entry.from)} — ${formatLocalDate(entry.date)}` : `День ${entry.day} · ${formatLocalDate(entry.date)}`;
   const [first, ...rest] = entry.paragraphs;
+  const tagged = entry.weekly || entry.kind === "rules";
   return (
-    <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry">
-      <div className="j-when">
-        <time dateTime={entry.date}>{when}</time>
-        {entry.weekly ? <span className="j-tag">разбор недели</span> : null}
-        {entry.kind === "rules" ? <span className="j-tag j-tag-dim">страховочные правила</span> : null}
-      </div>
+    <article id={`log-${entry.id}`} className="j-entry" data-testid="journal-entry" data-same-day={sameDay || undefined}>
+      {!sameDay || tagged ? (
+        <div className="j-when">
+          {sameDay ? null : <time dateTime={entry.date}>{when}</time>}
+          {entry.weekly ? <span className="j-tag">разбор недели</span> : null}
+          {entry.kind === "rules" ? <span className="j-tag j-tag-dim">страховочные правила</span> : null}
+        </div>
+      ) : null}
       {entry.changes.length > 0 ? (
         <ul className="j-changes" data-testid="journal-headline">
           {entry.changes.map((c, i) => (
@@ -137,11 +141,14 @@ function Entry({ entry, onRollback }: { entry: JournalEntry; onRollback: (item: 
 
 function Section({ section, children }: { section: JournalSection; children: React.ReactNode }) {
   const dates = section.from === section.to ? formatLocalDate(section.from) : `${formatLocalDate(section.from)} — ${formatLocalDate(section.to)}`;
+  // A week is reviewed the morning after its days; the header names that morning, so its record does not look misplaced.
+  const review = section.week === null ? undefined : section.entries.find((e) => e.weekly && e.date > section.to)?.date;
   return (
     <section className="j-section" data-week={section.week ?? undefined} aria-label={section.week ? `Неделя ${section.week}` : dates}>
-      <div className="j-week">
+      <div className="j-week" data-testid="journal-week">
         {section.week ? `Неделя ${section.week} · ` : ""}
         {dates}
+        {review ? ` · разбор ${formatLocalDate(review)}` : ""}
       </div>
       {children}
     </section>
@@ -182,9 +189,10 @@ export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRo
         ) : (
           sections.map((s) => (
             <Section key={`${s.week ?? "d"}:${s.from}`} section={s}>
-              {s.entries.map((e) => (
-                <Entry key={e.id} entry={e} onRollback={onRollback} />
-              ))}
+              {s.entries.map((e, i) => {
+                const previous = s.entries[i - 1];
+                return <Entry key={e.id} entry={e} sameDay={previous !== undefined && previous.date === e.date && previous.from === null && e.from === null} onRollback={onRollback} />;
+              })}
             </Section>
           ))
         )}

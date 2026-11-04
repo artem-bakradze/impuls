@@ -11,6 +11,7 @@ import { CardStep } from "./wizard/CardStep";
 import { DirectStep } from "./wizard/DirectStep";
 import { GoalsStep } from "./wizard/GoalsStep";
 import { LaunchStep } from "./wizard/LaunchStep";
+import { TurnView } from "./history/TurnView";
 import { Wizard } from "./wizard/Wizard";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -178,6 +179,15 @@ describe("LaunchStep", () => {
     expect(screen.getByTestId("measurement-status")).toHaveTextContent("Учёт обращений ещё не проверен");
   });
 
+  it("says what happens after the launch and that changes are in the history", () => {
+    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} />);
+    const note = screen.getByTestId("after-launch");
+    expect(note).toHaveTextContent("Яндекс проверит объявления");
+    expect(note).toHaveTextContent("Первые цифры появятся на следующий день");
+    expect(note).toHaveTextContent("видно в истории");
+    expect(note.textContent).not.toContain("журнал");
+  });
+
   it("names what is advertised without repeating the category", () => {
     render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} />);
     expect(screen.getByText("Маникюр с покрытием")).toBeInTheDocument();
@@ -192,6 +202,8 @@ describe("LaunchStep", () => {
     expect(screen.getByRole("heading", { name: "Запустите симуляцию" })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("списываются с его баланса");
     expect(screen.getByLabelText("Обычный месяц")).toBeChecked();
+    expect(document.body.textContent).toContain("месяц рекламы проходит по дням");
+    expect(screen.getByTestId("after-launch")).toHaveTextContent("откроется студия");
     expect(screen.getByRole("button", { name: /Запустить симуляцию/ })).toBeInTheDocument();
     // The simulated month starts on the 1st: the budget line is for a full month.
     expect(document.body.textContent).not.toContain("В этом месяце — до");
@@ -201,5 +213,30 @@ describe("LaunchStep", () => {
     const draft = { ...ready(), counter: { siteUrl: "https://nogotok.example", status: "found" as const, counterId: 1 } };
     render(<LaunchStep draft={draft} today="2026-11-01" onEdit={() => undefined} />);
     expect(screen.getByTestId("measurement-status")).toHaveTextContent("получение обращений пока не подтверждено");
+  });
+});
+
+describe("TurnView (change-history spec «Страница решения сервиса»)", () => {
+  const turn = {
+    trigger: "daily_review", runtime: "openai-agents:test", instructionsVersion: "2026-11-03.3", status: "completed", startedAt: "2026-11-08T03:00:00Z", context: { goal: 1000 },
+    calls: [
+      { insight: { observation: "Реклама в поиске упирается в недельный лимит." }, result: { status: "rejected", message: "не хватает остатка бюджета месяца" } },
+      { insight: { observation: "Поднимаю цену перехода на 10 пунктов при цели 1000 ₽." }, result: { status: "applied", message: "выполнено" } },
+    ],
+  };
+
+  it("speaks plainly, keeps the executor for specialists and returns to the history sheet", () => {
+    render(<TurnView turn={turn} timeZone="Europe/Moscow" />);
+    expect(screen.getByText("Сервис не дал это сделать")).toBeTruthy();
+    expect(screen.getByText("Сделано")).toBeTruthy();
+    expect(screen.getByText("Итог: не хватает остатка бюджета месяца")).toBeTruthy();
+    // The agent's words read as in the history: percent, grouped rubles, and no «Итог: выполнено» under «Сделано».
+    expect(screen.getByText("Поднимаю цену перехода на 10% при цели 1 000 ₽.")).toBeTruthy();
+    expect(screen.queryByText("Итог: выполнено")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/ограничител/i);
+    expect(screen.queryByText(/openai-agents:test/)).toBeNull();
+    fireEvent.click(screen.getByText("Для специалистов: данные, которые видел сервис"));
+    expect(screen.getByTestId("turn-tech")).toHaveTextContent("версия инструкций 2026-11-03.3");
+    expect(screen.getByRole("link", { name: /К истории/ })).toHaveAttribute("href", "/summary#history");
   });
 });

@@ -114,6 +114,8 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
   lastChange: null,
   recentChanges: [],
   changesLast7: 1,
+  nextCheck: null,
+  cso: 100_000,
   site: "goulash.tech",
   history: [item],
   names: { directions: {}, channels: {}, ads: {}, strategies: {} },
@@ -160,6 +162,23 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     expect(first?.textContent?.replace(/\u00a0/g, " ")).toContain("потрачено 1 730 ₽");
     expect(second?.querySelector(".studio-ad-bar i")).toHaveStyle({ width: "93%" });
     expect(container.querySelector(".studio-ad-bar i")).toHaveAttribute("data-verdict", "effective");
+  });
+
+  it("names the calendar day, the scenario and each ad's estimate in words", () => {
+    const sim = { comparison: null, result: null, decisionDays: [], day: 11, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
+    render(<SimulationStudio model={model()} work={work({ sim })} initial={status()} />);
+    expect(document.querySelector(".studio-day-of")?.textContent).toBe("из 30 · 11 ноября");
+    expect(screen.getByTestId("studio-scenario")).toHaveTextContent("сценарий «Обычный месяц»");
+    expect(screen.getAllByTestId("studio-ad-verdict").map((v) => v.textContent)).toEqual(["работает хорошо", "работает хорошо"]);
+  });
+
+  it("explains starting over without the words «модель» and «агент»", async () => {
+    render(<SimulationStudio model={model()} work={work()} initial={status()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Ещё: начать заново" }));
+    fireEvent.click(await screen.findByText("Начать заново"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("сервис будет решать заново");
+    expect(dialog.textContent).not.toMatch(/модел|агент/i);
   });
 
   it("acknowledges a decision without pretending it needed permission", () => {

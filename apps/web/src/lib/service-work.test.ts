@@ -158,3 +158,21 @@ describe("the latest changes on the main screen (change-history spec «Посл�
     expect(work.changesLast7).toBe(5);
   });
 });
+
+describe("the next check on the main screen (analytics spec «Сводка»)", () => {
+  it("takes the nearest open check and counts the others", () => {
+    const work = buildServiceWork({
+      ads: [], directions: [], stats: [], today: "2026-11-10", startedOn: "2026-11-01", timeZone: "Europe/Moscow", cso: rubles(500), reviews: [], history: [], changes: [], weeks: [],
+      openChecks: [
+        { statement: "Проверяю, приведёт ли запрос «маникюр» обращения дешевле 1000 ₽", checkOn: "2026-11-20" },
+        { statement: "Проверяю, останется ли цена с компьютеров ниже цели", checkOn: "2026-11-16" },
+      ],
+    });
+    expect(work.nextCheck).toEqual({ statement: "Проверяю, останется ли цена с компьютеров ниже цели", checkOn: "2026-11-16", more: 1 });
+    expect(work.cso).toBe(rubles(500));
+  });
+
+  it("has no next check when nothing is being checked", () => {
+    expect(build([]).nextCheck).toBeNull();
+  });
+});

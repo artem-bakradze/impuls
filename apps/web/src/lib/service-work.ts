@@ -1,4 +1,4 @@
-import { addDays, classify, costPerLead, daysBetween, toLocalDate } from "@impuls/core";
+import { addDays, classify, costPerLead, daysBetween, LEARNING_MIN_DAYS, toLocalDate } from "@impuls/core";
 import type { EffectivenessClass, Kopecks, LocalDate, PerformanceStats } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
 import type { AdRecord, ChangeEntry, DirectionRecord } from "@impuls/worker";
@@ -121,7 +121,7 @@ export interface ServiceWorkInput {
   /** Both sides of the running A/B check, by title and text. */
   checkAds?: readonly { title: string; text: string }[];
   /** The hypotheses being checked now. */
-  openChecks: readonly { checkOn: LocalDate }[];
+  openChecks: readonly { statement: string; checkOn: LocalDate }[];
   weeks: readonly { week: number; from: LocalDate; reviewedOn: LocalDate }[];
 }
 
@@ -139,7 +139,41 @@ export interface ServiceWorkModel {
   recentChanges: LastChange[];
   /** The service's decisions of the last 7 days, for the «История» row. */
   changesLast7: number;
+  /** The nearest open check and how many others there are: «Дальше» on the main screen (analytics spec «Сводка»). */
+  nextCheck: { statement: string; checkOn: LocalDate; more: number } | null;
+  /** The goal per lead the ads are estimated with, for the rules of the ad groups in rubles. */
+  cso: Kopecks;
 }
+
+/** The ad groups by the rules' estimate (analytics spec «Объявления на экране «Реклама»»): leads are counted, not clients. */
+export const VERDICT_GROUPS: Record<EffectivenessClass, string> = {
+  effective: "Работают хорошо",
+  borderline: "Под наблюдением",
+  learning: "Собирают данные",
+  ineffective: "Работают плохо",
+};
+
+/** One ad's estimate in words, which also explains the colour of its spend bar in the studio. */
+export const VERDICT_WORD: Record<EffectivenessClass, string> = {
+  effective: "работает хорошо",
+  borderline: "под наблюдением",
+  learning: "собирает данные",
+  ineffective: "работает плохо",
+};
+
+/** The rule of a group in rubles of the goal per lead, the same thresholds as `classify` in core. */
+export const verdictRule = (verdict: EffectivenessClass, cso: Kopecks): string => {
+  switch (verdict) {
+    case "effective":
+      return `3 обращения и больше, в среднем не дороже ${formatRub(Math.round(cso * 0.7))}`;
+    case "borderline":
+      return "данных хватает, но вывод пока не ясен — смотрим дальше";
+    case "learning":
+      return `оценим, когда объявление проработает ${LEARNING_MIN_DAYS} дней и потратит ${formatRub(cso * 2)} за 2 недели`;
+    case "ineffective":
+      return `потрачено от ${formatRub(cso * 3)}, а обращений нет или они в среднем от ${formatRub(cso * 2)}`;
+  }
+};
 
 /** Words the owner does not use, in the agent's own text: the stop-list of `change-history`, for the journal. */
 const PLAIN: [RegExp, string][] = [
@@ -158,7 +192,8 @@ export const speech = (summary: string): string[] =>
     .filter((p) => p.length > 0)
     .map((p) => `${p[0]?.toUpperCase() ?? ""}${p.slice(1)}`);
 
-const plain = (text: string): string => groupRub(PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text));
+/** The agent's text in the owner's words and with grouped rubles, as everywhere the service speaks. */
+export const plain = (text: string): string => groupRub(PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text));
 
 /** An insight's observation as a sentence of the journal, in the same plain words. */
 const sentenceCase = (text: string): string => `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
@@ -354,8 +389,10 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       checking: [], found: [], truths: [], objectIds: [],
     });
   }
-  // Oldest first; a day's own records keep their order (reviews, then the history of that day).
-  entries.sort((a, b) => a.date.localeCompare(b.date));
+  // Oldest first; a day's own records keep their order (reviews, then the history of that day), except the launch,
+  // which comes before the review it starts.
+  const launch = (e: JournalEntry): number => (e.changes.some((c) => c.item?.reasonCode === "LAUNCH") ? 0 : 1);
+  entries.sort((a, b) => a.date.localeCompare(b.date) || launch(a) - launch(b));
 
   // The mornings after a week's days, up to the one it ended on; the launch day belongs to the first week.
   const weekOf = (date: LocalDate) => input.weeks.find((w) => date >= (w.week === 1 ? input.startedOn : addDays(w.from, 1)) && date <= w.reviewedOn);
@@ -462,5 +499,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       goal: input.cso,
     };
   }
-  return { shown, hidden, directionChanges, journal, brief, lastChange, recentChanges, changesLast7 };
+  const [nearest, ...others] = [...input.openChecks].sort((a, b) => a.checkOn.localeCompare(b.checkOn));
+  const nextCheck = nearest ? { statement: plain(nearest.statement), checkOn: nearest.checkOn, more: others.length } : null;
+  return { shown, hidden, directionChanges, journal, brief, lastChange, recentChanges, changesLast7, nextCheck, cso: input.cso };
 };

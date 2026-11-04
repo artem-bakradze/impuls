@@ -108,6 +108,8 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
   lastChange: null,
   recentChanges: [],
   changesLast7: 0,
+  nextCheck: null,
+  cso: 100_000,
   site: "nogotok.example",
   history: [],
   names: { directions: {}, channels: {}, ads: {}, strategies: {} },
@@ -251,7 +253,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000 })} work={work()} />);
     const plan = screen.getByTestId("budget-plan");
     expect(plan).toHaveStyle({ left: "30%" });
-    expect(plain(plan)).toContain("9 000 ₽");
+    expect(plain(plan)).toContain("план 9 000 ₽");
     expect(screen.getByTestId("budget-bar").querySelector("i")).toHaveStyle({ width: "20.486666666666668%" });
   });
 
@@ -302,7 +304,10 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     fireEvent.click(screen.getByRole("button", { name: /Объявления/ }));
     const sheet = screen.getByTestId("shown-ads");
     expect(within(sheet).getAllByTestId("shown-ad")).toHaveLength(2);
-    expect(sheet).toHaveTextContent("Приводят клиентов · 2");
+    expect(sheet).toHaveTextContent("Работают хорошо · 2");
+    // The group says its rule in rubles of the goal (here 1 000 ₽), not «клиенты».
+    expect(plain(sheet)).toContain("3 обращения и больше, в среднем не дороже 700 ₽");
+    expect(plain(sheet)).not.toMatch(/клиент/i);
     expect(plain(within(sheet).getAllByTestId("ad-stats")[0] ?? null)).toBe("потрачено 1 200 ₽ · 6 обращений по 200 ₽");
     expect(plain(within(sheet).getAllByTestId("shown-ad")[0] ?? null)).toContain("nogotok.example · поиск");
     expect(screen.getByTestId("hidden-ads")).toHaveTextContent("Маникюр без записи");
@@ -351,6 +356,66 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(sheet.lastElementChild).toHaveTextContent("Раньше");
     fireEvent.click(within(sheet).getByRole("button", { name: "Раньше" }));
     expect(within(sheet).getAllByRole("region").at(-1)).toHaveAttribute("aria-label", "Неделя 1");
+  });
+
+  it("names the period of the numbers and the simulated day", () => {
+    const { unmount } = render(<SummaryView model={summary()} work={work()} />);
+    expect(plain(screen.getByTestId("data-period"))).toBe("1–27 октября");
+    unmount();
+    const sim = { comparison: null, result: null, decisionDays: [], day: 9, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false };
+    render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
+    expect(screen.getByText("симуляция · день 9 из 30")).toBeTruthy();
+  });
+
+  it("explains a reference behind its words", () => {
+    render(<SummaryView model={summary({ goal: { mode: "auto", cso: 100_000, learned: false, current: 51_200, status: "within" } })} work={work()} />);
+    fireEvent.click(screen.getByTestId("goal-term"));
+    expect(screen.getByText(/бюджет месяца, делённый на 30/)).toBeTruthy();
+  });
+
+  it("titles the chart as the price of a lead by day", () => {
+    const daily = ["2026-10-25", "2026-10-26", "2026-10-27"].map((date) => ({ date, leads: 2, spend: 60_000, decision: false }));
+    render(<SummaryView model={summary({ daily })} work={work()} />);
+    expect(screen.getByTestId("cost-chart")).toHaveTextContent("цена обращения по дням");
+  });
+
+  it("says what the service does next: the nearest check, or tomorrow morning's look", () => {
+    const nextCheck = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-03", more: 1 };
+    const { unmount } = render(<SummaryView model={summary()} work={work({ nextCheck })} />);
+    expect(plain(screen.getByTestId("next-step"))).toBe("Дальше3 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели · ещё 1 проверка");
+    unmount();
+    const { unmount: again } = render(<SummaryView model={summary()} work={work()} />);
+    expect(plain(screen.getByTestId("next-step"))).toBe("Дальшезавтра утром сервис снова посмотрит рекламу");
+    again();
+    // Nothing to promise on a pause or before the first data.
+    const { unmount: paused } = render(<SummaryView model={summary({ state: "paused" })} work={work()} />);
+    expect(screen.queryByTestId("next-step")).toBeNull();
+    paused();
+    render(<SummaryView model={summary({ state: "first_day" })} work={work()} />);
+    expect(screen.queryByTestId("next-step")).toBeNull();
+  });
+
+  it("calls an unchecked counter a counter", () => {
+    render(<SummaryView model={summary({ measurement: { status: "unchecked", counterId: null, simulated: false } })} work={work()} />);
+    expect(screen.getByTestId("brief-exception")).toHaveTextContent("Счётчик не проверен");
+  });
+
+  it("names the morning a week was reviewed and writes a day's date once", () => {
+    const launch = { ...ownerEntry, id: "h:launch", date: "2026-11-01", day: 1, changes: [{ ...ownerEntry.changes[0]!, text: "Вы: реклама запущена" }] };
+    const firstReview = { ...decisionEntry, id: "2026-11-01:day", date: "2026-11-01", day: 1, changes: [] };
+    const weekReview = { ...decisionEntry, id: "2026-11-09:week", date: "2026-11-09", day: 9, weekly: true, changes: [] };
+    render(<SummaryView model={summary()} work={work({ journal: [{ week: 1, from: "2026-11-01", to: "2026-11-08", entries: [launch, firstReview, weekReview] }] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /История/ }));
+    const sheet = screen.getByTestId("agent-journal");
+    expect(plain(within(sheet).getByTestId("journal-week"))).toBe("Неделя 1 · 1 ноября — 8 ноября · разбор 9 ноября");
+    expect(within(sheet).getAllByText("День 1 · 1 ноября")).toHaveLength(1);
+  });
+
+  it("opens the history sheet from #history", () => {
+    window.location.hash = "#history";
+    render(<SummaryView model={summary()} work={work()} />);
+    expect(screen.getByTestId("agent-journal")).toBeTruthy();
+    window.location.hash = "";
   });
 
   it("keeps the comparison with the control run in the history, not on the brief", () => {

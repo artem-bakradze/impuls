@@ -87,6 +87,17 @@ function Chips({ items, empty }: { items: string[]; empty: string }) {
 const goalText = (goal: SettingsModel["goal"]): string =>
   goal.mode === "user" ? `До ${formatRub(goal.rub * 100)}` : `Подбираем сами · ${goal.learned ? "сейчас до" : "ориентир"} ${formatRub(goal.rub * 100)}`;
 
+/** Where the automatic goal comes from (campaign-settings spec «Пояснения в настройках»); the owner's own needs none. */
+const goalHint = (goal: SettingsModel["goal"]): string | null =>
+  goal.mode === "user"
+    ? null
+    : goal.learned
+      ? "Рассчитано по вашим обращениям за последние 30 дней."
+      : "Пока это ориентир: бюджет месяца, делённый на 30. После 20 обращений за 30 дней сервис рассчитает цену по вашим данным.";
+
+/** The chosen lead actions as one phrase: «Заявка или запись с сайта, нажатие на номер телефона». */
+const goalsPhrase = (goals: string[]): string => goals.map((g, i) => (i === 0 ? g : `${g[0]?.toLowerCase() ?? ""}${g.slice(1)}`)).join(", ");
+
 /** «Что рекламируем» in edit mode: the facts new ad variants are written from (campaign-settings spec). */
 function CardEditor({ card, onChange }: { card: CardDraft; onChange: (card: CardDraft) => void }) {
   const setService = (index: number, patch: Partial<CardDraft["services"][number]>) =>
@@ -160,9 +171,9 @@ function Section({ id, title, lead, action, children, testId }: { id: string; ti
   );
 }
 
-function EditableValue({ title, value, editing, onEdit, onCancel, busy, children }: { title: string; value: ReactNode; editing: boolean; onEdit: () => void; onCancel: () => void; busy: boolean; children: ReactNode }) {
+function EditableValue({ title, value, hint, editing, onEdit, onCancel, busy, children }: { title: string; value: ReactNode; hint?: string | null; editing: boolean; onEdit: () => void; onCancel: () => void; busy: boolean; children: ReactNode }) {
   return <div className="settings-value">
-    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}><div className="stack" style={{ gap: 4 }}><span className="t-small">{title}</span>{editing ? null : <strong>{value}</strong>}</div><Button className="settings-edit" onClick={editing ? onCancel : onEdit} disabled={busy} aria-label={`${editing ? "Отмена" : "Изменить"}: ${title}`}>{editing ? "Отмена" : "Изменить"}</Button></div>
+    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}><div className="stack" style={{ gap: 4 }}><span className="t-small">{title}</span>{editing ? null : <strong>{value}</strong>}{editing || !hint ? null : <span className="settings-hint" data-testid="settings-hint">{hint}</span>}</div><Button className="settings-edit" onClick={editing ? onCancel : onEdit} disabled={busy} aria-label={`${editing ? "Отмена" : "Изменить"}: ${title}`}>{editing ? "Отмена" : "Изменить"}</Button></div>
     {editing ? <div className="settings-editor">{children}</div> : null}
   </div>;
 }
@@ -368,7 +379,7 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
             </EditableValue>
             <SectionFeedback feedback={feedback} section="budget" onConfirmBudget={(amount) => void saveBudget(amount, true)} />
             <hr className="divider" style={{ margin: "18px 0" }} />
-            <EditableValue title="Цена обращения" value={goalText(model.goal)} editing={fieldEdit === "goal"} onEdit={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit("goal"); }} onCancel={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit(null); }} busy={busy === "goal"}>
+            <EditableValue title="Цена обращения" value={goalText(model.goal)} hint={goalHint(model.goal)} editing={fieldEdit === "goal"} onEdit={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit("goal"); }} onCancel={() => { setGoalMode(model.goal.mode); setGoalRub(model.goal.mode === "user" ? model.goal.rub : null); setFieldEdit(null); }} busy={busy === "goal"}>
             <div className="field" data-testid="goal-section">
               <div className="field-label">Сколько готовы платить за одно обращение</div>
               <div className="presets" role="radiogroup" aria-label="Цена обращения">
@@ -417,7 +428,7 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
 
           <Section id="leads" title="Что считаем обращением" testId="leads-section">
             <div className="stack" style={{ "--gap": "12px" } as React.CSSProperties}>
-              <span className="t-body">{model.goals.join(", ") || "Не выбрано"}</span>
+              <span className="t-body">{goalsPhrase(model.goals) || "Не выбрано"}</span>
               {model.measurement ? <MeasurementNotice model={model.measurement} compact /> : null}
             </div>
           </Section>

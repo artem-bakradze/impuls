@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { mapJobState } from "./job-state";
 import { loginErrorMessage } from "./login-error";
-import { adsState, adsStateText, budgetPlan, compareText, goalBadge, observedDaily, goalLine, moderationText } from "./summary-model";
-import { formatRub } from "./format";
+import { adsState, adsStateText, budgetPlan, compareText, goalBadge, goalExplanation, nextStepText, observedDaily, goalLine, moderationText } from "./summary-model";
+import { formatRange, formatRub } from "./format";
 
 const plain = (text: string) => text.replace(/ /g, " ");
 
@@ -76,5 +76,30 @@ describe("the answer's state, goal and budget pace (analytics spec «Сводк�
     expect(goalBadge({ mode: "auto", cso: 100_000, learned: false, current: 51_200, status: "within" })).toBeNull();
     expect(goalBadge({ mode: "auto", cso: 60_000, learned: true, current: 30_000, status: "within" })).toBe("дешевле цели на 50%");
     expect(goalBadge({ mode: "user", cso: 30_000, learned: false, current: null, status: "no_data" })).toBeNull();
+  });
+});
+
+describe("what the numbers cover and what comes next (analytics spec «Сводка»)", () => {
+  it("names the period of the data, not one date", () => {
+    expect(formatRange("2026-11-01", "2026-11-09")).toBe("1–9 ноября");
+    expect(formatRange("2026-10-30", "2026-11-09")).toBe("30 октября — 9 ноября");
+    expect(formatRange("2026-11-09", "2026-11-09")).toBe("9 ноября");
+  });
+
+  it("says the nearest check in the service's words, with how many more there are", () => {
+    const check = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16", more: 1 };
+    expect(nextStepText(check, "2026-11-09")).toBe("16 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели · ещё 1 проверка");
+    expect(nextStepText({ ...check, checkOn: "2026-11-10", more: 0 }, "2026-11-09")).toBe("завтра сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
+    expect(nextStepText({ statement: "Новый заголовок приведёт больше обращений", checkOn: "2026-11-16", more: 3 }, "2026-11-09")).toBe("16 ноября — итог проверки: новый заголовок приведёт больше обращений · ещё 3 проверки");
+  });
+
+  it("falls back to the next morning's look without open checks", () => {
+    expect(nextStepText(null, "2026-11-09")).toBe("завтра утром сервис снова посмотрит рекламу");
+  });
+
+  it("explains a reference, a refined goal and the owner's own", () => {
+    expect(goalExplanation({ mode: "auto", learned: false })).toContain("бюджет месяца, делённый на 30");
+    expect(goalExplanation({ mode: "auto", learned: true })).toContain("за последние 30 дней");
+    expect(goalExplanation({ mode: "user", learned: false })).toContain("задали сами");
   });
 });

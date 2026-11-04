@@ -1,6 +1,6 @@
 import { addDays, daysBetween } from "@impuls/core";
 import type { Kopecks, LocalDate } from "@impuls/core";
-import { formatRub, plural } from "./format";
+import { formatLocalDate, formatRub, plural } from "./format";
 import type { InsightFeedModel } from "./insights-model";
 
 import type { MeasurementModel } from "./measurement";
@@ -117,6 +117,27 @@ export const goalBadge = (goal: SummaryModel["goal"]): string | null => {
   if (!goalComparable(goal) || goal.current === null || goal.cso <= 0 || goal.current > goal.cso) return null;
   const cheaper = Math.floor(((goal.cso - goal.current) / goal.cso) * 100);
   return cheaper >= 5 ? `дешевле цели на ${cheaper}%` : "в цели";
+};
+
+/**
+ * «Дальше» on the main screen (analytics spec «Сводка»): the nearest open check with its day, or the next morning's look,
+ * which the daily evaluation makes with or without the agent. «Проверяю, останется ли …» → «16 ноября сервис проверит, останется ли …».
+ */
+export const nextStepText = (next: { statement: string; checkOn: LocalDate; more: number } | null, today: LocalDate): string => {
+  if (next === null) return "завтра утром сервис снова посмотрит рекламу";
+  const when = next.checkOn < today ? "скоро" : next.checkOn === today ? "сегодня" : next.checkOn === addDays(today, 1) ? "завтра" : formatLocalDate(next.checkOn);
+  const statement = next.statement.trim().replace(/[.…]+$/, "");
+  const asked = /^провер(?:яю|ю|яем|им)\s*[,:—-]?\s*/i.exec(statement);
+  const lowered = `${statement[0]?.toLowerCase() ?? ""}${statement.slice(1)}`;
+  const text = asked ? `${when} сервис проверит, ${statement.slice(asked[0].length)}` : `${when} — итог проверки: ${lowered}`;
+  return next.more > 0 ? `${text} · ещё ${next.more} ${plural(next.more, "проверка", "проверки", "проверок")}` : text;
+};
+
+/** The goal's explanation behind its words (analytics spec «Сводка»): where the number comes from and when it is refined. */
+export const goalExplanation = (goal: Pick<SummaryModel["goal"], "mode" | "learned">): string => {
+  if (goal.mode === "user") return "Эту цель вы задали сами: сервис старается, чтобы обращение стоило не дороже. Изменить её можно в настройках.";
+  if (goal.learned) return "Цель рассчитана по вашим обращениям за последние 30 дней: сервис старается, чтобы обращение стоило не дороже.";
+  return "Пока это ориентир: бюджет месяца, делённый на 30. Когда за 30 дней наберётся 20 обращений, сервис рассчитает цель по вашим данным.";
 };
 
 /** Whether the goal line compares with a goal: never with the starting value of the automatic goal. */

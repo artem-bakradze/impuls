@@ -67,12 +67,15 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await page.getByRole("link", { name: "Реклама" }).click();
   await page.waitForURL("**/summary");
   await expect(page.getByTestId("brief")).toBeVisible();
-  await expect(page.locator(".brief-mode")).toHaveText("симуляция");
+  await expect(page.locator(".brief-mode")).toHaveText(/^симуляция · день \d+ из 30$/);
+  // The numbers name their period, and the service says what it does next.
+  await expect(page.getByTestId("data-period")).toHaveText(/^\d+–\d+ \S+$/);
+  await expect(page.getByTestId("next-step")).toContainText("Дальше");
   await expect(page.getByTestId("simulation-bar")).toHaveCount(0);
   await expect(page.getByTestId("cost-chart")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Симуляция", "Настройки"]);
   await expect(page.getByTestId("ads-state")).toContainText("идёт");
-  await expect(page.getByTestId("budget-plan")).toBeVisible();
+  await expect(page.getByTestId("budget-plan")).toContainText("план");
 
   // The history is the journal of the brief, with the comparison at its top.
   await page.getByRole("button", { name: /История/ }).click();
@@ -92,6 +95,9 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await page.getByRole("button", { name: /Объявления/ }).click();
   await expect(page.getByTestId("shown-ad").first()).toBeVisible();
   await expect(page.getByTestId("ad-stats").first()).toContainText("потрачено");
+  // Each group says its rule in rubles; leads are not called clients.
+  await expect(page.locator(".sheet-group-rule").first()).toContainText("₽");
+  for (const heading of await page.getByTestId("shown-ads").locator(".sheet-group").allTextContents()) expect(heading).not.toContain("клиент");
   for (const width of [320, 360, 390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await overflow()).toBeLessThanOrEqual(0);
@@ -127,6 +133,7 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await page.getByRole("link", { name: "Симуляция" }).click();
   await page.waitForURL("**/simulation");
   await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
+  await expect(page.getByTestId("studio-scenario")).toContainText("сценарий «");
   await page.locator(".studio-head").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");

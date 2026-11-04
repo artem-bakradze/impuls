@@ -1,17 +1,17 @@
 "use client";
 
 import { addDays } from "@impuls/core";
-import { Alert } from "antd";
+import { Alert, Popover } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PENDING_TEXT, runWebJobs } from "@/lib/client-api";
 import type { CommandResult } from "@/lib/client-api";
-import { formatCount, formatLocalDate, formatRub, plural } from "@/lib/format";
+import { formatCount, formatLocalDate, formatRange, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { LastChange } from "@/lib/service-work";
-import { adsState, adsStateText, goalBadge, goalComparable } from "@/lib/summary-model";
+import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, nextStepText } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { AdsSheet } from "./AdsSheet";
@@ -64,7 +64,7 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
 
   useEffect(() => {
     if (focusWeek !== null) setSheet("history");
-    else if (window.location.hash.startsWith("#log-")) setSheet("history");
+    else if (window.location.hash === "#history" || window.location.hash.startsWith("#log-")) setSheet("history");
   }, [focusWeek]);
 
   const resume = async () => {
@@ -105,7 +105,7 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
   } else if (measurement && !model.simulation && measurement.status !== "found") {
     exception = {
       tone: "warning",
-      text: measurement.status === "not_found" ? "Счётчик не найден" : "Учёт не проверен",
+      text: measurement.status === "not_found" ? "Счётчик не найден" : "Счётчик не проверен",
       action: { label: "Настроить", href: "/settings#site" },
     };
   }
@@ -115,11 +115,10 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
   const state = adsState({ state: model.state, simulation: model.simulation !== null, moderationPending: model.moderation.pending, shown: work.shown.length });
   const badge = firstDay ? null : goalBadge(model.goal);
   const planShare = model.monthBudget > 0 ? Math.min(100, (model.budgetPlan / model.monthBudget) * 100) : 0;
-  const caption = firstDay
-    ? model.moderation.pending > 0 && !model.simulation
-      ? "проверка Яндекса · первые данные завтра"
-      : "первые данные завтра"
-    : `за обращение · ${goalText}`;
+  const caption = firstDay ? (model.moderation.pending > 0 && !model.simulation ? "проверка Яндекса · первые данные завтра" : "первые данные завтра") : null;
+  const period = model.dataPeriod ? formatRange(model.dataPeriod.from, today) : today === "" ? "" : formatLocalDate(today);
+  // What the service does next, while the ads run and there is data (analytics spec «Сводка»).
+  const next = firstDay || state.kind === "paused" ? null : nextStepText(work.nextCheck, today);
 
   return (
     <div className="page brief-page">
@@ -127,8 +126,8 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
       <div className="brief-layout" data-side={work.recentChanges.length > 0 || undefined}>
       <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
         <div className="brief-date">
-          <time dateTime={today}>{today === "" ? "" : formatLocalDate(today)}</time>
-          {model.simulation ? <span className="brief-mode">симуляция</span> : null}
+          <span data-testid="data-period">{period}</span>
+          {model.simulation ? <span className="brief-mode">{work.sim ? `симуляция · день ${work.sim.day} из ${work.sim.totalDays}` : "симуляция"}</span> : null}
           <span className="brief-state" data-state={state.kind} data-testid="ads-state">
             <i aria-hidden="true" />
             {adsStateText(state)}
@@ -140,7 +139,18 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
             {firstDay ? "Запуск" : number}
           </div>
           <p className="brief-caption" data-testid="goal-line">
-            <span>{caption}</span>
+            {caption !== null ? (
+              <span>{caption}</span>
+            ) : (
+              <span>
+                за обращение ·{" "}
+                <Popover trigger="click" placement="bottomLeft" content={<p className="brief-explain">{goalExplanation(model.goal)}</p>}>
+                  <button type="button" className="brief-term" data-testid="goal-term">
+                    {goalText}
+                  </button>
+                </Popover>
+              </span>
+            )}
             {badge !== null ? (
               <span className="brief-badge" data-testid="goal-badge">
                 {badge}
@@ -165,9 +175,9 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
           {model.monthBudget > 0 && !firstDay ? (
             <>
               <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
-              <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 88 ? "end" : planShare < 12 ? "start" : undefined} data-testid="budget-plan">
-                <span className="sr-only">по плану к {today === "" ? "сегодня" : formatLocalDate(today)}: {formatRub(model.budgetPlan)}, </span>
-                план
+              <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined} data-testid="budget-plan">
+                <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
+                план {formatRub(model.budgetPlan)}
               </span>
             </>
           ) : null}
@@ -191,6 +201,13 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
           </div>
         ) : last !== null ? (
           <ChangeItem change={last} today={today} onRollback={setRollback} testId="last-change" />
+        ) : null}
+
+        {next !== null ? (
+          <p className="brief-next" data-testid="next-step" title={next}>
+            <span className="brief-next-label">Дальше</span>
+            <span className="brief-next-text">{next}</span>
+          </p>
         ) : null}
 
         {error !== null ? <Alert className="brief-error" type="error" showIcon title={error} /> : null}

@@ -103,7 +103,13 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
       {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
       {/* One notice about counting leads: the check itself for a real launch, the training data's note in a simulation. */}
       {simulation === undefined && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation !== undefined)} />}
-      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />}>Всё, что сервис меняет, видно в журнале, и почти любое изменение можно вернуть одной кнопкой.</Note>
+      {/* What happens after the button (business-onboarding spec «Что будет после запуска»). */}
+      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">
+        {simulation
+          ? "Дальше откроется студия: каждый прожитый день сервис смотрит рекламу и показывает, что заметил и изменил."
+          : "Дальше Яндекс проверит объявления — обычно в течение дня. Первые цифры появятся на следующий день, а потом сервис каждое утро смотрит рекламу."}{" "}
+        Всё, что он меняет, видно в истории, и почти любое изменение можно вернуть одной кнопкой.
+      </Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
       {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push(simulation ? "/simulation" : "/summary")}>{simulation ? "Открыть симуляцию" : "Открыть рекламу"}</Button>} /> : null}
@@ -115,7 +121,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
         onClick={() => void launch()}
         loading={state.kind === "running"}
         disabled={state.kind === "pending"}
-        style={{ height: 54, fontSize: 16 }}
+        style={{ height: 54, fontSize: "var(--fs-md)" }}
       >
         {simulation ? "Запустить симуляцию" : "Запустить"}
       </Button>

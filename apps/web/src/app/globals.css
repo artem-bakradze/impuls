@@ -1782,6 +1782,7 @@ pre.snippet {
 .settings-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .settings-row-value strong { font-weight: 500; }
 .settings-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.settings-hint { max-width: 52ch; font-size: var(--fs-xs); line-height: 1.5; color: var(--text-3); }
 .settings-chips li { padding: 4px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: var(--fs-xs); line-height: 1.4; color: var(--text); }
 .settings-empty { color: var(--text-3); }
 .settings-editor { padding-top: 18px; }
@@ -2098,6 +2099,51 @@ button.log-link {
 .brief-plan-label[data-edge="start"] {
   transform: none;
 }
+/* The goal's words open where the number comes from (analytics spec «Сводка»): a term, not a link elsewhere. */
+.brief-term {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--text-3);
+  text-underline-offset: 3px;
+}
+.brief-term:hover,
+.brief-term:focus-visible {
+  color: var(--text-2);
+}
+.brief-explain {
+  max-width: 280px;
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+/* What the service does next: one line, after what it did. */
+.brief-next {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.brief-next-label {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--text);
+}
+.brief-next-text {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .brief-exception {
   display: flex;
   align-items: center;
@@ -2314,6 +2360,13 @@ button.log-link {
   font-weight: 600;
   color: var(--text-2);
 }
+/* Why an ad is in its group, in rubles of the goal: the estimate is a rule, not a mood. */
+.sheet-group-rule {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-3);
+}
 
 /* Ads sheet: each ad looks as it does in Yandex, and every number says what it is. */
 .ad-row {
@@ -2476,6 +2529,14 @@ button.log-link {
 .j-entry {
   padding: 18px 0;
   border-bottom: 1px solid var(--border);
+}
+/* Records of one day read as one block under its date. */
+.j-entry:has(+ .j-entry[data-same-day]) {
+  padding-bottom: 8px;
+  border-bottom: 0;
+}
+.j-entry[data-same-day] {
+  padding-top: 8px;
 }
 .j-when {
   display: flex;
@@ -2680,6 +2741,11 @@ button.log-link {
 /* One line on the brief: the cost of a lead against its goal; no axes, no legend. Days without leads are marks. */
 .sparkline {
   margin: 24px 0 0;
+}
+.spark-title {
+  margin-bottom: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
 }
 .spark-plot {
   position: relative;
@@ -3233,7 +3299,9 @@ button.log-link {
     padding: 20px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 48px);
   }
   .studio-head { flex-wrap: wrap; }
-  .studio-scenario { display: none; }
+  .studio-scenario { order: 1; flex-basis: 100%; margin-top: -6px; }
+  .studio-go-real,
+  .studio-menu { order: 2; }
   .studio-day-num { font-size: var(--fs-lg); }
   .studio-total b { font-size: var(--fs-lg); }
   .studio-ad-stats { font-size: var(--fs-xs); }

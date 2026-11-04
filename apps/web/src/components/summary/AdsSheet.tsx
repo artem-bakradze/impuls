@@ -8,6 +8,7 @@ import type { EffectivenessClass } from "@impuls/core";
 import { formatLocalDate, formatRub, plural } from "@/lib/format";
 import { AD_TEXT_MAX, AD_TITLE_MAX } from "@/lib/onboarding";
 import type { AdsWork } from "@/lib/server/simulation-screen";
+import { VERDICT_GROUPS, verdictRule } from "@/lib/service-work";
 import type { ShownAd } from "@/lib/service-work";
 import { useCommands } from "./useCommands";
 
@@ -16,16 +17,6 @@ const leadsWord = (n: number): string => plural(n, "обращение", "обр
 /** «потрачено 693 ₽ · 5 обращений по 138 ₽»: every number of the 7 days says what it is. */
 export const adStatsText = (ad: Pick<ShownAd, "spend" | "leads" | "costPerLead">): string =>
   `потрачено ${formatRub(ad.spend)} · ${ad.leads === 0 ? "обращений нет" : `${ad.leads} ${leadsWord(ad.leads)}${ad.costPerLead === null ? "" : ` по ${formatRub(ad.costPerLead)}`}`}`;
-
-const shortDate = (date: string): string => formatLocalDate(date).replace(/(\S+) (\S{3})\S*/, "$1 $2");
-
-/** Plain names of the rules' estimate; the sheet groups ads by them. */
-const GROUPS: Record<EffectivenessClass, string> = {
-  effective: "Приводят клиентов",
-  borderline: "Под наблюдением",
-  learning: "Собирают данные",
-  ineffective: "Не приводят клиентов",
-};
 
 const ORDER: EffectivenessClass[] = ["effective", "borderline", "learning", "ineffective"];
 
@@ -61,7 +52,7 @@ function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: Re
           {labels.length > 0 ? <p className="ad-row-labels">{labels.join(" · ")}</p> : null}
           {ad.change ? (
             <span className="ad-mark" data-testid="change-mark">
-              ↻ {ad.change.text} · {shortDate(ad.change.date)}
+              ↻ {ad.change.text} · {formatLocalDate(ad.change.date)}
             </span>
           ) : null}
         </div>
@@ -118,7 +109,7 @@ export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void
           <div className="ad-direction-changes" data-testid="direction-changes">
             {work.directionChanges.map((mark, i) => (
               <span key={i} className="ad-mark" data-testid="change-mark">
-                ↻ {mark.text} · {shortDate(mark.date)}
+                ↻ {mark.text} · {formatLocalDate(mark.date)}
               </span>
             ))}
           </div>
@@ -127,8 +118,9 @@ export function AdsSheet({ work, onClose }: { work: AdsWork; onClose: () => void
         {groups.map((g) => (
           <section key={g.verdict} data-testid={`ads-${g.verdict}`}>
             <h3 className="sheet-group">
-              {GROUPS[g.verdict]} · {g.ads.length}
+              {VERDICT_GROUPS[g.verdict]} · {g.ads.length}
             </h3>
+            <p className="sheet-group-rule">{verdictRule(g.verdict, work.cso)}</p>
             {g.ads.map((ad) => (
               <AdRow key={ad.id} ad={ad} site={work.site} commands={commands} />
             ))}

@@ -90,8 +90,13 @@ test("from a change in the journal made by the agent the owner opens the turn wi
   await expect(page.getByRole("heading", { name: "Как сервис принял решение" })).toBeVisible();
   await expect(page.getByTestId("turn-summary")).toContainText("Ежедневный разбор");
   const call = page.getByTestId("turn-call");
-  await expect(call).toContainText("Применено с ограничением");
+  await expect(call).toContainText("Сделано в меньшем размере");
   await expect(call).toContainText("урезано: не больше +20% за шаг");
+  await expect(page.locator("main")).not.toContainText("ограничител");
+  // Back to the history sheet, not to the bare main screen.
+  await page.getByRole("link", { name: /К истории/ }).click();
+  await page.waitForURL("**/summary#history");
+  await expect(page.getByTestId("agent-journal")).toBeVisible();
 });
 
 test("a turn of another business is not shown", async ({ page }) => {

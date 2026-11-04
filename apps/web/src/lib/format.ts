@@ -16,6 +16,13 @@ export const formatDateTime = (iso: string, timeZone: string): string =>
 /** LocalDate (YYYY-MM-DD) as «12 октября». */
 export const formatLocalDate = (date: string): string => DATE.format(new Date(`${date}T12:00:00Z`));
 
+/** A period of LocalDates: «1–9 ноября» within a month, «30 октября — 9 ноября» across months, one date for one day. */
+export const formatRange = (from: string, to: string): string => {
+  if (from === to) return formatLocalDate(to);
+  if (from.slice(0, 7) === to.slice(0, 7)) return `${Number(from.slice(8, 10))}–${formatLocalDate(to)}`;
+  return `${formatLocalDate(from)} — ${formatLocalDate(to)}`;
+};
+
 /** Sentence case for backend messages that start lowercase («состояние объекта изменилось»). */
 export const sentence = (text: string): string => (text.length === 0 ? text : `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`);
 

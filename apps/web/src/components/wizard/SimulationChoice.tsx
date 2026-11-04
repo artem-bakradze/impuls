@@ -17,7 +17,7 @@ export function ModeChoice({ mode, onChange }: { mode: LaunchMode; onChange: (mo
       value: "simulation",
       icon: <ExperimentOutlined />,
       title: "Симуляция",
-      text: "Без денег и без Директа: месяц рекламы проходит по неделям, и после каждой видно, что сервис заметил и решил.",
+      text: "Без денег и без Директа: месяц рекламы проходит по дням, и после каждого видно, что сервис заметил и решил.",
     },
   ];
   return (

@@ -30,8 +30,10 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);
   await page.getByRole("button", { name: /История/ }).click();
   await expect(page.getByTestId("agent-journal")).toContainText("Вы: реклама запущена");
+  // The old address of the history opens the history sheet of «Реклама».
   await page.goto("/history");
-  await page.waitForURL("**/summary");
+  await page.waitForURL("**/summary#history");
+  await expect(page.getByTestId("agent-journal")).toBeVisible();
 
   // A returning owner lands on «Реклама», not on the wizard; the old example's address leads home.
   await page.goto("/");
