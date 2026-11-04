@@ -15,6 +15,7 @@ import type { LastChange } from "@/lib/service-work";
 import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, nextStepText } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
+import { BudgetPaceChip } from "../ui/ResultChip";
 import { AdsSheet } from "./AdsSheet";
 import { Sparkline, trendOf } from "./Sparkline";
 import { HistorySheet } from "./HistorySheet";
@@ -115,7 +116,6 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
   const trend = trendOf((model.daily ?? []).slice(-14));
   const state = adsState({ state: model.state, simulation: model.simulation !== null, moderationPending: model.moderation.pending, shown: work.shown.length });
   const badge = firstDay ? null : goalBadge(model.goal);
-  const planShare = model.monthBudget > 0 ? Math.min(100, (model.budgetPlan / model.monthBudget) * 100) : 0;
   const caption = firstDay ? (model.moderation.pending > 0 && !model.simulation ? "проверка Яндекса · первые данные завтра" : "первые данные завтра") : null;
   const period = model.dataPeriod ? formatRange(model.dataPeriod.from, today) : today === "" ? "" : formatLocalDate(today);
   // What the service does next, while the ads run and there is data (analytics spec «Сводка»).
@@ -174,15 +174,10 @@ export function SummaryView({ model, work, focusWeek = null }: { model: SummaryM
             </div>
             <div className="brief-bar" data-tone={budgetTone} data-testid="budget-bar">
               <i style={{ width: `${share}%` }} aria-hidden="true" />
-              {model.monthBudget > 0 && !firstDay ? (
-                <>
-                  <b className="brief-plan" style={{ left: `${planShare}%` }} aria-hidden="true" />
-                  <span className="brief-plan-label" style={{ left: `${planShare}%` }} data-edge={planShare > 82 ? "end" : planShare < 18 ? "start" : undefined} data-testid="budget-plan">
-                    <span className="sr-only">к {today === "" ? "сегодня" : formatLocalDate(today)} </span>
-                    план {formatRub(model.budgetPlan)}
-                  </span>
-                </>
-              ) : null}
+            </div>
+            {/* The pace of the money against the even plan in words, under the sum it is about (analytics spec «Сводка»). */}
+            <div className="brief-pace">
+              <BudgetPaceChip model={model} firstDay={firstDay} />
             </div>
 
             {exception !== null ? (

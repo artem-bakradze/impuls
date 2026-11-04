@@ -203,7 +203,7 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
     const numbers = await screen.findByTestId("studio-ad-numbers");
     const rows = [...numbers.querySelectorAll("dl div")].map((row) => row.textContent?.replace(/ /g, " "));
     expect(rows).toEqual(["Потрачено1 730 ₽", "Обращения5", "Цена обращения346 ₽", "Ориентир1 000 ₽", "Переходы на сайт30", "Показы1 240"]);
-    expect(numbers.querySelector(".studio-numbers-note")?.textContent?.replace(/ /g, " ")).toBe("Работает хорошо — 3 обращения и больше, в среднем не дороже 700 ₽.");
+    expect(numbers.querySelector(".numbers-card-note")?.textContent?.replace(/ /g, " ")).toBe("Работает хорошо — 3 обращения и больше, в среднем не дороже 700 ₽.");
   });
 
   it("sums up the period in two cards: leads with their cost against the goal, the money with its pace in words", () => {
@@ -218,26 +218,26 @@ describe("simulation studio (simulation-mode spec «Симуляция как о
 
   it("says what is left so that it adds up with what is spent to the budget on screen", async () => {
     render(<SimulationStudio model={model({ spentMonth: 614_647 })} work={work()} initial={status()} />);
-    fireEvent.click(screen.getByTestId("studio-pace"));
-    const rows = [...(await screen.findByTestId("studio-money-numbers")).querySelectorAll("dl div")].map((row) => row.textContent?.replace(/ /g, " "));
+    fireEvent.click(screen.getByTestId("budget-pace"));
+    const rows = [...(await screen.findByTestId("budget-numbers")).querySelectorAll("dl div")].map((row) => row.textContent?.replace(/ /g, " "));
     expect(rows).toContain("Потрачено6 146 ₽");
     expect(rows).toContain("Осталось23 854 ₽");
   });
 
   it("explains the plan and the reference on their words", async () => {
     render(<SimulationStudio model={model()} work={work()} initial={status()} />);
-    fireEvent.click(screen.getByTestId("studio-pace"));
-    const money = await screen.findByTestId("studio-money-numbers");
+    fireEvent.click(screen.getByTestId("budget-pace"));
+    const money = await screen.findByTestId("budget-numbers");
     expect([...money.querySelectorAll("dl div")].map((row) => row.textContent?.replace(/ /g, " "))).toEqual([
       "Бюджет месяца30 000 ₽",
       "План к 11 ноября11 000 ₽",
       "Потрачено6 900 ₽",
       "Осталось23 100 ₽",
     ]);
-    expect(money.querySelector(".studio-numbers-note")).toHaveTextContent("План — сколько ушло бы к 11 ноября, если тратить бюджет месяца поровну каждый день.");
+    expect(money.querySelector(".numbers-card-note")).toHaveTextContent("План — сколько ушло бы к 11 ноября, если тратить бюджет месяца поровну каждый день.");
     fireEvent.click(screen.getByTestId("studio-leads-result"));
     const leads = await screen.findByTestId("studio-leads-numbers");
-    expect(leads.querySelector(".studio-numbers-note")).toHaveTextContent("Пока это ориентир: бюджет месяца, делённый на 30.");
+    expect(leads.querySelector(".numbers-card-note")).toHaveTextContent("Пока это ориентир: бюджет месяца, делённый на 30.");
   });
 
   it("says a cost per lead over the goal in words, an ad dearer than it and an ad without leads", () => {

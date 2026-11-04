@@ -1,12 +1,11 @@
 "use client";
 
-import { ExperimentOutlined, InfoCircleOutlined, MoreOutlined } from "@ant-design/icons";
-import { Alert, Button, Dropdown, Modal, Popover } from "antd";
+import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
+import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { formatCount, formatLocalDate, formatRange, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -17,10 +16,10 @@ import { adResult } from "@/lib/ad-result";
 import type { GoalWord } from "@/lib/ad-result";
 import { VERDICT_WORD, verdictRule } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
-import { budgetPace } from "@/lib/budget-pace";
 import { goalComparable, goalExplanation } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
+import { BudgetPaceChip, NumbersCard, ResultChip } from "../ui/ResultChip";
 import { useCountUp } from "./useCountUp";
 import { useSimulation } from "./useSimulation";
 
@@ -33,36 +32,6 @@ const latestReview = (work: AdsWork): JournalEntry | null =>
     .flatMap((section) => section.entries)
     .filter((entry) => entry.kind === "agent" || entry.kind === "rules" || entry.kind === "quiet")
     .at(-1) ?? null;
-
-/** The numbers behind a result and one sentence on what they mean: what opens on a result chip of the studio. */
-function NumbersCard({ title, rows, note, testId }: { title: string; rows: [string, string][]; note: ReactNode; testId: string }) {
-  return (
-    <div className="studio-numbers" data-testid={testId}>
-      <p className="studio-numbers-title">{title}</p>
-      <dl>
-        {rows.map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <p className="studio-numbers-note">{note}</p>
-    </div>
-  );
-}
-
-/** A result in words, coloured by its tone, that opens its numbers by hover or tap (simulation-mode spec «Итог студии»). */
-function ResultChip({ result, numbers, testId }: { result: { tone: string; text: string }; numbers: ReactNode; testId: string }) {
-  return (
-    <Popover trigger={["hover", "click"]} placement="top" content={numbers}>
-      <button type="button" className="studio-chip" data-tone={result.tone} data-testid={testId}>
-        {result.text}
-        <InfoCircleOutlined aria-hidden="true" />
-      </button>
-    </Popover>
-  );
-}
 
 /** The ad's 7 days in numbers with the rule of its estimate: what opens on its result (simulation-mode spec «Подписи студии»). */
 function AdNumbers({ ad, cso, goalWord }: { ad: ShownAd; cso: number; goalWord: GoalWord }) {
@@ -135,13 +104,9 @@ function StudioSummary({ model, before, firstDay }: { model: SummaryModel; befor
   const spendDelta = before === null ? 0 : model.spentMonth - before.spend;
   const goalWord: GoalWord = goalComparable(model.goal) ? "цели" : "ориентира";
   const result = adResult({ leads: model.leads.value, costPerLead: model.goal.current }, model.goal.cso, goalWord);
-  const today = model.dataPeriod?.to ?? "";
-  const day = today === "" ? "сегодня" : formatLocalDate(today);
   const period = model.dataPeriod ? formatRange(model.dataPeriod.from, model.dataPeriod.to) : null;
-  const pace = firstDay ? null : budgetPace({ monthBudget: model.monthBudget, spent: model.spentMonth, plan: model.budgetPlan, forecast: model.budgetForecast, month: today.slice(0, 7) });
   const share = model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0;
   const barTone = model.monthBudget > 0 && model.spentMonth >= model.monthBudget ? "danger" : model.budgetForecast !== null ? "warning" : undefined;
-  const exhaustOn = model.budgetForecast?.exhaustOn ?? null;
 
   const leadsNumbers = (
     <NumbersCard
@@ -154,17 +119,6 @@ function StudioSummary({ model, before, firstDay }: { model: SummaryModel; befor
       note={goalExplanation(model.goal)}
       testId="studio-leads-numbers"
     />
-  );
-  const moneyRows: [string, string][] = [
-    ["Бюджет месяца", formatRub(model.monthBudget)],
-    [`План к ${day}`, formatRub(model.budgetPlan)],
-    ["Потрачено", formatRub(model.spentMonth)],
-    // Whole rubles of the budget less the whole rubles shown as spent, so the two lines add up to the budget on screen.
-    ["Осталось", formatRub(Math.max(0, Math.floor(model.monthBudget / 100) - Math.floor(model.spentMonth / 100)) * 100)],
-    ...(exhaustOn === null ? [] : ([["Хватит до", formatLocalDate(exhaustOn)]] as [string, string][])),
-  ];
-  const moneyNumbers = (
-    <NumbersCard title={`К ${day}`} rows={moneyRows} note={`План — сколько ушло бы к ${day}, если тратить бюджет месяца поровну каждый день.`} testId="studio-money-numbers" />
   );
 
   return (
@@ -190,7 +144,7 @@ function StudioSummary({ model, before, firstDay }: { model: SummaryModel; befor
           <span className="studio-tile-bar" data-tone={barTone} aria-hidden="true">
             <i style={{ width: `${share}%` }} />
           </span>
-          {pace === null ? null : <ResultChip result={pace} numbers={moneyNumbers} testId="studio-pace" />}
+          <BudgetPaceChip model={model} firstDay={firstDay} />
         </section>
       </div>
     </div>

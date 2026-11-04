@@ -283,12 +283,24 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(screen.queryByTestId("goal-badge")).toBeNull();
   });
 
-  it("marks the even pace of the month on the budget bar", () => {
-    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000 })} work={work()} />);
-    const plan = screen.getByTestId("budget-plan");
-    expect(plan).toHaveStyle({ left: "30%" });
-    expect(plain(plan)).toContain("план 9 000 ₽");
+  it("says the month's money pace against the even plan in words under a bar without marks", async () => {
+    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000, budgetForecast: null })} work={work()} />);
+    expect(screen.queryByTestId("budget-plan")).toBeNull();
+    expect(plain(screen.getByTestId("budget-bar"))).toBe("");
     expect(screen.getByTestId("budget-bar").querySelector("i")).toHaveStyle({ width: "20.486666666666668%" });
+    const pace = screen.getByTestId("budget-pace");
+    expect(plain(pace)).toBe("тратим на 32% меньше плана");
+    expect(pace).toHaveAttribute("data-tone", "neutral");
+    fireEvent.click(pace);
+    const numbers = await screen.findByTestId("budget-numbers");
+    expect([...numbers.querySelectorAll("dl div")].map((row) => plain(row))).toEqual(["Бюджет месяца30 000 ₽", "План к 27 октября9 000 ₽", "Потрачено6 146 ₽", "Осталось23 854 ₽"]);
+    expect(plain(numbers.querySelector(".numbers-card-note"))).toBe("План — сколько ушло бы к 27 октября, если тратить бюджет месяца поровну каждый день.");
+  });
+
+  it("says when the month's money runs out from 80% of the budget", () => {
+    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 2_500_000, budgetPlan: 2_600_000, budgetForecast: { left: 500_000, exhaustOn: "2026-10-30" } })} work={work()} />);
+    expect(plain(screen.getByTestId("budget-pace"))).toBe("хватит до 30 октября");
+    expect(screen.getByTestId("budget-bar")).toHaveAttribute("data-tone", "warning");
   });
 
   it("shows the first day as a word and a promise, without the old timeline", () => {
@@ -303,6 +315,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(first).toHaveTextContent("проверка Яндекса · первые данные завтра");
     expect(first).not.toHaveTextContent("Первые результаты появятся в течение суток");
     expect(screen.queryByTestId("agent-journal")).toBeNull();
+    expect(screen.queryByTestId("budget-pace")).toBeNull();
   });
 
   it("puts one exception in place of the change: a pause with resume", () => {

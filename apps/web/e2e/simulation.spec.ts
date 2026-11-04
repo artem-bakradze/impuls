@@ -75,7 +75,7 @@ test("an owner runs the simulation in the studio and goes on to a real launch", 
   await expect(page.getByTestId("cost-chart")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Симуляция", "Настройки"]);
   await expect(page.getByTestId("ads-state")).toContainText("идёт");
-  await expect(page.getByTestId("budget-plan")).toContainText("план");
+  await expect(page.getByTestId("budget-pace")).toContainText(/план|хватит до|бюджет месяца потрачен/);
 
   // The history is the journal of the brief, with the comparison at its top.
   await page.getByRole("button", { name: /История/ }).click();
