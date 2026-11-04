@@ -102,8 +102,9 @@ describeFeature(feature, ({ Scenario }) => {
       expect(card?.decision.status).toBe("applied");
       expect(card?.rollback).not.toBeNull();
     });
-    And("что дальше — когда сервис проверит результат", () => {
-      expect(card?.next).toMatch(/^Через неделю/);
+    And("что дальше — чего сервис ждёт от решения и когда проверит результат", () => {
+      expect(card?.next).toMatch(/^Деньги перейдут к объявлениям, которые приводят обращения/);
+      expect(card?.next).toMatch(/через неделю/);
     });
   });
 

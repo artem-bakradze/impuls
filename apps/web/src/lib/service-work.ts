@@ -78,6 +78,8 @@ export interface JournalEntry {
   changes: JournalChange[];
   checking: { statement: string; checkOn: LocalDate }[];
   found: { statement: string; outcome: string; result: string | null }[];
+  /** «Что дальше» of the entry's insights: what the service expects of its decisions and when it checks (insights spec). */
+  expects: string[];
   truths: TruthLine[];
   /** Ads and advertising the entry is about. */
   objectIds: string[];
@@ -327,6 +329,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
   for (const review of [...input.reviews].reverse()) {
     const base = { date: review.date, from: review.from, day: dayOf(review.date) };
     const truthsOf = (cards: InsightCardModel[]) => cards.flatMap((i) => (i.truth && changesOf(i).length > 0 ? [i.truth] : []));
+    const expectsOf = (cards: InsightCardModel[]) => [...new Set(cards.flatMap((i) => (i.next.trim().length > 0 ? [withStop(i.next)] : [])))];
     if (review.weekly) {
       const w = review.weekly;
       const checking = w.checking.filter((h) => !told.has(`open:${h.id}`));
@@ -340,6 +343,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
           ...base, id: `${review.date}:week`, kind: "agent", weekly: true, ...gist(paragraphs, changes), changes,
           checking: checking.map((h) => ({ statement: plain(h.statement), checkOn: h.checkOn })),
           found: found.map((h) => ({ statement: plain(h.statement), outcome: plain(h.outcome ?? ""), result: h.result === null ? null : plain(h.result) })),
+          expects: expectsOf(w.insights),
           truths: truthsOf(w.insights),
           objectIds: [...new Set(w.insights.flatMap((i) => i.objectIds))],
         });
@@ -353,6 +357,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       const paragraphs = review.summary !== null ? speech(review.summary) : agent.map((i) => withStop(i.observation));
       entries.push({
         ...base, ...none, id: `${review.date}:day`, kind: "agent", weekly: false, ...gist(paragraphs, changes), changes,
+        expects: expectsOf(agent),
         truths: truthsOf(agent),
         objectIds: [...new Set(agent.flatMap((i) => i.objectIds))],
       });
@@ -362,13 +367,14 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       const paragraphs = [...(review.rulesReason ? [withStop(review.rulesReason)] : []), ...rules.map((i) => withStop(i.observation))];
       entries.push({
         ...base, ...none, id: `${review.date}:rules`, kind: "rules", weekly: false, ...gist(paragraphs, changes), changes,
+        expects: expectsOf(rules),
         truths: truthsOf(rules),
         objectIds: [...new Set(rules.flatMap((i) => i.objectIds))],
       });
     } else if (review.rulesReason !== null && review.summary === null && agent.length === 0) {
-      entries.push({ ...base, ...none, id: `${review.date}:rules`, kind: "quiet", weekly: false, headline: null, paragraphs: [withStop(review.rulesReason)], changes: [], truths: [], objectIds: [] });
+      entries.push({ ...base, ...none, id: `${review.date}:rules`, kind: "quiet", weekly: false, headline: null, paragraphs: [withStop(review.rulesReason)], changes: [], expects: [], truths: [], objectIds: [] });
     } else if (review.quiet && review.summary === null && agent.length === 0 && !review.weekly) {
-      entries.push({ ...base, ...none, id: `${review.date}:quiet`, kind: "quiet", weekly: false, headline: null, paragraphs: [review.from ? `${QUIET_DAYS[0]?.toUpperCase() ?? ""}${QUIET_DAYS.slice(1)}.` : `${QUIET_DAY}.`], changes: [], truths: [], objectIds: [] });
+      entries.push({ ...base, ...none, id: `${review.date}:quiet`, kind: "quiet", weekly: false, headline: null, paragraphs: [review.from ? `${QUIET_DAYS[0]?.toUpperCase() ?? ""}${QUIET_DAYS.slice(1)}.` : `${QUIET_DAY}.`], changes: [], expects: [], truths: [], objectIds: [] });
     }
   }
 
@@ -386,7 +392,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
       id: `h:${item.id}`, date, from: null, day: dayOf(date), kind: item.author === "service" ? "rules" : "owner", weekly: false, headline: null,
       paragraphs: item.author === "service" ? [withStop(item.explanation)] : [],
       changes: [{ text: who ? `${who}: ${what}` : sentenceCase(what), reverted: item.reverted, historyId: item.id, item, facts: [], turnId: null }],
-      checking: [], found: [], truths: [], objectIds: [],
+      checking: [], found: [], expects: [], truths: [], objectIds: [],
     });
   }
   // Oldest first; a day's own records keep their order (reviews, then the history of that day), except the launch,

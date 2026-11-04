@@ -163,7 +163,7 @@ export class HeuristicPolicy implements AgentRuntime {
           reasonCode: "PAUSE_INEFFECTIVE",
           observation: `Объявление «${ad.title}» за 14 дней потратило ${ad.spend14Rub} ₽ и привело обращений: ${ad.leads14}. Это дороже цели.`,
           factKeys: [factKey.ad(ad.id, "spend", "14d"), factKey.ad(ad.id, "leads", "14d"), goal],
-          next: "Через неделю сравним цену обращения этой рекламы с целью.",
+          next: "Деньги перейдут к объявлениям, которые приводят обращения, — через неделю сравню цену обращения этой рекламы с целью.",
         },
         "отключил объявление, которое не приводит клиентов",
       );
@@ -179,7 +179,7 @@ export class HeuristicPolicy implements AgentRuntime {
           reasonCode: "SCALE_EFFECTIVE",
           observation: "Эта реклама приводит клиентов дешевле цели и тратит почти весь недельный лимит.",
           factKeys: [cpl, goal, factKey.direction(direction.id, "spend", "7d"), limit],
-          next: "Через неделю проверим, выросло ли число обращений.",
+          next: "Жду больше обращений по цене не выше цели — через неделю проверю их число.",
         },
         "добавил денег рекламе, которая приводит клиентов дешевле цели",
       );
@@ -194,7 +194,7 @@ export class HeuristicPolicy implements AgentRuntime {
             reasonCode: "START_AB",
             observation: `Объявление «${borderline.title}» приводит клиентов примерно по цене цели — непонятно, стоит ли его оставлять.`,
             factKeys: [factKey.ad(borderline.id, "spend", "14d"), factKey.ad(borderline.id, "leads", "14d"), goal],
-            next: "Проверим новый вариант текста не меньше недели и оставим тот, что приводит клиентов дешевле.",
+            next: "Жду, что один из вариантов текста будет приводить обращения дешевле, — проверю не меньше недели и оставлю его.",
           },
           "начал проверку нового варианта объявления",
         );
@@ -236,7 +236,7 @@ export class HeuristicPolicy implements AgentRuntime {
                   ? `По запросу «${row.segment}» за 14 дней потратили ${row.spendRub} ₽ и не получили ни одного обращения.`
                   : `Запрос «${row.segment}» приводит клиентов дороже цели.`,
               factKeys: [key(row, "spend"), key(row, "leads"), goal],
-              next: "Через неделю проверим, подешевело ли обращение у этой рекламы.",
+              next: "Деньги перестанут уходить на этот запрос, и обращение должно подешеветь — через неделю проверю.",
             },
             `убрал показы по запросу «${row.segment}»`,
           );
@@ -254,7 +254,7 @@ export class HeuristicPolicy implements AgentRuntime {
               reasonCode: "DEVICE_EXPENSIVE",
               observation: `Обращение ${from} обходится дороже цели, а с других устройств укладывается в цель. Снижаем цену перехода ${from} на ${step}%.`,
               factKeys: [key(expensive, expensive.costPerLeadRub === null ? "spend" : "cost_per_lead"), key(other, "cost_per_lead"), goal],
-              next: "Через неделю сравним цену обращения по устройствам.",
+              next: `Жду, что обращения ${from} подешевеют, а деньги перейдут к устройствам, где обращение укладывается в цель, — через неделю сравню цену обращения по устройствам.`,
             },
             `снизил цену перехода ${from}`,
           );

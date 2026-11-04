@@ -135,6 +135,14 @@ describe("money in the service's own words (analytics spec «Сводка»)", (
   });
 });
 
+describe("what the service expects of a review (insights spec «Инсайт», «Что дальше»)", () => {
+  it("keeps each insight's «Что дальше» once, as a sentence, for the studio's «Чего жду»", () => {
+    const next = "Жду больше обращений с компьютеров по цене не выше цели — проверю к 16 ноября";
+    const reviews: DayReviewModel[] = [{ ...review, date: "2026-11-08", summary: null, insights: [card({ next }), card({ id: "i2", next }), card({ id: "i3", next: " " })] }];
+    expect(build([], reviews).journal[0]?.entries[0]?.expects).toEqual([`${next}.`]);
+  });
+});
+
 describe("the latest changes on the main screen (change-history spec «Последнее изменение на главном экране»)", () => {
   it("names the price of a visit in the history's words, never «клик»", () => {
     expect(briefChange(change({}))).toBe("Цена перехода +10%");

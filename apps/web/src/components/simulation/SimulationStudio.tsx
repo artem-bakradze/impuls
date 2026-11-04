@@ -11,6 +11,7 @@ import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import { agentTurnText, DIVERGED_TEXT, elapsedText, stepText, stepWeekLabel } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
+import { noteExpect, noteSeen, noteSentence, noteTitle } from "@/lib/review-note";
 import { VERDICT_WORD } from "@/lib/service-work";
 import type { JournalEntry, ShownAd } from "@/lib/service-work";
 import type { SummaryModel } from "@/lib/summary-model";
@@ -20,13 +21,6 @@ import { useSimulation } from "./useSimulation";
 
 const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
 const channelName = (channel: ShownAd["channel"]): string => (channel === "search" ? "поиск Яндекса" : "сайты-партнёры на Яндексе");
-
-/** The first sentence of the agent's explanation, for the review card. */
-const firstSentence = (text: string): string => {
-  const clean = text.replace(/\s+/g, " ").trim();
-  const match = /^(.+?[.!?…])\s+(?=[А-ЯЁA-Z«])/.exec(clean);
-  return match ? (match[1] ?? clean) : clean;
-};
 
 const signedRub = (delta: number): string => `${delta < 0 ? "−" : "+"}${formatRub(Math.abs(delta))}`;
 
@@ -96,79 +90,55 @@ function Thinking({ status, elapsed }: { status: SimulationStatus; elapsed: stri
   );
 }
 
-function Review({
-  review,
-  acknowledged,
-  onAcknowledge,
-  onRollback,
-  status,
-  busy,
-  onNextDay,
-  onWeek,
-}: {
-  review: JournalEntry;
-  acknowledged: boolean;
-  onAcknowledge: () => void;
-  onRollback: (item: HistoryItem) => void;
-  status: SimulationStatus;
-  busy: boolean;
-  onNextDay: () => void;
-  onWeek: () => void;
-}) {
-  const change = review.changes[0] ?? null;
-  const why = firstSentence(review.paragraphs[0] ?? review.headline ?? "");
-  const facts = change?.facts ?? [];
-  const canUndo = change !== null && change.item !== null && !change.reverted && change.item.rollback.kind === "available";
-  const more = review.changes.length - 1;
+/**
+ * The review as a marketer's note, not a form (simulation-mode spec «Симуляция как отдельный режим»): what the service
+ * sees, what it did and what it expects, in its own words; the facts and the agent's turn stay in the history.
+ */
+function Review({ review, onRollback }: { review: JournalEntry; onRollback: (item: HistoryItem) => void }) {
+  const seen = noteSeen(review);
+  const expected = noteExpect(review);
   return (
-    <div className="studio-review" data-testid="studio-review">
-      {change !== null ? (
-        <>
-          <span className={`studio-review-tag ${change.reverted ? "muted" : "good"}`}>{change.reverted ? "Отменено" : "Уже в работе ✓"}</span>
-          <p className="studio-decision">{change.text}</p>
-        </>
-      ) : (
-        <>
-          <span className="studio-review-tag muted">Разбор</span>
-          <p className="studio-decision">{review.headline ?? "Изменений нет"}</p>
-        </>
-      )}
-      {why.length > 0 && why !== review.headline ? <p className="studio-why">{why}</p> : null}
-      {change !== null && !change.reverted ? (
-        <div className="studio-review-actions">
-          {acknowledged ? <span className="studio-ack">Оставлено</span> : <button type="button" className="studio-secondary" onClick={onAcknowledge}>Оставить как есть</button>}
-          {canUndo ? <button type="button" className="studio-link" onClick={() => onRollback(change.item as HistoryItem)}>Вернуть как было</button> : null}
-        </div>
+    <article className="studio-note" data-testid="studio-review">
+      {seen.length > 0 ? (
+        <section className="studio-note-part">
+          <h3 className="studio-note-label">Что вижу</h3>
+          {seen.map((text, i) => (
+            <p key={i}>{text}</p>
+          ))}
+        </section>
       ) : null}
-      {facts.length > 0 || change?.turnId ? (
-        <details className="studio-facts">
-          <summary>Почему так</summary>
-          {facts.length > 0 ? (
-            <dl>
-              {facts.map((fact) => (
-                <div key={fact.label}>
-                  <dt>{fact.label}</dt>
-                  <dd>{fact.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {change?.turnId ? <Link href={`/history/turn/${change.turnId}`}>Как сервис принял решение</Link> : null}
-        </details>
+      {review.changes.length > 0 ? (
+        <section className="studio-note-part studio-note-done">
+          <h3 className="studio-note-label">Что сделал</h3>
+          {review.changes.map((change, i) => {
+            const undoable = change.item !== null && !change.reverted && change.item.rollback.kind === "available";
+            return (
+              <p key={change.historyId ?? i} data-reverted={change.reverted || undefined}>
+                {noteSentence(change.text)}
+                {change.reverted ? <span className="studio-note-dim"> — вы вернули как было</span> : null}.
+                {undoable ? (
+                  <>
+                    {" "}
+                    <button type="button" className="studio-note-link" onClick={() => onRollback(change.item as HistoryItem)}>
+                      Вернуть как было
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            );
+          })}
+        </section>
       ) : null}
-      {more > 0 ? <Link className="studio-link" href={`/summary#log-${review.id}`}>Ещё {more} {plural(more, "изменение", "изменения", "изменений")}</Link> : null}
-      <Link className="studio-history" href={`/summary#log-${review.id}`}>История ›</Link>
-      {!status.ended && !status.failed ? (
-        <div className="studio-next">
-          <button type="button" className="studio-primary wide" onClick={onNextDay} disabled={busy}>
-            Прожить следующий день
-          </button>
-          <button type="button" className="studio-link" onClick={onWeek} disabled={busy}>
-            {stepWeekLabel(status.daysLeft)}
-          </button>
-        </div>
+      {expected.length > 0 ? (
+        <section className="studio-note-part">
+          <h3 className="studio-note-label">Чего жду</h3>
+          <p>{expected.join(" ")}</p>
+        </section>
       ) : null}
-    </div>
+      <Link className="studio-note-more" href={`/summary#log-${review.id}`}>
+        Подробнее — в истории ›
+      </Link>
+    </article>
   );
 }
 
@@ -176,7 +146,6 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
   const router = useRouter();
   const { status, busy, error, act, turnSeenAt, now } = useSimulation(initial);
   const [before, setBefore] = useState<AdsWork | null>(null);
-  const [acknowledged, setAcknowledged] = useState<string | null>(null);
   const [restartOpen, setRestartOpen] = useState(false);
   const [rollback, setRollback] = useState<HistoryItem | null>(null);
   const [modal, modalHolder] = Modal.useModal();
@@ -193,7 +162,6 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
 
   const run = (control: SimulationAction) => {
     setBefore(work);
-    setAcknowledged(null);
     void act(control);
   };
 
@@ -219,7 +187,6 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
   };
   const maxSpend = Math.max(0, ...work.shown.map((ad) => ad.spend));
 
-  const stageActions = !review || stepping || status.ended || status.failed;
   const primaryLabel = status.ended
     ? "Продолжить ещё 30 дней"
     : status.failed
@@ -277,35 +244,24 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           {work.shown.map((ad) => (
             <StudioAd key={ad.id} ad={ad} maxSpend={maxSpend} before={before?.shown.find((item) => item.id === ad.id) ?? null} />
           ))}
-          {stageActions ? (
-            <div className="studio-actions">
-              <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
-                {primaryLabel}
+          <div className="studio-actions">
+            <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
+              {primaryLabel}
+            </button>
+            {!status.ended && !status.failed && !stepping ? (
+              <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
+                {weekLabel}
               </button>
-              {!status.ended && !status.failed && !stepping ? (
-                <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
-                  {weekLabel}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
 
         <aside className="studio-rail panel" aria-label="Разбор" data-state={stepping ? "thinking" : review !== null ? "review" : "empty"}>
-          <h2 className="studio-eyebrow">{review?.weekly ? "Разбор недели" : "Разбор дня"}</h2>
+          <h2 className="studio-eyebrow">{stepping || review === null ? "Разбор дня" : noteTitle(review)}</h2>
           {stepping ? (
             <Thinking status={status} elapsed={elapsed} />
           ) : review !== null ? (
-            <Review
-              review={review}
-              acknowledged={acknowledged === review.id}
-              onAcknowledge={() => setAcknowledged(review.id)}
-              onRollback={setRollback}
-              status={status}
-              busy={busy !== null}
-              onNextDay={() => run({ action: "step_day" })}
-              onWeek={() => run({ action: "step_week" })}
-            />
+            <Review review={review} onRollback={setRollback} />
           ) : (
             <div className="studio-empty-review">
               <p>После дня здесь появится разбор: что сервис заметил и что изменил.</p>
@@ -340,10 +296,7 @@ export function SimulationStudio({ model, work, initial }: { model: SummaryModel
           names={work.names}
           onClose={(changed) => {
             setRollback(null);
-            if (changed) {
-              setAcknowledged(null);
-              router.refresh();
-            }
+            if (changed) router.refresh();
           }}
         />
       ) : null}

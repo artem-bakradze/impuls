@@ -236,7 +236,7 @@ export const saveAgentInsight = async (
 const RULE_TEMPLATES: Record<string, (name: string) => { observation: string; next: string; facts: (keys: RuleKeys) => string[] }> = {
   SAFETY_PAUSE_AD: (name) => ({
     observation: `Объявление «${name}» тратит деньги, а клиенты из него обходятся дороже цели.`,
-    next: "Через неделю проверим, стала ли реклама в целом приводить клиентов дешевле.",
+    next: "Деньги перейдут к объявлениям, которые приводят обращения, — через неделю проверим, подешевело ли обращение в целом.",
     facts: (k) => [k.ad("spend", "14d"), k.ad("leads", "14d"), k.goal],
   }),
   SAFETY_PAUSE_DIRECTION: (name) => ({
@@ -246,12 +246,12 @@ const RULE_TEMPLATES: Record<string, (name: string) => { observation: string; ne
   }),
   SAFETY_SCALE_EFFECTIVE: (name) => ({
     observation: `Реклама «${name}» приводит клиентов дешевле цели и упирается в недельный лимит.`,
-    next: "Через неделю проверим, выросло ли число обращений.",
+    next: "Ждём больше обращений по цене не выше цели — через неделю проверим их число.",
     facts: (k) => [k.direction("cost_per_lead", "14d"), k.goal, k.direction("spend", "7d"), k.limit],
   }),
   SAFETY_REDISTRIBUTE_FREED: (name) => ({
     observation: `Деньги остановленной рекламы перешли туда, где клиенты дешевле: «${name}».`,
-    next: "Через неделю проверим, выросло ли число обращений.",
+    next: "Ждём больше обращений по цене не выше цели — через неделю проверим их число.",
     facts: (k) => [k.direction("cost_per_lead", "14d"), k.goal, k.limit],
   }),
   SAFETY_START_EXPERIMENT: (name) => ({

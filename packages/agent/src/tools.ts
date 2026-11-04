@@ -10,7 +10,7 @@ const insightFields = {
   reasonCode: z.string().min(1).describe("Короткий код причины, например SCALE_EFFECTIVE"),
   observation: z.string().min(1).describe("Что заметили: одно-два предложения для владельца простым языком; все числа — из фактов снимка"),
   factKeys: z.array(z.string().min(1)).min(2).max(4).describe("Ключи 2–4 фактов из snapshot.facts, на которых основан вывод"),
-  next: z.string().min(1).describe("Что дальше: что и к какому дню сервис проверит"),
+  next: z.string().min(1).describe("Что дальше: для действия — чего сервис ждёт от решения (направление изменения, без новых чисел), затем к какому дню проверит; для наблюдения — к какому дню вернётся к вопросу"),
 };
 const insight = z.object(insightFields).strict();
 

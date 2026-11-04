@@ -120,12 +120,12 @@ const work = (overrides: Partial<AdsWork> = {}): AdsWork => ({
 const ownerEntry = {
   id: "h:c2", date: "2026-10-28", from: null, day: 10, kind: "owner" as const, weekly: false, headline: null, paragraphs: [],
   changes: [{ text: "Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00", reverted: false, historyId: "c2", item: { ...rollbackItem, id: "c2", author: "user" as const }, facts: [], turnId: null }],
-  checking: [], found: [], truths: [], objectIds: [],
+  checking: [], found: [], expects: [], truths: [], objectIds: [],
 };
 const decisionEntry = {
   id: "2026-10-27:day", date: "2026-10-27", from: null, day: 9, kind: "agent" as const, weekly: false, headline: null, paragraphs: ["Объявление тратило деньги без обращений."],
   changes: [{ text: "Отключил объявление «Маникюр без записи»", reverted: false, historyId: "c1", item: rollbackItem, facts: pauseCard.facts, turnId: "t1" }],
-  checking: [], found: [], truths: [], objectIds: ["a2"],
+  checking: [], found: [], expects: [], truths: [], objectIds: ["a2"],
 };
 
 describe("«Реклама» — один ответ (analytics spec «Сводка»)", () => {

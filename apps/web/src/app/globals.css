@@ -3369,10 +3369,6 @@ button.log-link {
   color: var(--text-3);
   cursor: default;
 }
-.studio-primary.wide {
-  width: 100%;
-  margin-top: 12px;
-}
 .studio-link {
   border: 0;
   background: none;
@@ -3388,118 +3384,73 @@ button.log-link {
   cursor: default;
 }
 .studio-rail {
-  position: sticky;
-  top: calc(var(--header-h) + 24px);
   min-width: 0;
   min-height: 280px;
   padding: 22px 24px 24px;
 }
 .studio-eyebrow {
-  margin: 0 0 12px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-2);
-}
-.studio-review {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
-}
-.studio-review-tag {
-  font-size: var(--fs-xs);
-  font-weight: 650;
-}
-.studio-review-tag.good { color: var(--success); }
-.studio-review-tag.muted { color: var(--text-3); }
-.studio-decision {
-  margin: 0;
+  margin: 0 0 16px;
   font-size: var(--fs-md);
   font-weight: 650;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-}
-.studio-why {
-  margin: 0;
-  font-size: var(--fs-xs);
-  line-height: 1.5;
-  color: var(--text-3);
-}
-.studio-review-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-/* Agreement is not the next step: an outline, so the screen keeps one main button. */
-.studio-secondary {
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
+  letter-spacing: -0.015em;
   color: var(--text);
-  font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  padding: 7px 12px;
-  cursor: pointer;
 }
-.studio-secondary:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.studio-ack {
-  font-size: var(--fs-xs);
-  color: var(--success);
-}
-.studio-facts {
-  width: 100%;
-  margin-top: 6px;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
-}
-.studio-facts > summary {
-  color: var(--accent);
-  font-size: var(--fs-xs);
-}
-.studio-facts dl {
-  margin: 8px 0 0;
-}
-.studio-facts dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--border);
-}
-.studio-facts dt {
-  color: var(--text-3);
-}
-.studio-facts dd {
-  margin: 0;
-  text-align: right;
-}
-.studio-facts a {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: var(--fs-xs);
-}
-.studio-history {
-  margin-top: 4px;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  text-decoration: none;
-}
-.studio-history:hover {
-  color: var(--accent);
-}
-.studio-next {
+/* The review is a marketer's note: labelled paragraphs of the service's own words, no form, one link to the history. */
+.studio-note {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  margin-top: 10px;
+  gap: 18px;
+}
+.studio-note-label {
+  margin: 0 0 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--accent-ink);
+}
+.studio-note-part p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text);
+}
+.studio-note-part p + p {
+  margin-top: 8px;
+}
+.studio-note-done p {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.studio-note-dim {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.studio-note-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-decoration-color: rgba(85, 67, 212, 0.35);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.studio-note-link:hover,
+.studio-note-link:focus-visible {
+  text-decoration-color: currentColor;
+}
+.studio-note-more {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  text-decoration: none;
+}
+.studio-note-more:hover {
+  color: var(--accent-ink);
 }
 .studio-empty-review {
   font-size: var(--fs-xs);
@@ -3588,7 +3539,6 @@ button.log-link {
   }
   /* On a phone the review comes first: the decision must not wait under eight ad rows. */
   .studio-rail {
-    position: static;
     order: -1;
     padding: 18px 18px 20px;
     min-height: 0;
@@ -3634,6 +3584,5 @@ button.log-link {
   .studio-total b { font-size: var(--fs-xl); }
   .studio-ad-stats { font-size: var(--fs-xs); }
   .studio-primary { min-height: 44px; }
-  .studio-secondary { min-height: 40px; }
   .studio-go-real { margin-left: 0; }
 }
