@@ -3,6 +3,7 @@ import type { AdPlatform } from "@impuls/platforms";
 import type { Clock } from "./clock";
 import type { CommandExecutor } from "./executor";
 import type { LockManager } from "./locks";
+import type { Resolver } from "./pages";
 import type { Store } from "./store";
 
 /** Price of the model and spend limits (ad-agent spec «Лимиты агента»); kopecks. */
@@ -34,4 +35,9 @@ export interface JobContext {
   images: ImageEngine;
   /** Required with a paid image engine: paid pictures per business per calendar month. */
   imageLimit?: { monthly: number };
+  /**
+   * How the owner's pages (card, Metrica check) resolve hosts for the public-address check: DNS over HTTPS when
+   * `PAGE_DNS_OVER_HTTPS_URL` is set (a stand behind a fake-IP VPN), the system DNS otherwise.
+   */
+  resolveHost?: Resolver;
 }

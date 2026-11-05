@@ -87,6 +87,11 @@ export AUTH_SECRET=$(openssl rand -base64 32) AUTH_GOOGLE_ID=... AUTH_GOOGLE_SEC
 docker compose --profile app up -d --build
 ```
 
+Behind a VPN with fake-IP DNS (Hiddify, Clash, sing-box: every host resolves to `198.18.x.x` / `fc00::…`, even
+through `8.8.8.8`), the worker refuses every owner's site as an internal address, and the card step says «Не получилось
+прочитать страницу». Start the worker with `PAGE_DNS_OVER_HTTPS_URL=https://dns.google/resolve`: the check then sees
+the site's real address, while the page itself is still downloaded through the VPN.
+
 ## E2E (Playwright)
 
 ```bash

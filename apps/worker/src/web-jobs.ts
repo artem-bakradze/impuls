@@ -75,6 +75,9 @@ export const checkCounter = async (siteUrl: string, fetchPage: (url: string) => 
   return counter.found ? { status: "found", counterId: counter.counterId } : { status: "not_found" };
 };
 
+/** Downloads an owner's page with the context's host resolution (the system DNS unless DNS over HTTPS is configured). */
+const readPage = (ctx: JobContext) => (url: string): Promise<string> => fetchPublicPage(url, fetch, ctx.resolveHost);
+
 const CARD_UNREADABLE = "Не получилось прочитать страницу — расскажите о бизнесе своими словами";
 
 const extractCard = async (ctx: JobContext, sources: Extract<WebJob, { kind: "extract_card" }>["sources"]): Promise<ExtractCardResult> => {
@@ -86,7 +89,7 @@ const extractCard = async (ctx: JobContext, sources: Extract<WebJob, { kind: "ex
   for (const [source, url] of [["site", sources.siteUrl], ["maps", sources.mapsUrl], ["vk", sources.vkUrl]] as const) {
     if (url.trim() === "") continue;
     try {
-      const text = htmlToText(await fetchPublicPage(url));
+      const text = htmlToText(await readPage(ctx)(url));
       if (text.length < 40) throw new Error("page has almost no text");
       pages.push({ source, text });
     } catch {
@@ -195,7 +198,7 @@ const handleJob = async (ctx: JobContext, job: WebJob): Promise<unknown> => {
     case "extract_card":
       return extractCard(ctx, job.sources);
     case "check_counter": {
-      const result = await checkCounter(job.siteUrl);
+      const result = await checkCounter(job.siteUrl, readPage(ctx));
       await ctx.locks.withLock(job.businessId, async () => {
         const business = await ctx.store.getBusiness(job.businessId);
         if (business.card.siteUrl !== job.siteUrl) return;

@@ -10,6 +10,7 @@ import { loadConfig } from "./config";
 import type { AgentCosts, JobContext } from "./context";
 import { CommandExecutor } from "./executor";
 import { createLogger } from "./logger";
+import { dnsOverHttpsResolver } from "./pages";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { startScheduler, WEB_JOB_CONCURRENCY } from "./scheduler";
@@ -155,6 +156,7 @@ const main = async (): Promise<void> => {
     creatives,
     images,
     ...(imageLimit !== undefined && { imageLimit }),
+    ...(config.PAGE_DNS_OVER_HTTPS_URL !== undefined && { resolveHost: dnsOverHttpsResolver(config.PAGE_DNS_OVER_HTTPS_URL) }),
     ...(agentCosts !== undefined && { agentCosts }),
     ...(strategist !== undefined && { strategist }),
   };
@@ -163,7 +165,7 @@ const main = async (): Promise<void> => {
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
   await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL, teamEmail: config.TEAM_ALERT_EMAIL });
-  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, imageModel: config.OPENAI_IMAGE_MODEL ?? null, imagePriceRub: config.IMAGE_PRICE_RUB ?? null, imageMonthlyLimit: config.IMAGE_MONTHLY_LIMIT ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null });
+  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, imageModel: config.OPENAI_IMAGE_MODEL ?? null, imagePriceRub: config.IMAGE_PRICE_RUB ?? null, imageMonthlyLimit: config.IMAGE_MONTHLY_LIMIT ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null, pageDnsOverHttps: config.PAGE_DNS_OVER_HTTPS_URL ?? null });
 
   const shutdown = async (): Promise<void> => {
     await boss.stop();

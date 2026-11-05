@@ -42,6 +42,8 @@ services:
       OPENAI_STRATEGY_MODEL:
       AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK:
       AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK:
+      # Behind a fake-IP VPN: e.g. https://dns.google/resolve (docs/development.md).
+      PAGE_DNS_OVER_HTTPS_URL:
       SMTP_URL: smtp://mailpit:1025
       MAIL_FROM: "Импульс <noreply@impuls.test>"
       APP_URL: http://localhost:3000

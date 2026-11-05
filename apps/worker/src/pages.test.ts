@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchPublicPage, findMetrikaCounter, isPrivateAddress, PAGE_MAX_BYTES } from "./pages";
+import { dnsOverHttpsResolver, fetchPublicPage, findMetrikaCounter, isPrivateAddress, PAGE_MAX_BYTES } from "./pages";
 import { checkCounter } from "./web-jobs";
 
 const publicDns = (host: string) => Promise.resolve(host === "intranet.example" ? ["10.0.0.5"] : ["93.184.216.34"]);
@@ -42,6 +42,39 @@ describe("fetchPublicPage", () => {
     await expect(fetchPublicPage("https://a.example/", () => Promise.resolve(html("", { status: 404 })), publicDns)).rejects.toMatchObject({ code: "HTTP_STATUS" });
     await expect(fetchPublicPage("https://a.example/", () => Promise.resolve(new Response("{}", { headers: { "content-type": "application/json" } })), publicDns)).rejects.toMatchObject({ code: "NOT_HTML" });
     await expect(fetchPublicPage("https://a.example/", () => Promise.resolve(html("а".repeat(PAGE_MAX_BYTES))), publicDns)).rejects.toMatchObject({ code: "TOO_LARGE" });
+  });
+});
+
+describe("dnsOverHttpsResolver", () => {
+  const doh = (answers: Record<string, unknown>) => {
+    const asked: string[] = [];
+    const fetchImpl = (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      asked.push(`${url.searchParams.get("name")}/${url.searchParams.get("type")}`);
+      return Promise.resolve(Response.json(answers[url.searchParams.get("type") ?? ""] ?? { Status: 0 }));
+    };
+    return { fetchImpl, asked };
+  };
+
+  it("returns the IPv4 and IPv6 addresses and skips CNAME records", async () => {
+    const { fetchImpl, asked } = doh({
+      "1": { Status: 0, Answer: [{ type: 5, data: "nogotok.example." }, { type: 1, data: "93.184.216.34" }] },
+      "28": { Status: 0, Answer: [{ type: 28, data: "2a02:6b8::2:242" }] },
+    });
+    expect(await dnsOverHttpsResolver("https://dns.example/resolve", fetchImpl)("nogotok.example")).toEqual(["93.184.216.34", "2a02:6b8::2:242"]);
+    expect(asked).toEqual(["nogotok.example/1", "nogotok.example/28"]);
+  });
+
+  it("fails for an unknown host and a host without addresses", async () => {
+    await expect(dnsOverHttpsResolver("https://dns.example/resolve", doh({ "1": { Status: 3 } }).fetchImpl)("nope.example")).rejects.toThrow("status 3");
+    await expect(dnsOverHttpsResolver("https://dns.example/resolve", doh({}).fetchImpl)("empty.example")).rejects.toThrow("no addresses");
+  });
+
+  it("lets the public-address check see the real address behind a fake-IP VPN, and still refuses internal ones", async () => {
+    const resolve = dnsOverHttpsResolver("https://dns.example/resolve", doh({ "1": { Status: 0, Answer: [{ type: 1, data: "93.184.216.34" }] } }).fetchImpl);
+    expect(await fetchPublicPage("https://nogotok.example/", () => Promise.resolve(html("<h1>Ноготок</h1>")), resolve)).toBe("<h1>Ноготок</h1>");
+    const internal = dnsOverHttpsResolver("https://dns.example/resolve", doh({ "1": { Status: 0, Answer: [{ type: 1, data: "10.0.0.5" }] } }).fetchImpl);
+    await expect(fetchPublicPage("https://intranet.example/", () => Promise.resolve(html("")), internal)).rejects.toMatchObject({ code: "PRIVATE_ADDRESS" });
   });
 });
 

@@ -48,6 +48,12 @@ describe("loadConfig", () => {
     expect(loadConfig(complete)).toMatchObject({ DIRECT_API_MODE: "simulator" });
   });
 
+  it("takes an optional DNS over HTTPS resolver for the owner's pages, over HTTPS only", () => {
+    expect(loadConfig(complete).PAGE_DNS_OVER_HTTPS_URL).toBeUndefined();
+    expect(loadConfig({ ...complete, PAGE_DNS_OVER_HTTPS_URL: "https://dns.google/resolve" }).PAGE_DNS_OVER_HTTPS_URL).toBe("https://dns.google/resolve");
+    expect(() => loadConfig({ ...complete, PAGE_DNS_OVER_HTTPS_URL: "http://dns.google/resolve" })).toThrow(ConfigError);
+  });
+
   it("requires the OpenAI key and text model for LLM creatives", () => {
     expect(() => loadConfig({ ...complete, CREATIVES: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_TEXT_MODEL.*OPENAI_IMAGE_MODEL.*IMAGE_PRICE_RUB.*IMAGE_MONTHLY_LIMIT/);
     expect(() => loadConfig({ ...complete, CREATIVES: "openai", OPENAI_API_KEY: "k", OPENAI_TEXT_MODEL: "gpt-6.1-terra" })).toThrow(/OPENAI_IMAGE_MODEL/);

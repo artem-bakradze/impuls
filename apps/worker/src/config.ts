@@ -57,6 +57,11 @@ const ConfigSchema = z.object({
   IMAGE_MONTHLY_LIMIT: z.coerce.number().int().positive().optional(),
   /** Optional: HTTPS proxy for OpenAI when hosted in Russia (design decision 12). */
   OPENAI_PROXY_URL: z.url().optional(),
+  /**
+   * Optional: DNS over HTTPS (JSON API, e.g. https://dns.google/resolve) for the public-address check of the owner's
+   * pages. For a local stand behind a VPN with fake-IP DNS; unset, the system DNS resolves.
+   */
+  PAGE_DNS_OVER_HTTPS_URL: z.url({ protocol: /^https$/ }).optional(),
   /** Required in production: key for the encrypted Direct OAuth tokens (base64, 32 bytes). */
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
   /** Required in production: the user-authorization OAuth app that refreshes the Direct tokens. */

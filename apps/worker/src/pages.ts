@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { z } from "zod";
 
 /**
  * Downloads a public page the owner pointed to (site, Yandex Maps, VK) for card extraction. The URL comes from the
@@ -33,6 +34,39 @@ export const isPrivateAddress = (address: string): boolean => {
 export type Resolver = (host: string) => Promise<string[]>;
 
 const dnsResolver: Resolver = async (host) => (await lookup(host, { all: true })).map((r) => r.address);
+
+const DohAnswer = z.object({
+  Status: z.number(),
+  Answer: z.array(z.object({ type: z.number(), data: z.string() })).optional(),
+});
+
+/**
+ * Resolves through the JSON API of DNS over HTTPS (`https://dns.google/resolve`, `https://cloudflare-dns.com/dns-query`).
+ * For a stand behind a VPN with fake-IP DNS: it answers every host with a reserved address and intercepts plain DNS
+ * to any server, so the public-address check would refuse every site; HTTPS to the resolver is not intercepted.
+ */
+export const dnsOverHttpsResolver = (endpoint: string, fetchImpl: typeof fetch = fetch): Resolver => async (host) => {
+  const addresses: string[] = [];
+  for (const type of [1, 28]) {
+    const url = new URL(endpoint);
+    url.searchParams.set("name", host);
+    url.searchParams.set("type", String(type));
+    const response = await fetchImpl(url, { headers: { Accept: "application/dns-json" }, signal: AbortSignal.timeout(PAGE_TIMEOUT_MS) });
+    if (!response.ok) {
+      throw new Error(`DNS over HTTPS answered HTTP ${response.status}`);
+    }
+    const answer = DohAnswer.parse(await response.json());
+    if (answer.Status !== 0) {
+      throw new Error(`DNS over HTTPS status ${answer.Status} for ${host}`);
+    }
+    // CNAME records come in the same answer; only the addresses of the asked type count.
+    addresses.push(...(answer.Answer ?? []).filter((record) => record.type === type && isIP(record.data) !== 0).map((record) => record.data));
+  }
+  if (addresses.length === 0) {
+    throw new Error(`${host} has no addresses`);
+  }
+  return addresses;
+};
 
 const checkUrl = async (raw: string, resolve: Resolver): Promise<URL> => {
   let url: URL;

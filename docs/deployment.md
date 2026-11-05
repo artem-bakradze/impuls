@@ -39,6 +39,7 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | `APP_URL` | public web URL for links in emails |
 | `TEAM_ALERT_EMAIL` | incidents are emailed here |
 | `OPENAI_PROXY_URL` | optional egress proxy |
+| `PAGE_DNS_OVER_HTTPS_URL` | optional: DNS over HTTPS (JSON API, `https://dns.google/resolve` or `https://cloudflare-dns.com/dns-query`) for the public-address check of the owner's pages (card, Metrica check); unset, the system DNS resolves. Needed only behind a fake-IP VPN (see `docs/development.md`) |
 
 The worker refuses to start with missing or invalid values and prints every problem.
 
