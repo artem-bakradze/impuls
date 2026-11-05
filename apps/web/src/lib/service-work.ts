@@ -83,11 +83,15 @@ export interface JournalEntry {
   truths: TruthLine[];
   /** Ads and advertising the entry is about. */
   objectIds: string[];
+  /** The days a simulation's period review is about: «Разбор · дни 9–15» (simulation-mode spec). */
+  period?: { from: LocalDate; to: LocalDate };
 }
 
 export interface JournalSection {
-  /** The lived week's number; null for days lived one by one, outside a week step. */
+  /** The lived week's or period's number; null for days lived one by one, outside a week step. */
   week: number | null;
+  /** A simulation's period of the owner's numbers (simulation-mode spec «История периодов»), not a week. */
+  period?: boolean;
   from: LocalDate;
   to: LocalDate;
   entries: JournalEntry[];
@@ -124,7 +128,8 @@ export interface ServiceWorkInput {
   checkAds?: readonly { title: string; text: string }[];
   /** The hypotheses being checked now. */
   openChecks: readonly { statement: string; checkOn: LocalDate }[];
-  weeks: readonly { week: number; from: LocalDate; reviewedOn: LocalDate }[];
+  /** Weeks of Direct, or the lived periods of a simulation (`period`). */
+  weeks: readonly { week: number; from: LocalDate; reviewedOn: LocalDate; period?: boolean }[];
 }
 
 export interface ServiceWorkModel {
@@ -413,11 +418,15 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
     }
     // Week 1 may start before the calendar Monday: the launch day belongs to it and the header must name it.
     const from = week === undefined ? (entry.from ?? entry.date) : week.week === 1 && input.startedOn < week.from ? input.startedOn : week.from;
-    journal.push({ week: week?.week ?? null, from, to: entry.date, entries: [entry] });
+    journal.push({ week: week?.week ?? null, period: week?.period ?? false, from, to: entry.date, entries: [entry] });
   }
   for (const section of journal) {
     const week = input.weeks.find((w) => w.week === section.week);
     if (week) section.to = week.reviewedOn > week.from ? addDays(week.reviewedOn, -1) : week.from;
+    // The service's record on the morning a period ends on is that period's review.
+    if (week?.period) {
+      for (const e of section.entries) if (e.kind !== "owner" && e.date === week.reviewedOn) e.period = { from: week.from, to: section.to };
+    }
   }
 
   // Which journal record tells each change, for the marks on the ads.

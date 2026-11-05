@@ -3,7 +3,7 @@
 import { CheckCircleFilled } from "@ant-design/icons";
 import { Drawer } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatLocalDate, formatRub, plural } from "@/lib/format";
+import { formatLocalDate, formatRub } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import { capitalize } from "@/lib/day-words";
 import { noteExpect, noteSeen } from "@/lib/review-note";
@@ -12,34 +12,8 @@ import type { SummaryModel } from "@/lib/summary-model";
 import type { JournalChange, JournalEntry, JournalSection } from "@/lib/service-work";
 import { AgentAvatar } from "../ui/AgentAvatar";
 import { useDayWords } from "../ui/DayWordsContext";
-import type { Tone } from "../ui/primitives";
 
 const SHOWN_WEEKS = 8;
-const leadsWord = (n: number): string => plural(n, "обращение", "обращения", "обращений");
-
-/** One line under the month's numbers in a simulation: the same words as before, now inside the history sheet. */
-export function ComparisonNote({ sim }: { sim: NonNullable<AdsWork["sim"]> }) {
-  const { comparison, result, decisionDays } = sim;
-  if (comparison === null) return <p className="j-compare" data-testid="sim-comparison">Сравнение с прогоном без изменений появится после первого завершённого дня.</p>;
-  const days = result?.days ?? comparison.service.length;
-  const service = result?.service.leads ?? comparison.serviceNow.leads;
-  const baseline = result?.baseline.leads ?? comparison.baselineNow.leads;
-  const diff = service - baseline;
-  const early = result === null && (days < 14 || decisionDays.length === 0);
-  const verdict = early ? "пока рано сравнивать" : diff === 0 ? "поровну" : diff > 0 ? `на ${diff} больше` : `на ${-diff} меньше`;
-  const tone: Tone = early || diff === 0 ? "neutral" : diff > 0 ? "success" : "danger";
-  return (
-    <div className="j-compare" data-testid="sim-comparison">
-      <span>
-        {result ? "Итог" : "За"} {days} {plural(days, "день", "дня", "дней")}: с сервисом <strong>{service} {leadsWord(service)}</strong>, без него было бы {baseline}
-      </span>
-      <span className="j-verdict" data-tone={tone === "neutral" ? undefined : tone}>
-        {verdict}
-      </span>
-      <span className="t-small">Разница может быть случайной и не обещает такого же в настоящей рекламе.</span>
-    </div>
-  );
-}
 
 /**
  * One change as a done action, the same as in the review on «Реклама»: a check, the change in words and «Вернуть как
@@ -147,11 +121,6 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
               </p>
             ))}
             {expected.length > 0 ? <p className="studio-msg-text j-expect">{expected.join(" ")}</p> : null}
-            {entry.truths.map((t, i) => (
-              <p key={`t${i}`} className={`j-truth j-truth-${t.tone}`} data-testid="insight-truth">
-                {words.text(t.text)}
-              </p>
-            ))}
           </div>
         </div>
       </div>
@@ -166,13 +135,15 @@ function Section({ section, children }: { section: JournalSection; children: Rea
     : section.from === section.to
       ? formatLocalDate(section.from)
       : `${formatLocalDate(section.from)} — ${formatLocalDate(section.to)}`;
-  // A week is reviewed the morning after its days; the header names that morning, so its record does not look misplaced.
-  const review = section.week === null ? undefined : section.entries.find((e) => e.weekly && e.date > section.to)?.date;
+  // A week or a period is reviewed the morning after its days; the header names that morning, so its record does not
+  // look misplaced. A simulation's period is its days: «Дни 9–15 · разбор в день 16» (simulation-mode «История периодов»).
+  const review =
+    section.week === null ? undefined : section.entries.find((e) => (section.period ? e.period !== undefined : e.weekly) && e.date > section.to)?.date;
+  const label = section.period ? capitalize(dates) : section.week ? `Неделя ${section.week}` : dates;
   return (
-    <section className="j-section" data-week={section.week ?? undefined} aria-label={section.week ? `Неделя ${section.week}` : dates}>
+    <section className="j-section" data-week={section.week ?? undefined} aria-label={label}>
       <div className="j-week" data-testid="journal-week">
-        {section.week ? `Неделя ${section.week} · ` : ""}
-        {dates}
+        {section.period ? capitalize(dates) : `${section.week ? `Неделя ${section.week} · ` : ""}${dates}`}
         {review ? ` · разбор ${words.simulation ? words.on(review) : formatLocalDate(review)}` : ""}
       </div>
       {children}
@@ -208,7 +179,6 @@ export function HistorySheet({ work, clientCost, focusWeek = null, onClose, onRo
             Клиенты · {clientCost.clients} · {clientCost.costPerClient === null ? "—" : `${formatRub(clientCost.costPerClient)} за клиента`}
           </p>
         ) : null}
-        {work.sim ? <ComparisonNote sim={work.sim} /> : null}
         {sections.length === 0 ? (
           <p className="sheet-empty">Записей пока нет.</p>
         ) : (

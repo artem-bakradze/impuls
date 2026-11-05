@@ -2,7 +2,7 @@ import { HeuristicPolicy, IdlePolicy, QuietPolicy, ReplayPolicy } from "@impuls/
 import type { AgentRuntime, AgentToolbox, ToolResult, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { factKey, rubles, toLocalDate } from "@impuls/core";
 import type { InsightDraft } from "@impuls/core";
-import { controlSimulation, enqueueAgentEvent, handleWebJob, processAgentInbox, QUIET_DAY_CODE, RULES_DAY_CODE, rollback, runAgentTurn, SimulationDriver } from "@impuls/worker";
+import { enqueueAgentEvent, handleWebJob, processAgentInbox, QUIET_DAY_CODE, RULES_DAY_CODE, rollback, runAgentTurn, SimulationDriver } from "@impuls/worker";
 import type { TurnOutcome } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
@@ -161,15 +161,15 @@ describeFeature(feature, ({ Scenario }) => {
     let world: Awaited<ReturnType<typeof simulatedBusiness>>;
     let turnsBefore = 0;
     Given("реклама в поиске и на сайтах-партнёрах с агентом, который сравнил площадки по цене обращения", async () => {
-      world = await simulatedBusiness(new HeuristicPolicy(), 2);
-      // The agent is called on reasons: the comparison comes with the first turn that finds nothing to change.
+      world = await simulatedBusiness(new HeuristicPolicy(), 1);
+      // The comparison comes with the first turn that finds nothing to change.
       const compared = async () => (await world.store.insights("b1")).filter((i) => i.reasonCode === "CHANNELS_COMPARED").length;
-      for (let day = 0; day < 21 && (await compared()) === 0; day++) await controlSimulation(world.ctx, "b1", { action: "step_day" });
+      for (let week = 0; week < 4 && (await compared()) === 0; week++) await world.week();
       expect(await compared()).toBe(1);
       turnsBefore = (await world.store.turns("b1")).filter((t) => t.status === "completed").length;
     });
-    When("следующие две недели агента вызывают по поводам и на разборах недели", async () => {
-      for (let week = 0; week < 2; week++) await controlSimulation(world.ctx, "b1", { action: "step_week" });
+    When("следующие две недели агент разбирает периоды, которые внёс владелец", async () => {
+      for (let week = 0; week < 2; week++) await world.week();
     });
     Then("он видит свой инсайт через инструмент чтения и не создаёт такой же", async () => {
       expect((await world.store.turns("b1")).filter((t) => t.status === "completed").length).toBeGreaterThan(turnsBefore);

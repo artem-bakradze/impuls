@@ -1,344 +1,285 @@
-import { HeuristicPolicy, ReplayPolicy, TemplateCreativeEngine } from "@impuls/agent";
-import type { AgentRuntime, AgentToolbox, TurnResult, TurnSnapshot, TurnTrigger } from "@impuls/agent";
-import { allowedWeeklyTotal, factKey, monthBudget, rubles, toLocalDate } from "@impuls/core";
-import {
-  CommandExecutor,
-  controlSimulation,
-  deliverNotifications,
-  inverseCommands,
-  launchSimulation,
-  ManualClock,
-  MemoryLockManager,
-  MemoryStore,
-  SimulationError,
-  handleWebJob,
-  createLogger,
-  runAgentTurn,
-  withSimulation,
-  isAdDecision,
-  isBudgetAdjustment,
-  SCENARIOS,
-  scenarioStartDate,
-} from "@impuls/worker";
-import type { ScenarioId } from "@impuls/worker";
-import type { JobContext, LaunchPlan, Mailer } from "@impuls/worker";
+import { HeuristicPolicy, IdlePolicy } from "@impuls/agent";
+import type { AgentRuntime, AgentToolbox, BreakdownAnswer, TurnResult, TurnSnapshot } from "@impuls/agent";
+import { monthBudget, rubles, toLocalDate } from "@impuls/core";
+import { controlSimulation, createLogger, deliverNotifications, handleWebJob, launchSimulation, runAgentTurn, withSimulation } from "@impuls/worker";
+import type { Mailer } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
-import { expect } from "vitest";
-import { feedDays } from "../../../apps/web/src/lib/insights-model";
-import type { DayReviewModel } from "../../../apps/web/src/lib/insights-model";
-import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
-import { agentTurnText, DIVERGED_TEXT, simulationStatusOf, stepText } from "../../../apps/web/src/lib/simulation-model";
-import { buildWeekStory } from "../../../apps/web/src/lib/week-story";
-import { buildDecisionScreen, scenarioTruth } from "../../../apps/web/src/lib/simulation-screen";
+import { expect, vi } from "vitest";
+import { simulationWords } from "../../../apps/web/src/lib/day-words";
+import { noteTitle } from "../../../apps/web/src/lib/review-note";
+import { currentAction, periodReviewText, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
+import type { JournalEntry } from "../../../apps/web/src/lib/service-work";
+import { BAD, GOOD, HeldAgent, ownerPlan, ownerWorld, PLAIN, REAL_START } from "./owner-world";
+import type { OwnerWorld } from "./owner-world";
 import { featurePath } from "./world";
 
 const feature = await loadFeature(featurePath("simulation-mode/simulation.feature"), { language: "ru" });
 
-const START = new Date("2026-11-03T07:00:00Z");
-const SCENARIO_BY_TITLE: Record<string, string> = {
-  "Обычный месяц": "regular",
-  "Одно объявление не приносит клиентов": "dead_ad",
-  "Пограничное объявление": "borderline",
-  "Правка в кабинете": "cabinet_edit",
-};
+const words = simulationWords("2026-11-01");
+const plain = (text: string | null | undefined) => text?.replace(/[  ]/g, " ") ?? "";
+const NO_LEADS = { impressions: 1_800, clicks: 90, leads: 0, spendRub: 1_600 };
+const CHEAP_LEADS = { impressions: 1_500, clicks: 50, leads: 5, spendRub: 400 };
+/** Two weeks of an ad that spends without leads beside one that brings them cheaply: after the second the service acts. */
+const FIRST_WEEK = { [BAD]: { impressions: 1_500, clicks: 80, leads: 0, spendRub: 900 }, [GOOD]: { impressions: 1_500, clicks: 50, leads: 5, spendRub: 500 } };
+const SECOND_WEEK = { [BAD]: { impressions: 1_000, clicks: 50, leads: 0, spendRub: 900 }, [GOOD]: { impressions: 1_000, clicks: 40, leads: 4, spendRub: 400 } };
 
-/** A launched-from-the-wizard plan: three ads per channel, limits for 15 000 ₽ on the scenario's virtual launch day. */
-const wizardPlan = (scenario: ScenarioId, searchAds = 3): LaunchPlan => {
-  const today = scenarioStartDate(SCENARIOS[scenario], toLocalDate(START, "Europe/Moscow"));
-  const total = Math.floor(allowedWeeklyTotal(0, monthBudget(15_000, today, today), today) / 100);
-  return {
-    landingUrl: "https://nogotok.example",
-    city: "Москва",
-    directions: [
-      { name: "Маникюр — Поиск", channel: "search", weeklyLimitRub: Math.floor(total * 0.6), keywords: ["маникюр москва"], negativeKeywords: [], ads: Array.from({ length: searchAds }, (_, i) => ({ title: `Маникюр ${i + 1}`, text: "У метро, без очереди" })) },
-      { name: "Маникюр — Сайты-партнёры", channel: "network", weeklyLimitRub: total - Math.floor(total * 0.6), keywords: [], negativeKeywords: [], ads: [1, 2, 3].map((i) => ({ title: `Ноготок ${i}`, text: "Запись онлайн" })) },
-    ],
-  };
-};
-
-/**
- * The worker's context in memory with the deterministic test agent (a simulation always runs with the agent); any
- * call to the Direct platform fails the scenario.
- */
-const world = async (agent: AgentRuntime = new HeuristicPolicy()) => {
-  const store = new MemoryStore();
-  store.emails.set("b1", "owner@example.com");
-  await store.saveBusiness({
-    id: "b1",
-    userId: "u1",
-    timeZone: "Europe/Moscow",
-    monthlyBudgetRub: 15_000,
-    launchedOn: null,
-    csoSource: { kind: "auto", reference: rubles(500) },
-    miniSite: null,
-    leadGoalId: null,
-    mode: "direct",
-    card: { category: "Маникюр", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "", hours: "Пн–Вс 10:00–20:00", advantages: [], name: "Ноготок", address: "", city: "Москва", siteUrl: "https://nogotok.example" },
-  });
-  const clock = new ManualClock(START);
-  const locks = new MemoryLockManager();
-  const directCalls: string[] = [];
-  const platformFor = (businessId: string) => {
-    directCalls.push(businessId);
-    throw new Error("The Direct API must not be called in a simulation");
-  };
-  const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine() };
-  return { store, clock, ctx, directCalls };
-};
-
-type World = Awaited<ReturnType<typeof world>>;
-
-const launched = async (title: string, agent?: AgentRuntime, goalRub?: number): Promise<World> => {
-  const w = await world(agent);
-  if (goalRub !== undefined) {
-    await w.store.saveBusiness({ ...(await w.store.getBusiness("b1")), csoSource: { kind: "user", goal: rubles(goalRub) } });
-  }
-  const scenario = SCENARIO_BY_TITLE[title] as ScenarioId | undefined;
-  if (scenario === undefined) throw new Error(`Unknown scenario ${title}`);
-  await launchSimulation(w.ctx, "b1", wizardPlan(scenario), scenario);
-  return w;
-};
-
-/** «Прожить неделю» until the service decides something about the ads (at most the whole scenario). */
-const weeksUntilDecision = async (w: World) => {
-  for (let week = 0; week < 5 && !(await w.store.changes("b1")).some(isAdDecision); week++) {
-    await controlSimulation(w.ctx, "b1", { action: "step_week" });
-  }
-};
-
-/** The pult as the owner sees it, from the same pure model the web uses. */
-const pult = async (w: World) => {
-  const simulation = await w.store.getSimulation("b1");
-  if (!simulation) throw new Error("no simulation");
-  return simulationStatusOf({
-    simulation,
-    timeZone: "Europe/Moscow",
-    changes: (await w.store.changes("b1")).length,
-    runningTurn: await w.store.runningTurn("b1"),
-    turns: await w.store.turnDigests("b1"),
-  });
-};
-
-/** The story of a lived week, as «Как сервис принимает решения» builds it. */
-const weekStory = async (w: World, week: number) => {
-  const simulation = await w.store.getSimulation("b1");
-  if (!simulation) throw new Error("no simulation");
-  const changes = await w.store.changes("b1");
-  const history: HistoryItem[] = changes.map((c) => ({
-    id: c.id,
-    at: c.createdAt.toISOString(),
-    author: c.author,
-    object: c.objectKind === "ad" ? "Объявление" : "Реклама",
-    diff: [],
-    explanation: c.explanation,
-    outcome: null,
-    turnId: c.turnId,
-    insight: null,
-    status: c.status,
-    reverted: c.revertedById !== null,
-    rollback: { kind: "available", consequences: [] },
-    budgetAdjustment: isBudgetAdjustment(c),
-  }));
-  return buildWeekStory({
-    simulation,
-    week,
-    timeZone: "Europe/Moscow",
-    directions: await w.store.directions("b1"),
-    ads: await w.store.ads("b1"),
-    stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
-    cso: rubles(500),
-    truthOf: scenarioTruth({ simulation, ads: await w.store.ads("b1"), goal: rubles(500) }),
-    reviews: await simulationFeed(w),
-    history,
-    changes,
-    comparison: (await screen(w)).comparison,
-  });
-};
-
-/** What the week story is built from, for scenarios that change one part of it. */
-const storyInput = async (w: World): Promise<Parameters<typeof buildWeekStory>[0]> => {
-  const simulation = await w.store.getSimulation("b1");
-  if (!simulation) throw new Error("no simulation");
-  return {
-    simulation,
-    week: 1,
-    timeZone: "Europe/Moscow",
-    directions: await w.store.directions("b1"),
-    ads: await w.store.ads("b1"),
-    stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
-    cso: rubles(500),
-    truthOf: scenarioTruth({ simulation, ads: await w.store.ads("b1"), goal: rubles(500) }),
-    reviews: await simulationFeed(w),
-    history: [],
-    changes: await w.store.changes("b1"),
-    comparison: (await screen(w)).comparison,
-  };
-};
-
-/** The deterministic agent priced as a model: its turns count as turns on a model, so a run can be repeated. */
-class ModelLikeAgent extends HeuristicPolicy {
-  turns = 0;
-  override async runTurn(input: Parameters<HeuristicPolicy["runTurn"]>[0]): Promise<TurnResult> {
-    this.turns++;
-    return { ...(await super.runTurn(input)), usage: { inputTokens: 1_000, outputTokens: 100, source: "api" } };
-  }
-}
-
-const untilDay = async (w: World, day: number) => {
-  const record = await w.store.getSimulation("b1");
-  const done = Math.floor(((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)) / 86_400_000);
-  for (let d = done; d < day; d++) await controlSimulation(w.ctx, "b1", { action: "step_day" });
-};
-
-const dayOf = async (w: World, at: Date) => Math.floor((at.getTime() - ((await w.store.getSimulation("b1"))?.startedAt.getTime() ?? 0)) / 86_400_000) + 1;
-
-/** The decisions screen's feed: insights with the scenario's truth against the goal of each decision. */
-const simulationFeed = async (w: World, goal = rubles(500)): Promise<DayReviewModel[]> => {
-  const simulation = await w.store.getSimulation("b1");
-  if (!simulation) throw new Error("no simulation");
-  return feedDays({
-    insights: await w.store.insights("b1"),
-    turns: await w.store.turnDigests("b1"),
-    timeZone: "Europe/Moscow",
-    since: null,
-    entries: new Map(),
-    truthOf: scenarioTruth({ simulation, ads: await w.store.ads("b1"), goal }),
-  });
-};
-
-const plain = (text: string | undefined) => text?.replace(/[\u00a0\u202f]/g, " ") ?? "";
-
-/** The deterministic agent that, once armed, thinks over its turn until released, as a model turn of many seconds would. */
-class SlowAgent implements AgentRuntime {
-  readonly name = "policy:slow";
+/** Asks the breakdowns of every direction and keeps the answers. */
+class BreakdownProbe implements AgentRuntime {
+  readonly name = "policy:breakdown-probe";
   readonly instructionsVersion = "test";
   readonly decides = true;
-  armed = false;
-  private readonly inner = new HeuristicPolicy();
-  private release: () => void = () => undefined;
-  private markStarted: () => void = () => undefined;
-  readonly started = new Promise<void>((resolve) => {
-    this.markStarted = resolve;
-  });
-  async runTurn(input: { trigger: TurnTrigger; snapshot: TurnSnapshot; tools: AgentToolbox; signal: AbortSignal }): Promise<TurnResult> {
-    if (this.armed) {
-      this.armed = false;
-      await new Promise<void>((resolve) => {
-        this.release = resolve;
-        this.markStarted();
-      });
+  readonly answers: BreakdownAnswer[] = [];
+  async runTurn(input: { snapshot: TurnSnapshot; tools: AgentToolbox }): Promise<TurnResult> {
+    for (const direction of input.snapshot.directions) {
+      this.answers.push(await input.tools.breakdown(direction.id, "device"), await input.tools.breakdown(direction.id, "query"));
     }
-    return this.inner.runTurn(input);
-  }
-  finish(): void {
-    this.release();
+    return { summary: "Посмотрел разбивку.", calls: [], usage: null };
   }
 }
 
-const screen = async (w: World) => {
-  const simulation = await w.store.getSimulation("b1");
-  if (!simulation) throw new Error("no simulation");
-  return buildDecisionScreen({ simulation, timeZone: "Europe/Moscow", monthlyBudgetRub: 15_000, directions: await w.store.directions("b1"), changes: await w.store.changes("b1") });
-};
+/** The period sections of the history, and the service's records in them. */
+const sectionOf = async (w: OwnerWorld, from: string) => (await w.work()).journal.find((s) => s.period && s.from === from);
+const serviceEntries = (entries: readonly JournalEntry[] | undefined) => (entries ?? []).filter((e) => e.kind !== "owner");
 
 describeFeature(feature, ({ Scenario }) => {
   Scenario("Запуск в симуляции без Директа", ({ Given, When, Then, And }) => {
-    let w: World;
+    let w: OwnerWorld;
     Given("владелец прошёл мастер с бюджетом 15 000 ₽", async () => {
-      w = await world();
+      w = await ownerWorld(new HeuristicPolicy(), { launch: false });
     });
-    When("он выбирает «Запустить в симуляции» со сценарием «Обычный месяц»", async () => {
-      expect((await launchSimulation(w.ctx, "b1", wizardPlan("regular"), "regular")).status).toBe("launched");
+    When("он выбирает «Запустить в симуляции»", async () => {
+      expect((await launchSimulation(w.ctx, "b1", ownerPlan)).status).toBe("launched");
     });
-    Then("кампании созданы в симуляторе, а в Директ не ушло ни одного запроса", async () => {
+    Then("кампании созданы на учебном рынке, а в Директ не ушло ни одного запроса", async () => {
       expect((await w.store.directions("b1")).length).toBe(2);
-      expect((await w.store.getSimulation("b1"))?.state.campaigns.length).toBe(2);
+      expect((await w.record()).state.campaigns.length).toBe(2);
       expect((await w.store.getBusiness("b1")).mode).toBe("simulation");
       expect(w.directCalls).toEqual([]);
     });
     And("в истории есть запись «Реклама запущена»", async () => {
       expect((await w.store.changes("b1"))[0]?.explanation).toMatch(/^Реклама запущена/);
     });
+    And("у объявлений нет показов, переходов и расходов, пока владелец не внёс статистику", async () => {
+      expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
+      expect((await w.record()).state.truths).toEqual([]);
+    });
   });
 
   Scenario("Месяц симуляции — календарный", ({ Given, When, Then }) => {
-    let w: World;
+    let w: OwnerWorld;
     Given("владелец прошёл мастер с бюджетом 15 000 ₽ 30 октября", async () => {
-      w = await world();
-      w.clock.set(new Date("2026-10-30T07:00:00Z"));
+      w = await ownerWorld(new HeuristicPolicy(), { launch: false });
+      w.clock.set(REAL_START);
     });
-    When("он выбирает «Запустить в симуляции» со сценарием «Обычный месяц»", async () => {
-      expect((await launchSimulation(w.ctx, "b1", wizardPlan("regular"), "regular")).status).toBe("launched");
+    When("он выбирает «Запустить в симуляции»", async () => {
+      await launchSimulation(w.ctx, "b1", ownerPlan);
     });
-    Then("симуляция начинается 1 ноября в 09:00 с полным бюджетом месяца 15 000 ₽", async () => {
-      const simulation = await w.store.getSimulation("b1");
-      expect(simulation?.startedAt.toISOString()).toBe("2026-11-01T06:00:00.000Z");
-      const start = toLocalDate(simulation?.startedAt ?? new Date(), "Europe/Moscow");
+    Then("симуляция начинается 1 ноября в 09:00 с полным бюджетом месяца 15 000 ₽, а плеер показывает «День 1»", async () => {
+      const simulation = await w.record();
+      expect(simulation.startedAt.toISOString()).toBe("2026-11-01T06:00:00.000Z");
+      const start = toLocalDate(simulation.startedAt, "Europe/Moscow");
       expect(monthBudget(15_000, start, start)).toBe(rubles(15_000));
+      expect((await w.player()).day).toBe(1);
     });
   });
 
-  Scenario("Плохая реклама отключена", ({ Given, When, Then, And }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
+  Scenario("Неделя с цифрами владельца", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
     });
-    When("симуляция доходит до 14-го дня", async () => {
-      await untilDay(w, 14);
+    When("на 1-й день владелец вносит за неделю у объявления «Маникюр с покрытием» 1 400 показов, 70 переходов, 0 обращений и 1 530 ₽ расхода", async () => {
+      await w.enter(7, { [PLAIN]: { impressions: 1_400, clicks: 70, leads: 0, spendRub: 1_530 } });
     });
-    Then("реклама без обращений отключена агентом или страховочным правилом, с записью в истории и инсайтом с цифрами", async () => {
-      const pause = (await w.store.changes("b1")).find((c) => (c.actor === "agent" || c.actor === "safety_net") && c.status === "applied" && (c.action.type === "PauseAd" || c.action.type === "PauseDirection"));
-      expect(pause?.explanation).not.toBe("");
+    Then("дни 1–7 прожиты, а статистика объявления за них — ровно эти цифры и видна сразу", async () => {
+      expect(await w.totals(PLAIN)).toEqual({ impressions: 1_400, clicks: 70, leads: 0, spend: rubles(1_530) });
+      const dates = new Set((await w.store.stats("b1", "2026-10-01", "2027-01-31")).map((r) => r.date));
+      expect([...dates].every((d) => d >= "2026-11-01" && d <= "2026-11-07")).toBe(true);
+    });
+    And("плеер говорит «День 8», а сервис разобрал период одним ходом агента", async () => {
+      expect(await w.player()).toMatchObject({ day: 8, status: "paused", periods: 1 });
+      expect((await w.store.turns("b1")).map((t) => t.trigger)).toEqual(["period_review"]);
+    });
+  });
+
+  Scenario("Сервис решает по этим цифрам", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции с тестовой политикой агента", async () => {
+      w = await ownerWorld(new HeuristicPolicy());
+    });
+    When("владелец две недели подряд вносит у одного объявления расход без обращений, а у другого того же направления — обращения дешевле цели", async () => {
+      await w.enter(7, FIRST_WEEK);
+      await w.enter(7, SECOND_WEEK);
+    });
+    Then("после второго периода объявление без обращений отключено агентом или страховочным правилом, а его цифры — в фактах решения", async () => {
+      const ad = (await w.store.ads("b1")).find((a) => a.title === BAD && a.status === "paused");
+      expect(ad).toBeDefined();
+      const pause = (await w.store.changes("b1")).find((c) => (c.actor === "agent" || c.actor === "safety_net") && c.status === "applied" && c.action.type === "PauseAd" && c.objectId === ad?.id);
       const insight = (await w.store.insights("b1")).find((i) => i.id === pause?.insightId);
-      expect(insight?.facts.length).toBeGreaterThanOrEqual(2);
+      expect(insight?.facts.some((f) => f.metric === "spend")).toBe(true);
+      expect(insight?.facts.some((f) => f.metric === "leads" && f.value === 0)).toBe(true);
     });
-    And("рекламе, которая приводит клиентов, добавлены деньги", async () => {
-      const raised = (await w.store.changes("b1")).filter((c) => (c.actor === "agent" || c.actor === "safety_net") && c.status === "applied" && c.action.type === "SetSpendLimit");
-      expect(raised.some((c) => Number(c.after.weeklyLimit) > Number(c.before.weeklyLimit))).toBe(true);
-    });
-  });
-
-  Scenario("A/B-тест доведён до вывода", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Пограничное объявление»", async () => {
-      w = await launched("Пограничное объявление");
-    });
-    When("симуляция доходит до 30-го дня", async () => {
-      await untilDay(w, 30);
-    });
-    Then("проверка нового варианта завершена, а итог с цифрами обоих вариантов записан в истории и показан инсайтом", async () => {
-      const finished = (await w.store.changes("b1")).find((c) => c.action.type === "FinishExperiment" && c.status === "applied");
-      expect(finished?.explanation).toMatch(/обращени.* по .*₽/);
-      expect((await w.store.experiments("b1")).some((e) => e.status === "finished")).toBe(true);
-      const insight = (await w.store.insights("b1")).find((i) => i.id === finished?.insightId);
-      expect(insight?.facts.map((f) => f.object)).toEqual(expect.arrayContaining(["оставленный вариант", "отключённый вариант"]));
+    And("в истории есть это решение с «Вернуть как было»", async () => {
+      const pause = (await w.store.changes("b1")).find((c) => c.action.type === "PauseAd" && c.author === "service" && c.status === "applied");
+      const change = (await w.work()).journal.flatMap((s) => s.entries).flatMap((e) => e.changes).find((c) => c.historyId === pause?.id);
+      expect(change?.item?.rollback.kind).toBe("available");
     });
   });
 
-  Scenario("Правка в кабинете", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Правка в кабинете»", async () => {
-      w = await launched("Правка в кабинете");
+  Scenario("Переходов больше, чем показов", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let error: unknown;
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
     });
-    When("симуляция доходит до 5-го дня", async () => {
-      await untilDay(w, 5);
+    When("владелец вносит у объявления 50 показов и 60 переходов", async () => {
+      error = await w.enter(7, { [PLAIN]: { impressions: 50, clicks: 60, leads: 0, spendRub: 100 } }).catch((e: unknown) => e);
     });
-    Then("в истории есть изменение с автором «Изменено в кабинете Директа», и его можно вернуть", async () => {
-      const edit = (await w.store.changes("b1")).find((c) => c.author === "cabinet");
-      expect(edit).toBeDefined();
-      expect(await dayOf(w, edit?.createdAt ?? new Date(0))).toBe(5);
-      expect(edit ? inverseCommands(edit) : null).not.toBeNull();
+    Then("период не проходит с пояснением «Переходов не может быть больше, чем показов», а статистики нет", async () => {
+      expect(error).toMatchObject({ code: "PERIOD_INVALID", message: "Переходов не может быть больше, чем показов" });
+      expect((await w.record()).steps).toEqual([]);
+      expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
+    });
+  });
+
+  Scenario("Расход сверх лимита", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let error: unknown;
+    let room = 0;
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
+    });
+    When("владелец вносит у объявлений направления больше, чем Директ потратил бы на него за 7 дней", async () => {
+      room = (await w.form()).directions.find((d) => d.channel === "search")?.roomRub[7] ?? 0;
+      error = await w.enter(7, { [BAD]: { impressions: 5_000, clicks: 300, leads: 0, spendRub: room }, [GOOD]: { impressions: 100, clicks: 10, leads: 0, spendRub: 1 } }).catch((e: unknown) => e);
+    });
+    Then("период не проходит, а пояснение называет, сколько Директ потратит на это направление за 7 дней", async () => {
+      expect(room).toBeGreaterThan(0);
+      expect(plain((error as Error).message)).toBe(`Директ потратит на это направление не больше ${plain(room.toLocaleString("ru-RU"))} ₽ за 7 дней`);
+      expect((await w.record()).steps).toEqual([]);
+    });
+  });
+
+  Scenario("Отключённого объявления нет в окне", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let form: Awaited<ReturnType<OwnerWorld["form"]>>;
+    Given("в конце прошлого периода сервис отключил объявление без обращений", async () => {
+      w = await ownerWorld(new IdlePolicy());
+      await w.enter(7, { [BAD]: NO_LEADS, [GOOD]: CHEAP_LEADS });
+      expect((await w.store.ads("b1")).find((a) => a.title === BAD)?.status).toBe("paused");
+    });
+    When("владелец открывает окно следующего периода", async () => {
+      form = await w.form();
+    });
+    Then("отключённого объявления в окне нет, а все объявления, которые показываются, в нём есть", async () => {
+      const ids = form.directions.flatMap((d) => d.ads.map((a) => a.id));
+      const paused = (await w.store.ads("b1")).find((a) => a.title === BAD && a.status === "paused");
+      expect(ids).not.toContain(paused?.id);
+      const shown = (await w.record()).state.ads.filter((a) => a.status === "active" && a.moderation === "accepted");
+      const byPlatform = new Map((await w.store.ads("b1")).map((a) => [a.platformAdId, a.id]));
+      expect([...ids].sort()).toEqual(shown.map((a) => byPlatform.get(a.id)).sort());
+    });
+  });
+
+  Scenario("Реклама изменилась, пока окно было открыто", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    let rows: Awaited<ReturnType<OwnerWorld["rowsOf"]>>;
+    let error: unknown;
+    Given("владелец открыл окно статистики", async () => {
+      w = await ownerWorld();
+      rows = await w.rowsOf({ [PLAIN]: { impressions: 100, clicks: 10, leads: 0, spendRub: 200 } });
+    });
+    When("в другой вкладке он отключает объявление, а затем отправляет цифры с ним", async () => {
+      await handleWebJob(w.ctx, { kind: "command", businessId: "b1", command: { type: "PauseAd", adId: rows[0]?.adId ?? "" }, explanation: "Вы отключили объявление." });
+      error = await handleWebJob(w.ctx, { kind: "simulation_control", businessId: "b1", control: { action: "period", days: 7, ads: rows } }).catch((e: unknown) => e);
+    });
+    Then("период не проходит, сервис говорит «Реклама изменилась, пока окно было открыто: проверьте объявления и лимиты»", async () => {
+      expect(error).toMatchObject({ code: "SIMULATION_ADS_CHANGED", message: "Реклама изменилась, пока окно было открыто: проверьте объявления и лимиты" });
+      expect((await w.record()).steps).toEqual([]);
+    });
+    And("окно, открытое снова, показывает только объявления, которые показываются сейчас", async () => {
+      expect((await w.form()).directions.flatMap((d) => d.ads.map((a) => a.id))).not.toContain(rows[0]?.adId);
+    });
+  });
+
+  Scenario("Один день", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции и дошла до 9-го дня", async () => {
+      w = await ownerWorld();
+      await w.enter(7);
+      await w.enter(1);
+      expect((await w.player()).day).toBe(9);
+    });
+    When("владелец вносит статистику за «1 день»", async () => {
+      await w.enter(1, { [GOOD]: { impressions: 200, clicks: 10, leads: 1, spendRub: 150 } });
+    });
+    Then("разбор называется «Разбор дня · день 9», а плеер говорит «День 10»", async () => {
+      expect((await w.player()).day).toBe(10);
+      const review = serviceEntries((await sectionOf(w, "2026-11-09"))?.entries).find((e) => e.period !== undefined);
+      expect(review && noteTitle(review, words)).toBe("Разбор дня · день 9");
+    });
+  });
+
+  Scenario("Пустые поля — нули", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
+    });
+    When("владелец отправляет окно, ничего не вписав", async () => {
+      await w.enter(7);
+    });
+    Then("период проходит с нулевой статистикой, сервис разбирает его, а расход и обращения не меняются", async () => {
+      expect((await w.record()).steps).toMatchObject([{ kind: "period", state: "completed" }]);
+      expect((await w.store.turns("b1")).map((t) => t.trigger)).toEqual(["period_review"]);
+      expect((await w.store.stats("b1", "2026-10-01", "2027-01-31")).reduce((s, r) => s + r.spend + r.leads, 0)).toBe(0);
+    });
+  });
+
+  Scenario("Без разбивки", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    const probe = new BreakdownProbe();
+    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+      w = await ownerWorld();
+      await w.week();
+    });
+    When("агент запрашивает разбивку направления по устройствам и по поисковым запросам", async () => {
+      await withSimulation(w.ctx, "b1", async (world) => {
+        await runAgentTurn({ ...world.ctx, agent: probe }, "b1", { kind: "period_review", from: "2026-11-01", to: "2026-11-07" });
+      });
+    });
+    Then("обе разбивки пусты", () => {
+      expect(probe.answers.length).toBeGreaterThanOrEqual(2);
+      for (const answer of probe.answers) {
+        expect(answer.status === "ok" ? answer.rows : []).toEqual([]);
+      }
+    });
+  });
+
+  Scenario("Агент не видит правду сценария", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let sent = "";
+    Given("реклама запущена в симуляции, и владелец внёс две недели статистики", async () => {
+      w = await ownerWorld();
+      await w.week();
+      await w.week();
+    });
+    When("автотест смотрит, что получил агент в своих ходах", async () => {
+      sent = JSON.stringify((await w.store.turns("b1")).map((t) => t.context));
+    });
+    Then("в снимках только статистика, как её прислал бы Директ, без скрытой правды рынка", () => {
+      expect(sent).not.toMatch(/"(cr|ctr|costPerClick|impressionsPerDay|truth|truths|cells|scenario|input)"/);
+      expect(sent).toMatch(/"spend14Rub"/);
     });
   });
 
   Scenario("Письма не уходят", ({ Given, When, Then }) => {
-    let w: World;
+    let w: OwnerWorld;
     const sent: string[] = [];
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
-      w = await launched("Обычный месяц");
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
     });
     When("у бизнеса появляется событие «Пополните баланс в Яндекс Директе»", async () => {
-      await w.store.notify({ businessId: "b1", kind: "low_balance", message: "Пополните баланс в Яндекс Директе", at: START });
+      await w.store.notify({ businessId: "b1", kind: "low_balance", message: "Пополните баланс в Яндекс Директе", at: REAL_START });
       const mailer: Mailer = { send: (mail) => Promise.resolve(void sent.push(mail.to)) };
       await deliverNotifications(w.ctx, mailer, createLogger());
     });
@@ -348,476 +289,222 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario("Воспроизводимость рынка", ({ Given, When, Then }) => {
-    let w: World;
-    let first: unknown;
-    const snapshot = async () => ({
-      truths: (await w.store.getSimulation("b1"))?.state.truths,
-      changes: (await w.store.changes("b1")).map((c) => [c.reasonCode, c.createdAt.toISOString(), c.explanation]),
-      insights: (await w.store.insights("b1")).map((i) => [i.source, i.reasonCode, i.observation, i.createdAt.toISOString()]),
-      stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
-    });
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» и прошла 10 дней", async () => {
-      w = await launched("Обычный месяц");
-      await untilDay(w, 10);
-      first = await snapshot();
-      expect((await w.store.turns("b1")).length).toBeGreaterThan(0);
-    });
-    When("владелец нажимает «Начать заново» и снова доводит симуляцию до 10-го дня", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "fresh" });
-      await untilDay(w, 10);
-    });
-    Then("правда объявлений та же, а с тестовой политикой агента расходы, обращения, записи истории и инсайты совпадают с первым прогоном", async () => {
-      expect(await snapshot()).toEqual(first);
-    });
-  });
-
-  Scenario("Агент не видит правду сценария", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("симуляция доходит до 10-го дня", async () => {
-      await untilDay(w, 10);
-    });
-    Then("в снимках ходов агента нет скрытой правды объявлений и событий сценария, только статистика", async () => {
-      const turns = await w.store.turns("b1");
-      expect(turns.length).toBeGreaterThan(0);
-      const sent = JSON.stringify(turns.map((t) => t.context));
-      expect(sent).not.toMatch(/"(cr|ctr|costPerClick|impressionsPerDay|truth|truths|events|cells|scenario)"/);
-      expect(sent).toMatch(/"spend14Rub"/);
-    });
-  });
-
-  Scenario("Ускорение", ({ Given, When, Then }) => {
-    let w: World;
-    let started = 0;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» с тестовой политикой агента", async () => {
-      w = await launched("Обычный месяц");
-    });
-    When("владелец нажимает «Прожить неделю»", async () => {
-      started = Date.now();
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    Then("не позже чем через 30 секунд пульт показывает «День 8», расходы и обращения выросли, а у недели 1 есть история", async () => {
-      expect((Date.now() - started) / 1_000).toBeLessThan(30);
-      const status = await pult(w);
-      expect(`День ${status.day}`).toBe("День 8");
-      const story = await weekStory(w, 1);
-      expect(story?.totals.spend).toBeGreaterThan(0);
-      expect(story?.days).toHaveLength(7);
-    });
-  });
-
-  Scenario("Время стоит между шагами", ({ Given, When, Then }) => {
-    let w: World;
+  Scenario("Время стоит между периодами", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
     let day = 0;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц», и владелец прожил неделю", async () => {
-      w = await launched("Обычный месяц");
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      day = (await pult(w)).day;
+    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+      w = await ownerWorld();
+      await w.week();
+      day = (await w.player()).day;
     });
     When("владелец 10 минут ничего не нажимает", () => {
       w.clock.set(new Date(w.clock.now().getTime() + 600_000));
     });
-    Then("виртуальное время не сдвинулось, и пульт показывает тот же день", async () => {
-      expect((await pult(w)).day).toBe(day);
-      expect((await w.store.getSimulation("b1"))?.status).toBe("paused");
+    Then("виртуальное время не сдвинулось, и плеер показывает тот же день", async () => {
+      expect((await w.player()).day).toBe(day);
+      expect((await w.record()).status).toBe("paused");
     });
   });
 
-  Scenario("Агент разбирает день", ({ Given, When, Then, And }) => {
-    let w: World;
-    const agent = new SlowAgent();
-    let step: Promise<unknown> = Promise.resolve();
-    let thinking = 0;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц», а агент разбирает день долго", async () => {
-      w = await launched("Обычный месяц", agent);
+  Scenario("Переход во время расчёта", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    const agent = new HeldAgent();
+    let period: Promise<unknown> = Promise.resolve();
+    Given("реклама запущена в симуляции, а агент разбирает период долго", async () => {
+      w = await ownerWorld(agent);
       agent.armed = true;
     });
-    When("владелец нажимает «Прожить неделю», и агент начинает разбор дня", async () => {
-      step = controlSimulation(w.ctx, "b1", { action: "step_week" });
+    When("владелец отправляет статистику за дни 1–7 и, пока сервис её разбирает, смотрит плеер и историю", async () => {
+      period = w.enter(7, { [GOOD]: CHEAP_LEADS });
       await agent.started;
     });
-    Then("виртуальное время стоит, пока агент думает, а пульт показывает «Сервис разбирает N-й день…» и номер недели", async () => {
-      thinking = (await w.store.getSimulation("b1"))?.simNow.getTime() ?? 0;
-      // Thirty real seconds of thinking do not move the virtual time.
-      w.clock.set(new Date(w.clock.now().getTime() + 30_000));
-      expect((await w.store.getSimulation("b1"))?.simNow.getTime()).toBe(thinking);
-      const status = await pult(w);
-      expect(status.status).toBe("stepping");
-      expect(status.step).toEqual({ kind: "week", week: 1 });
-      expect(status.agentTurn).not.toBeNull();
-      // A Monday's review says so; any other turn names its day.
-      expect(agentTurnText(status.agentTurn ?? { day: 0 })).toBe(
-        status.agentTurn?.weekly ? "Сервис разбирает неделю — обычно до 2–3 минут" : `Сервис разбирает ${status.agentTurn?.day ?? 0}-й день…`,
-      );
-      expect(stepText({ step: status.step, day: status.day })).toBe(`Неделя 1: идёт ${status.day}-й день`);
+    Then("плеер говорит, что сервис разбирает дни 1–7, день прежний, прожитых периодов нет, а в истории нет разбора этих дней", async () => {
+      const player = await w.player();
+      expect(player).toMatchObject({ day: 1, status: "stepping", periods: 0, agentTurn: true, step: { from: 1, to: 7 } });
+      expect(periodReviewText(player.step ?? { from: 0, to: 0 })).toBe("Сервис разбирает дни 1–7…");
+      expect((await w.work()).journal.filter((s) => s.period)).toEqual([]);
     });
-    And("после хода неделя идёт дальше до конца, а в ленте появляется разбор этого дня", async () => {
-      const turnDay = toLocalDate((await w.store.runningTurn("b1"))?.startedAt ?? new Date(), "Europe/Moscow");
+    And("после хода период завершён, и в истории появляется его разбор", async () => {
       agent.finish();
-      await step;
-      const record = await w.store.getSimulation("b1");
-      expect(record?.status).toBe("paused");
-      expect((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)).toBe(7 * 86_400_000);
-      expect((await simulationFeed(w)).some((d) => d.date === turnDay)).toBe(true);
+      await period;
+      expect(await w.player()).toMatchObject({ day: 8, status: "paused", periods: 1 });
+      expect(serviceEntries((await sectionOf(w, "2026-11-01"))?.entries).some((e) => e.period !== undefined)).toBe(true);
     });
   });
 
-  Scenario("Неделя у конца сценария", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» и дошла до 29-го дня", async () => {
-      w = await launched("Обычный месяц");
-      for (let week = 0; week < 4; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      expect((await pult(w)).day).toBe(29);
+  Scenario("Новый период при доступном прошлом", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    const agent = new HeldAgent();
+    let period: Promise<unknown> = Promise.resolve();
+    Given("реклама запущена в симуляции, владелец внёс первый период, а агент разбирает следующий долго", async () => {
+      w = await ownerWorld(agent);
+      await w.week();
+      agent.armed = true;
     });
-    When("владелец нажимает «Прожить неделю» у конца сценария", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
+    When("владелец отправляет второй период", async () => {
+      period = w.week();
+      await agent.started;
     });
-    Then("симуляция проживает 7 дней до 36-го дня, а не оставшиеся 2, и конца у прогона нет", async () => {
-      const status = await pult(w);
-      expect(status.day).toBe(36);
-      expect(status.status).toBe("paused");
-      expect(status.ended).toBe(false);
-      expect(status.totalDays).toBe(60);
-      const simulation = await w.store.getSimulation("b1");
-      expect(simulation?.steps.at(-1)).toMatchObject({ kind: "week", state: "completed" });
-      expect((await weekStory(w, 5))?.days).toHaveLength(7);
-    });
-  });
-
-  Scenario("Один день из меню", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
-      w = await launched("Обычный месяц");
-    });
-    When("владелец выбирает в меню «+1 день»", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "step_day" });
-    });
-    Then("симуляция проходит один виртуальный день, а истории недели у этого шага нет", async () => {
-      expect((await pult(w)).day).toBe(2);
-      expect((await w.store.getSimulation("b1"))?.steps.map((s) => s.kind)).toEqual(["day"]);
-      expect(await weekStory(w, 1)).toBeNull();
-    });
-  });
-
-  Scenario("Инсайт с правдой сценария", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("симуляция доходит до 14-го дня", async () => {
-      await untilDay(w, 14);
-    });
-    Then("в ленте экрана есть инсайт об отключении объявления без обращений со строкой «На самом деле: объявление не приводит обращений»", async () => {
-      const cards = (await simulationFeed(w)).flatMap((d) => d.insights);
-      const pause = cards.find((c) => c.decision.status === "applied" && c.decision.text === "Отключили объявление «Маникюр 1»");
-      expect(pause?.facts.length).toBeGreaterThanOrEqual(2);
-      expect(pause?.truth).toEqual({ text: "На самом деле: объявление не приводит обращений", tone: "danger" });
-    });
-  });
-
-  Scenario("Ошибка понимания видна", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» с целью 100 ₽ за обращение и прошла 8 дней", async () => {
-      w = await launched("Обычный месяц", undefined, 100);
-      await untilDay(w, 8);
-    });
-    When("агент добавляет денег рекламе в поиске", async () => {
-      const search = (await w.store.directions("b1")).find((d) => d.channel === "search");
-      if (!search) throw new Error("no search advertising");
-      const insight = {
-        reasonCode: "SCALE_MISREAD",
-        observation: "Реклама в поиске приводит клиентов дешевле цели.",
-        factKeys: [factKey.goal(), factKey.budget("budget_left")],
-        next: "Через неделю проверим число обращений.",
-      };
-      await withSimulation(w.ctx, "b1", async (world) => {
-        const agent = new ReplayPolicy([{ trigger: { kind: "daily_review" }, calls: [{ command: { type: "SetSpendLimit", directionId: search.id, weeklyLimit: Math.floor(search.weeklyLimit * 1.2) }, insight }] }]);
-        await runAgentTurn({ ...world.ctx, agent }, "b1", { kind: "daily_review" });
-      });
-    });
-    Then("у инсайта стоит строка «На самом деле: обращение примерно за … — дороже цели 100 ₽»", async () => {
-      const card = (await simulationFeed(w, rubles(100))).flatMap((d) => d.insights).find((c) => c.observation === "Реклама в поиске приводит клиентов дешевле цели.");
-      expect(plain(card?.truth?.text)).toMatch(/^На самом деле: обращение примерно за [\d ]+ ₽ — дороже цели 100 ₽$/);
-    });
-  });
-
-  Scenario("До следующего решения", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("владелец проживает недели, пока сервис не примет решение про рекламу", async () => {
-      await weeksUntilDecision(w);
-    });
-    Then("шаг не останавливается на решении и проходит неделю целиком, а решение показано в сцене «Решение» истории этой недели", async () => {
-      const record = await w.store.getSimulation("b1");
-      const weeks = record?.steps.length ?? 0;
-      expect((record?.simNow.getTime() ?? 0) - (record?.startedAt.getTime() ?? 0)).toBe(weeks * 7 * 86_400_000);
-      const decision = (await w.store.changes("b1")).find((c) => isAdDecision(c) && c.author === "service");
-      const story = await weekStory(w, weeks);
-      expect(story?.decisions.map((d) => d.item.id)).toContain(decision?.id);
-    });
-  });
-
-  Scenario("Подстройка лимита — не решение", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("владелец проживает недели, пока сервис не примет решение про рекламу", async () => {
-      await weeksUntilDecision(w);
-    });
-    Then("защита бюджета по пути снижала лимиты, но среди решений истории недели этих подстроек нет, а записи о них есть в истории изменений", async () => {
-      const changes = await w.store.changes("b1");
-      const cuts = changes.filter(isBudgetAdjustment).map((c) => c.id);
-      expect(cuts.length).toBeGreaterThan(0);
-      const weeks = (await w.store.getSimulation("b1"))?.steps.length ?? 0;
-      const shown = (await Promise.all(Array.from({ length: weeks }, (_, i) => weekStory(w, i + 1)))).flatMap((story) => story?.decisions.map((d) => d.item.id) ?? []);
-      expect(shown.some((id) => cuts.includes(id))).toBe(false);
-    });
-  });
-
-  Scenario("Неделя без решений", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
-      w = await launched("Обычный месяц");
-    });
-    When("владелец проживает первую неделю, а записей о решениях у этой недели нет", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    Then("сцена «Решение» говорит «За неделю менять ничего не понадобилось» и почему", async () => {
-      const story = await weekStory(w, 1);
-      if (!story) throw new Error("no story");
-      // The story's own rule: no decisions in the week, a reason in plain words.
-      const input = await storyInput(w);
-      const quiet = buildWeekStory({ ...input, simulation: { ...input.simulation, steps: input.simulation.steps.map(({ kind, from, to }) => ({ kind, from, to })) }, week: 1, changes: [] });
-      expect(quiet?.decisions).toEqual([]);
-      expect(quiet?.noDecisionReason).toBeTruthy();
-    });
-  });
-
-  Scenario("Прошлая неделя снова", ({ Given, When, Then }) => {
-    let w: World;
-    let second: unknown;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов», и владелец прожил 2 недели", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      second = await weekStory(w, 2);
-    });
-    When("владелец проживает ещё 2 недели и открывает историю недели 2", async () => {
-      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    Then("она показывает те же объявления, цифры, инсайты и решения, что после шага недели 2", async () => {
-      const again = await weekStory(w, 2);
-      // The list of weeks and the comparison since the start grow with every week; the rest is the week's own.
-      const strip = (story: unknown) => Object.fromEntries(Object.entries(story as Record<string, unknown>).filter(([key]) => key !== "weeks" && key !== "comparison"));
-      // Only the list of weeks has grown; the week itself reads the same.
-      expect(strip(again)).toEqual(strip(second));
-    });
-  });
-
-  Scenario("Точный повтор", ({ Given, When, Then }) => {
-    let w: World;
-    const agent = new ModelLikeAgent();
-    let first: unknown;
-    let calls = 0;
-    const run = async () => ({
-      changes: (await w.store.changes("b1")).map((c) => [c.actor, c.reasonCode, c.createdAt.toISOString()]),
-      insights: (await w.store.insights("b1")).map((i) => [i.source, i.reasonCode, i.observation, i.createdAt.toISOString()]),
-      stats: await w.store.stats("b1", "2026-01-01", "2027-12-31"),
-    });
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов» с агентом на модели, и владелец прожил 2 недели", async () => {
-      w = await launched("Одно объявление не приносит клиентов", agent);
-      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      first = await run();
-      calls = agent.turns;
-      expect((await pult(w)).replay.available).toBe(true);
-    });
-    When("владелец нажимает «Начать заново» → «Повторить этот прогон» и снова проживает 2 недели, ничего не меняя", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "repeat" });
-      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    Then("история изменений, инсайты и цифры совпадают с исходным прогоном, а затраты на модель за повтор равны нулю", async () => {
-      expect(await run()).toEqual(first);
-      expect(agent.turns).toBe(calls);
-      expect((await w.store.turns("b1")).every((t) => t.costKopecks === 0 && t.inputTokens === null)).toBe(true);
-    });
-  });
-
-  Scenario("Повтор разошёлся", ({ Given, When, Then }) => {
-    let w: World;
-    const agent = new ModelLikeAgent();
-    let calls = 0;
-    let dayBefore = 0;
-    Given("идёт повтор прогона, в котором владелец ничего не откатывал", async () => {
-      w = await launched("Одно объявление не приносит клиентов", agent);
-      for (let week = 0; week < 3; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "repeat" });
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      calls = agent.turns;
-    });
-    When("во 2-ю неделю повтора владелец откатывает решение сервиса", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      const decision = (await w.store.changes("b1")).find((c) => c.author === "service" && c.status === "applied" && inverseCommands(c) !== null && !isBudgetAdjustment(c));
-      if (!decision) throw new Error("no decision to roll back");
-      dayBefore = (await pult(w)).day;
-      const result = (await handleWebJob(w.ctx, { kind: "rollback", businessId: "b1", entryId: decision.id })) as { kind: string };
-      expect(result.kind).toBe("done");
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    Then("начиная со следующего хода агент решает на модели, а пульт один раз показывает «Вы изменили ход прогона — дальше сервис решает заново»", async () => {
-      expect(agent.turns).toBeGreaterThan(calls);
-      const status = await pult(w);
-      expect(status.replay.diverged).toBe(true);
-      expect(DIVERGED_TEXT).toBe("Вы изменили ход прогона — дальше сервис решает заново");
-      expect(status.day).toBeGreaterThan(dayBefore);
-      // Said once: the next step takes the message away.
-      await controlSimulation(w.ctx, "b1", { action: "step_day" });
-      expect((await pult(w)).replay.diverged).toBe(false);
-    });
-  });
-
-  Scenario("Прогнать заново", ({ Given, When, Then }) => {
-    let w: World;
-    const agent = new ModelLikeAgent();
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов» с агентом на модели, и владелец прожил неделю", async () => {
-      w = await launched("Одно объявление не приносит клиентов", agent);
-      await controlSimulation(w.ctx, "b1", { action: "step_week" });
-    });
-    When("владелец нажимает «Начать заново» → «Прогнать заново»", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "restart", mode: "fresh" });
-    });
-    Then("сценарий начинается с первого дня, повторять нечего, и ходы агента снова идут на модели", async () => {
-      const status = await pult(w);
-      expect(status.day).toBe(1);
-      expect(status.replay.repeating).toBe(false);
-      const before = agent.turns;
-      for (let week = 0; week < 2; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      expect(agent.turns).toBeGreaterThan(before);
-    });
-  });
-
-  Scenario("Сравнение по ходу симуляции", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц»", async () => {
-      w = await launched("Обычный месяц");
-    });
-    When("симуляция завершила 12-й календарный день", async () => {
-      await untilDay(w, 12);
-    });
-    Then("экран сравнивает обращения с сервисом и без него за 12 дней, по дням, и цифры с сервисом совпадают с данными симулятора", async () => {
-      const model = await screen(w);
-      expect(model.day).toBe(13);
-      expect(model.comparison?.service).toHaveLength(12);
-      expect(model.comparison?.baseline).toHaveLength(12);
-      const simulation = await w.store.getSimulation("b1");
-      const campaigns = new Set((await w.store.directions("b1")).map((d) => d.platformCampaignId));
-      const cells = (simulation?.state.cells ?? []).filter((c) => campaigns.has(c.campaignId) && c.date <= (model.comparison?.to ?? ""));
-      expect(model.comparison?.serviceNow.leads).toBe(cells.reduce((sum, c) => sum + c.leads, 0));
-      expect(model.comparison?.serviceNow.spend).toBe(cells.reduce((sum, c) => sum + c.spend, 0));
-    });
-  });
-
-  Scenario("Чек-лист по сценарию", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("симуляция доходит до 3-го дня", async () => {
-      await untilDay(w, 2);
-    });
-    Then("чек-лист показывает «1 из 4»: отмечен только бюджет, у отключения подсказка «Обычно к 14-му дню», а пункта о правке в кабинете нет", async () => {
-      const items = (await screen(w)).checklist;
-      expect(items.map((i) => [i.key, i.done])).toEqual([
-        ["pause", false],
-        ["scale", false],
-        ["rollback", false],
-        ["budget", true],
-      ]);
-      expect(items.find((i) => i.key === "pause")?.hint).toBe("Обычно к 14-му дню");
-    });
-  });
-
-  Scenario("Конец сценария и контрольный прогон", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов»", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-    });
-    When("симуляция доходит до конца 30-го дня", async () => {
-      await untilDay(w, 30);
-    });
-    Then("она стоит на паузе, а итог сравнивает расходы и обращения с прогоном без действий сервиса", async () => {
-      expect((await w.store.getSimulation("b1"))?.status).toBe("paused");
-      const result = (await screen(w)).result;
-      expect(result?.days).toBe(30);
-      expect(result?.baseline.spend).toBeGreaterThan(0);
-      expect(result?.service.spend).toBeGreaterThan(0);
-      expect(result?.service.spend).toBeLessThanOrEqual(rubles(15_000));
-    });
-  });
-
-  Scenario("Чек-лист критериев", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Одно объявление не приносит клиентов» и дошла до 30-го дня", async () => {
-      w = await launched("Одно объявление не приносит клиентов");
-      await untilDay(w, 30);
-    });
-    When("владелец откатывает решение сервиса «Выделил больше денег»", async () => {
-      // The newest raise that comes back in one step; one followed by another decision of the service asks for the chain.
-      const raises = (await w.store.changes("b1")).filter((c) => c.reasonCode === "SAFETY_SCALE_EFFECTIVE").reverse();
-      expect(raises.length).toBeGreaterThan(0);
-      let kind = "";
-      for (const entry of raises) {
-        kind = ((await handleWebJob(w.ctx, { kind: "rollback", businessId: "b1", entryId: entry.id })) as { kind: string }).kind;
-        if (kind === "done") break;
+    Then("первый период доступен в истории с сохранённым разбором, а второй явно ещё разбирается", async () => {
+      try {
+        const simulation = await w.record();
+        expect(simulation.steps.map((s) => s.state)).toEqual(["completed", "running"]);
+        expect(simulation.steps[0]?.report).toBeDefined();
+        expect((await w.work()).journal.filter((s) => s.period).map((s) => s.from)).toEqual(["2026-11-01"]);
+        expect(await w.player()).toMatchObject({ status: "stepping", periods: 1, step: { from: 8, to: 14 } });
+      } finally {
+        agent.finish();
+        await period;
       }
-      expect(kind).toBe("done");
     });
-    Then("отмечены все пункты чек-листа сценария, и у каждого действия сервиса есть ссылка на запись истории", async () => {
-      const items = (await screen(w)).checklist;
-      expect(items.map((i) => i.key)).toEqual(expect.arrayContaining(["pause", "scale", "rollback", "budget"]));
-      expect(items.every((i) => i.done)).toBe(true);
-      const ids = new Set((await w.store.changes("b1")).map((c) => c.id));
-      for (const item of items.filter((i) => i.key !== "budget")) {
-        expect(ids.has(item.entryId ?? "")).toBe(true);
-      }
+  });
+
+  Scenario("Сбой разбора", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("просмотр сервиса в конце периода прервался", async () => {
+      w = await ownerWorld();
+      const spy = vi.spyOn(w.store, "saveEvaluation").mockRejectedValueOnce(new Error("Injected evaluation failure"));
+      await expect(w.enter(3, { [GOOD]: { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } })).rejects.toThrow("Injected evaluation failure");
+      spy.mockRestore();
+      expect((await w.player()).failed).toBe(true);
+    });
+    When("владелец нажимает «Продолжить расчёт»", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "continue" });
+    });
+    Then("тот же период доводится до конца с теми же цифрами, без повторного ввода", async () => {
+      expect((await w.record()).steps).toMatchObject([{ kind: "period", days: 3, state: "completed" }]);
+      expect(await w.totals(GOOD)).toEqual({ impressions: 300, clicks: 20, leads: 1, spend: rubles(400) });
+      expect((await w.player()).day).toBe(4);
+    });
+  });
+
+  Scenario("Период с решением", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции с тестовой политикой агента", async () => {
+      w = await ownerWorld(new HeuristicPolicy());
+      await w.enter(7, FIRST_WEEK);
+    });
+    When("во втором периоде сервис отключает объявление без обращений", async () => {
+      await w.enter(7, SECOND_WEEK);
+      expect((await w.store.ads("b1")).some((a) => a.title === BAD && a.status === "paused")).toBe(true);
+    });
+    Then("раздел второго периода в истории — «Дни 8–14 · разбор в день 15», с разбором и строкой изменения с «Вернуть как было»", async () => {
+      const section = await sectionOf(w, "2026-11-08");
+      expect(section).toMatchObject({ from: "2026-11-08", to: "2026-11-14" });
+      const review = serviceEntries(section?.entries).find((e) => e.period !== undefined);
+      expect(review?.date).toBe("2026-11-15");
+      expect(`${words.range(section?.from ?? "", section?.to ?? "")} · разбор ${words.on(review?.date ?? "")}`).toBe("дни 8–14 · разбор в день 15");
+      expect(review && noteTitle(review, words)).toBe("Разбор · дни 8–14");
+      const change = serviceEntries(section?.entries).flatMap((e) => e.changes).find((c) => c.text.includes(BAD));
+      expect(change?.item?.rollback.kind).toBe("available");
+    });
+  });
+
+  Scenario("Период без решений", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
+    });
+    When("владелец вносит неделю без расходов, и сервис ничего не меняет", async () => {
+      await w.enter(7);
+    });
+    Then("раздел периода состоит из одной записи «посмотрел рекламу — менять ничего не нужно»", async () => {
+      const entries = serviceEntries((await sectionOf(w, "2026-11-01"))?.entries).filter((e) => e.date === "2026-11-08");
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.changes).toEqual([]);
+    });
+  });
+
+  Scenario("Прошлый период снова", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let before: unknown;
+    Given("реклама запущена в симуляции с тестовой политикой агента, и владелец внёс два периода", async () => {
+      w = await ownerWorld(new HeuristicPolicy());
+      await w.enter(7, FIRST_WEEK);
+      await w.enter(7, SECOND_WEEK);
+      before = serviceEntries((await sectionOf(w, "2026-11-08"))?.entries).map((e) => [e.headline, e.paragraphs, e.changes.map((c) => c.text)]);
+      // The owner takes the service's pause back.
+      const pause = (await w.store.changes("b1")).find((c) => c.action.type === "PauseAd" && c.author === "service" && c.status === "applied");
+      expect(await handleWebJob(w.ctx, { kind: "rollback", businessId: "b1", entryId: pause?.id ?? "" })).toMatchObject({ kind: "done" });
+    });
+    When("владелец вносит ещё два периода и прокручивает историю ко второму", async () => {
+      await w.week();
+      await w.week();
+    });
+    Then("тексты второго периода прежние, а отменённые решения помечены «отменено»", async () => {
+      const entries = serviceEntries((await sectionOf(w, "2026-11-08"))?.entries);
+      expect(entries.map((e) => [e.headline, e.paragraphs, e.changes.map((c) => c.text)])).toEqual(before);
+      expect(entries.flatMap((e) => e.changes).some((c) => c.reverted)).toBe(true);
+    });
+  });
+
+  Scenario("Цель изменилась после периода", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let report: string | undefined;
+    Given("реклама запущена в симуляции, и владелец внёс первый период", async () => {
+      w = await ownerWorld();
+      await w.week();
+      report = (await w.record()).steps[0]?.report;
+    });
+    When("владелец меняет цель и вносит ещё два периода", async () => {
+      await w.store.saveBusiness({ ...(await w.store.getBusiness("b1")), csoSource: { kind: "user", goal: rubles(300) } });
+      await w.week();
+      await w.week();
+    });
+    Then("сохранённый итог первого периода прежний", async () => {
+      expect(report).toBeDefined();
+      expect((await w.record()).steps[0]?.report).toBe(report);
+    });
+  });
+
+  Scenario("Начать заново", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let titles: string[] = [];
+    Given("реклама запущена в симуляции, и владелец внёс два периода", async () => {
+      w = await ownerWorld();
+      titles = (await w.store.ads("b1")).map((a) => a.title).sort();
+      await w.week();
+      await w.week();
+    });
+    When("владелец нажимает «Начать заново»", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "restart" });
+    });
+    Then("цифры и история удалены, а реклама начинается с первого дня с теми же объявлениями", async () => {
+      expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
+      expect((await w.store.changes("b1")).map((c) => c.explanation)).toEqual([expect.stringMatching(/^Реклама запущена/) as unknown]);
+      expect(await w.player()).toMatchObject({ day: 1, periods: 0 });
+      expect((await w.store.ads("b1")).map((a) => a.title).sort()).toEqual(titles);
+    });
+  });
+
+  Scenario("Прежняя страница", ({ Given, When, Then }) => {
+    const answers: unknown[] = [];
+    Given("страница симуляции открыта до обновления", () => undefined);
+    When("она отправляет «Прожить неделю», «+1 день» или «Повторить этот прогон»", () => {
+      for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "restart", mode: "repeat" }]) answers.push(currentAction(SimulationControlBody.parse(body)));
+    });
+    Then("сервис не выполняет шаг и просит обновить страницу", () => {
+      // The web route answers such an action «Пульт симуляции обновился — обновите страницу» and enqueues nothing.
+      expect(answers).toEqual([null, null, null]);
     });
   });
 
   Scenario("Переход к настоящему запуску", ({ Given, When, Then }) => {
-    let w: World;
-    Given("реклама запущена в симуляции со сценарием «Обычный месяц» и прошла 3 дня", async () => {
-      w = await launched("Обычный месяц");
-      await untilDay(w, 3);
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+      w = await ownerWorld();
+      await w.week();
     });
     When("владелец нажимает «Запустить по-настоящему»", async () => {
       await controlSimulation(w.ctx, "b1", { action: "go_real" });
     });
-    Then("данные симуляции удалены, описание бизнеса сохранено, а мастер открыт на шаге 6", async () => {
+    Then("данные симуляции удалены, описание бизнеса сохранено, а мастер открыт на шаге «Объявления и запуск»", async () => {
       expect(await w.store.getSimulation("b1")).toBeNull();
       expect(await w.store.directions("b1")).toEqual([]);
       expect(await w.store.changes("b1")).toEqual([]);
       const business = await w.store.getBusiness("b1");
       expect(business).toMatchObject({ mode: "direct", launchedOn: null });
       expect(business.card.services).toEqual([{ name: "Маникюр с покрытием", priceRub: 1_800 }]);
-    });
-  });
-
-  Scenario("Сценарию не хватает объявлений", ({ Given, When, Then }) => {
-    let w: World;
-    let error: unknown;
-    Given("владелец оставил одно объявление в поиске", async () => {
-      w = await world();
-    });
-    When("он выбирает сценарий «Одно объявление не приносит клиентов»", async () => {
-      error = await launchSimulation(w.ctx, "b1", wizardPlan("dead_ad", 1), "dead_ad").catch((e: unknown) => e);
-    });
-    Then("сценарий недоступен с пояснением «Нужно хотя бы 2 объявления в поиске — сейчас 1»", () => {
-      expect(error).toBeInstanceOf(SimulationError);
-      expect((error as Error).message).toBe("Нужно хотя бы 2 объявления в поиске — сейчас 1");
     });
   });
 });

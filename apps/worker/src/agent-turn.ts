@@ -3,18 +3,20 @@ import { toRub, turnInstructionsVersion } from "@impuls/agent";
 import type {
   AgentToolbox,
   BreakdownAnswer,
+  EventTrigger,
   HypothesisDraft,
   HypothesisResult,
   HypothesisView,
   ObservationDraft,
   ToolCallRecord,
   ToolResult,
+  TurnReasonView,
   TurnSnapshot,
   TurnTrigger,
   TurnUsage,
 } from "@impuls/agent";
 import { addDays, catalogFacts, emptyStats, monthKey, toLocalDate, validateExplanation, validateInsight } from "@impuls/core";
-import type { Command, Fact, InsightDraft, InsightFact } from "@impuls/core";
+import type { Command, Fact, InsightDraft, InsightFact, LocalDate } from "@impuls/core";
 import { breakdownForAgent, breakdownPeriod } from "./analyst";
 import type { AgentCosts, JobContext } from "./context";
 import { QUIET_DAY_CODE, RULES_DAY_CODE } from "./change-kinds";
@@ -160,8 +162,9 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
   if (await agentBudgetSpent(ctx, businessId)) {
     return { status: "skipped", reason: "cost_limit" };
   }
-  // The weekly review runs on the strategy model when one is configured (add-agent-analyst-stage1 decision 7).
-  const weekly = trigger.kind === "weekly_review" ? ctx.strategist : undefined;
+  // The weekly review runs on the strategy model when one is configured (add-agent-analyst-stage1 decision 7), and so
+  // does a simulation's period review, the only review of its days (simulation-on-owner-numbers decision 5).
+  const weekly = trigger.kind === "weekly_review" || trigger.kind === "period_review" ? ctx.strategist : undefined;
   const agent = weekly?.runtime ?? ctx.agent;
   const costs = weekly?.costs ?? ctx.agentCosts;
   const outcome = await ctx.locks.tryWithLock(turnLockKey(businessId), async (): Promise<TurnOutcome> => {
@@ -430,6 +433,30 @@ const mergeEvents = (events: readonly InboxEvent[]): TurnTrigger => {
     return { kind: "moderation_rejected", adIds: [...new Set(events.flatMap((e) => e.trigger.adIds ?? []))] };
   }
   return { kind: "experiment_finished", experimentIds: [...new Set(events.flatMap((e) => e.trigger.experimentIds ?? []))] };
+};
+
+/** The queued events as they join a period's turn: one of each kind, with every ad and check they name. */
+const periodEvents = (events: readonly InboxEvent[]): EventTrigger[] => {
+  const kinds = new Set(events.map((e) => e.trigger.kind));
+  const joined: EventTrigger[] = [];
+  if (kinds.has("launch")) joined.push({ kind: "launch" });
+  if (kinds.has("settings_changed")) joined.push({ kind: "settings_changed" });
+  if (kinds.has("moderation_rejected")) joined.push({ kind: "moderation_rejected", adIds: [...new Set(events.flatMap((e) => e.trigger.adIds ?? []))] });
+  if (kinds.has("experiment_finished")) joined.push({ kind: "experiment_finished", experimentIds: [...new Set(events.flatMap((e) => e.trigger.experimentIds ?? []))] });
+  return joined;
+};
+
+/**
+ * The one turn after a simulation's period (ad-agent spec «Разбор периода в симуляции»): always run, with the
+ * evaluation's reasons and every event queued since the last turn, which it consumes.
+ */
+export const runPeriodTurn = async (ctx: JobContext, businessId: string, period: { from: LocalDate; to: LocalDate }, reasons: TurnReasonView[]): Promise<TurnOutcome> => {
+  const events = await ctx.store.pendingInbox(businessId);
+  const outcome = await runAgentTurn(ctx, businessId, { kind: "period_review", from: period.from, to: period.to, reasons, events: periodEvents(events) });
+  if (outcome.status !== "skipped" && events.length > 0) {
+    await ctx.store.consumeInbox(events.map((e) => e.id), outcome.turnId);
+  }
+  return outcome;
 };
 
 /** Runs one turn for all queued events; moderation and experiment events at most once an hour. */

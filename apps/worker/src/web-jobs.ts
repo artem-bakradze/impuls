@@ -12,6 +12,7 @@ import type { LaunchPlan } from "./launch";
 import { fetchPublicPage, findMetrikaCounter } from "./pages";
 import { controlSimulation, launchSimulation, SimulationError, withSimulation } from "./simulation-mode";
 import type { SimulationControl } from "./simulation-mode";
+import { ADS_CHANGED_MESSAGE } from "./simulation-period";
 
 /** Jobs that `web` enqueues; only the worker executes them (design decision 3). */
 export type WebJob =
@@ -19,9 +20,9 @@ export type WebJob =
   | { kind: "rollback"; businessId: string; entryId: string; includeLater?: boolean; confirmDifference?: boolean }
   | { kind: "budget"; businessId: string; monthlyBudgetRub: number; confirmed: boolean }
   | { kind: "clients"; businessId: string; week: LocalDate; clients: number }
-  /** `simulation`: «Запустить в симуляции» with a market scenario instead of Direct (simulation-mode spec). */
-  | { kind: "launch"; businessId: string; plan: LaunchPlan; simulation?: { scenario: string } }
-  /** The simulation pult: pause, speed, «+1 день», «До следующего решения», «Начать заново», «Запустить по-настоящему». */
+  /** `simulation`: «Запустить в симуляции» on the training market instead of Direct (simulation-mode spec). */
+  | { kind: "launch"; businessId: string; plan: LaunchPlan; simulation?: true }
+  /** The simulation player: a period of the owner's stats, «Продолжить расчёт», «Начать заново», «Запустить по-настоящему». */
   | { kind: "simulation_control"; businessId: string; control: SimulationControl }
   | { kind: "delete_account"; businessId: string }
   /** Creates the mini-site on first save, then updates it through the executor (history, rollback). */
@@ -36,7 +37,7 @@ export type WebJob =
 /** Job errors whose Russian message the wizard shows as is. */
 export class CreativeJobError extends Error {
   constructor(
-    readonly code: "CARD_UNREADABLE" | "CREATIVES_FAILED" | "SCENARIO_UNAVAILABLE",
+    readonly code: "CARD_UNREADABLE" | "CREATIVES_FAILED" | "SIMULATION_ADS_CHANGED",
     message: string,
     /** The technical reason, kept for the job log; the owner sees only `message`. */
     options?: { cause: unknown },
@@ -129,11 +130,12 @@ export const handleWebJob = async (ctx: JobContext, job: WebJob): Promise<unknow
       return await controlSimulation(ctx, job.businessId, job.control);
     }
     if (job.kind === "launch" && job.simulation) {
-      return await launchSimulation(ctx, job.businessId, job.plan, job.simulation.scenario);
+      return await launchSimulation(ctx, job.businessId, job.plan);
     }
   } catch (error) {
-    if (error instanceof SimulationError && error.code === "SCENARIO_UNAVAILABLE") {
-      throw new CreativeJobError("SCENARIO_UNAVAILABLE", error.message, { cause: error });
+    // The web checked the window against the same advertising a moment ago: a refusal here means it changed meanwhile.
+    if (error instanceof SimulationError && (error.code === "ADS_CHANGED" || error.code === "PERIOD_INVALID")) {
+      throw new CreativeJobError("SIMULATION_ADS_CHANGED", ADS_CHANGED_MESSAGE, { cause: error });
     }
     throw error;
   }

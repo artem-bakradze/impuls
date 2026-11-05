@@ -32,6 +32,7 @@ export * from "./insights";
 export * from "./change-kinds";
 export * from "./simulation-mode";
 export * from "./simulation-report";
+export * from "./simulation-period";
 export * from "./analyst";
 export * from "./agent-eval";
 export type { CardDraft, CardFacts, Creatives } from "@impuls/agent";

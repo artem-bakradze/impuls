@@ -3557,3 +3557,84 @@ button.log-link {
   .studio-msg-action { flex-wrap: wrap; row-gap: 4px; }
   .studio-msg-undo { flex-basis: 100%; align-self: flex-start; padding-left: 26px; text-align: left; }
 }
+
+/*
+ * «Добавить статистику»: the period, then every shown ad by direction with its four numbers. A row of four fields on a
+ * wide window, two by two on a phone; mistakes go under their field.
+ */
+.period-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+}
+.period-hint {
+  margin: -4px 0 0;
+}
+.period-empty {
+  margin: 0;
+  color: var(--text-2);
+}
+.period-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.period-dir-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+}
+.period-dir-name {
+  font-weight: 600;
+}
+.period-ad {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.period-ad-title {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.period-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+.period-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.period-field label {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.period-field .ant-input-number {
+  width: 100%;
+}
+.period-error {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--danger);
+}
+@media (max-width: 560px) {
+  .period-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Four periods fit a phone's width whole: each takes its label's width, «2 недели» is not cut to «2 не…». */
+  .period-body .ant-segmented.ant-segmented-block .ant-segmented-item {
+    flex: 1 1 auto;
+  }
+  .period-body .ant-segmented .ant-segmented-item .ant-segmented-item-label {
+    padding-inline: 6px;
+    font-size: var(--fs-xs);
+  }
+}

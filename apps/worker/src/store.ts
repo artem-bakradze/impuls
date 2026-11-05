@@ -17,7 +17,7 @@ import type { LaunchPlan } from "./launch";
 
 export type BusinessMode = "direct" | "simulation";
 
-/** `stepping`: «Прожить неделю» or «+1 день» moves the simulation; otherwise its time stands (simulation-mode spec). */
+/** `stepping`: a period goes (or, in old runs, a day or a week); otherwise the simulation's time stands (simulation-mode spec). */
 export type SimulationStatus = "paused" | "stepping";
 
 /** Result of the control run «если бы сервис ничего не делал» over the same period. */
@@ -29,11 +29,18 @@ export interface SimulationBaseline {
   daily: { spend: Kopecks; leads: number }[];
 }
 
-/** One step on the pult: «Прожить неделю» has a week story, «+1 день» has none (simulation-mode spec). */
+/**
+ * One step of the player: a period of the owner's stats (simulation-mode spec «Статистика периода от владельца»), or
+ * «Прожить неделю» and «+1 день» of runs saved before it.
+ */
 export interface SimulationStep {
-  kind: "week" | "day";
+  kind: "week" | "day" | "period";
   from: Date;
   to: Date;
+  /** A period's length, the numbers the owner entered and whether they are in the market already. */
+  days?: number | undefined;
+  input?: { adId: string; impressions: number; clicks: number; leads: number; spendRub: number }[] | undefined;
+  recorded?: boolean | undefined;
   /** Absent only for runs saved before explicit step completion existed. */
   state?: "pending" | "running" | "completed" | "failed" | undefined;
   completedAt?: Date | undefined;
@@ -79,7 +86,8 @@ export interface SimulationReplay {
 /** Virtual time and saved market of a business in the simulation mode. */
 export interface SimulationRecord {
   businessId: string;
-  scenario: string;
+  /** The market scenario of a run started before the owner entered the stats; null for every run since. */
+  scenario: string | null;
   seed: number;
   plan: LaunchPlan;
   startedAt: Date;

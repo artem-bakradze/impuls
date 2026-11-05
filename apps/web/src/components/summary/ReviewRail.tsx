@@ -137,14 +137,14 @@ export function ReviewRail({
   }, [state, review]);
   return (
     <aside ref={rail} className="brief-side panel review-rail" aria-label="Разбор" data-state={state} data-testid="review-rail">
-      <MessageHead title={thinking !== null ? "Разбирает день" : review === null ? "Разбор дня" : noteTitle(review, words)} />
+      <MessageHead title={thinking !== null ? "Разбирает статистику" : review === null ? (words.simulation ? "Разбор" : "Разбор дня") : noteTitle(review, words)} />
       {thinking !== null ? (
         <Thinking line={thinking} />
       ) : review !== null ? (
         <Review key={review.id} review={review} reveal={reveal} onRollback={onRollback} onMore={onMore} />
       ) : (
         <div className="studio-msg studio-empty-review">
-          <p className="studio-bubble">После первого дня я напишу здесь, что заметил в рекламе и что изменил.</p>
+          <p className="studio-bubble">{words.simulation ? "Когда вы добавите статистику, я напишу здесь, что заметил в рекламе и что изменил." : "После первого дня я напишу здесь, что заметил в рекламе и что изменил."}</p>
           <button type="button" className="studio-msg-more studio-msg-more-button" onClick={() => onMore(null)}>
             Вся история ›
           </button>

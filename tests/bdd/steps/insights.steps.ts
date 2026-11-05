@@ -270,7 +270,7 @@ describeFeature(feature, ({ Scenario }) => {
   Scenario("Переход к настоящему запуску", ({ Given, When, Then }) => {
     let world: Awaited<ReturnType<typeof simulatedBusiness>>;
     Given("реклама в симуляции, где агент уже принимал решения", async () => {
-      world = await simulatedBusiness(new HeuristicPolicy(), 14);
+      world = await simulatedBusiness(new HeuristicPolicy(), 2);
       expect((await world.store.insights("b1")).some((i) => i.source === "agent")).toBe(true);
     });
     When("пользователь нажимает «Запустить по-настоящему»", async () => {

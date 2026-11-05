@@ -62,7 +62,7 @@ export const runWebJobs = async <T>(url: string, body: unknown): Promise<JobOutc
   return { kind: "done", output: outputs };
 };
 
-const waitForJob = async <T>(jobId: string, attempts = POLL_ATTEMPTS): Promise<JobOutcome<T>> => {
+export const waitForJob = async <T>(jobId: string, attempts = POLL_ATTEMPTS): Promise<JobOutcome<T>> => {
   for (let attempt = 0; attempt < attempts; attempt++) {
     await sleep(POLL_INTERVAL_MS);
     const polled = await callApi<JobView>(`/api/jobs/${encodeURIComponent(jobId)}`, "GET");

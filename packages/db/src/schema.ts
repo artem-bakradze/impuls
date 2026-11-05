@@ -54,7 +54,8 @@ export const businesses = pgTable("businesses", {
 /** Virtual time and saved market of a business in the simulation mode (add-simulation-mode). */
 export const simulations = pgTable("simulations", {
   businessId: text("business_id").primaryKey().references(() => businesses.id),
-  scenario: text("scenario").notNull(),
+  /** Market scenario of a run started before the owner entered the stats; null since (simulation-on-owner-numbers). */
+  scenario: text("scenario"),
   seed: bigint("seed", { mode: "number" }).notNull(),
   /** Launch plan, kept for «Начать заново». */
   plan: jsonb("plan").notNull(),
@@ -68,7 +69,7 @@ export const simulations = pgTable("simulations", {
   status: text("status", { enum: ["paused", "stepping"] }).notNull(),
   state: jsonb("state").notNull(),
   baseline: jsonb("baseline"),
-  /** Windows of the steps «Прожить неделю» and «+1 день», for the week stories (weekly-simulation-triggered-agent). */
+  /** Steps of the player: the owner's periods, or «Прожить неделю» and «+1 день» of older runs. */
   steps: jsonb("steps").notNull().default([]),
   /** Recorded turns and owner actions of the run being repeated; null outside «Повторить этот прогон». */
   replay: jsonb("replay"),

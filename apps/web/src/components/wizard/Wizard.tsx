@@ -17,11 +17,10 @@ import { GenerationProgress } from "./GenerationProgress";
 import type { GenerationKind } from "./GenerationProgress";
 import { LaunchStep } from "./LaunchStep";
 import { PreviewStep } from "./PreviewStep";
-import { defaultScenario, ModeChoice, ScenarioPicker } from "./SimulationChoice";
+import { ModeChoice } from "./SimulationChoice";
 import type { LaunchMode } from "./SimulationChoice";
 import { SourcesStep } from "./SourcesStep";
-import { SCENARIOS, scenarioStartDate } from "@impuls/worker/scenarios";
-import type { ScenarioId } from "@impuls/worker/scenarios";
+import { simulationStartDate } from "@impuls/worker/simulation-period";
 
 export interface WizardProps {
   initialDraft: OnboardingDraft;
@@ -45,7 +44,7 @@ const LEADS: Record<number, string> = {
 };
 
 /** The last step when the simulation is chosen: nothing about the Direct balance (business-onboarding spec). */
-const SIMULATION_LEAD = "Месяц рекламы на симуляторе рынка, без денег и без Директа: после каждой недели видно, что сервис заметил и решил.";
+const SIMULATION_LEAD = "Реклама на учебном рынке, без денег и без Директа: вы вносите цифры за период, а сервис сразу разбирает их и показывает, что заметил и решил.";
 
 /** One progress indicator: three segments, read together with «Шаг N из 3». */
 function Progress({ step }: { step: number }) {
@@ -67,9 +66,8 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   const [busy, setBusy] = useState<GenerationKind | null>(null);
   /** Shown on the card step when a page could not be read. */
   const [notice, setNotice] = useState<string | null>(null);
-  /** Step 6: real Direct or the simulation with a market scenario (simulation-mode spec). */
+  /** Step 3: real Direct or the simulation on the owner's numbers (simulation-mode spec). */
   const [mode, setMode] = useState<LaunchMode>("direct");
-  const [scenario, setScenario] = useState<ScenarioId | null>(null);
 
   /** Errors are shown only after the owner tried to move on, not while they are still typing. */
   const [attempted, setAttempted] = useState(false);
@@ -188,11 +186,6 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
     }
     void goTo(target, draft);
   };
-  const chooseMode = (next: LaunchMode) => {
-    setMode(next);
-    // The recommended scenario is selected in advance, so «Запустить симуляцию» is there right away.
-    if (next === "simulation" && scenario === null) setScenario(defaultScenario(draft));
-  };
 
   return (
     <div className="wizard">
@@ -230,27 +223,22 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
                 {busy !== null ? <GenerationProgress kind={busy} /> : null}
                 <div className="surface surface-pad">
                   <div className="stack" style={{ "--gap": "24px" } as React.CSSProperties}>
-                    <ModeChoice mode={mode} onChange={chooseMode} />
+                    <ModeChoice mode={mode} onChange={setMode} />
                     {mode === "direct" ? (
                       <>
                         <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(STEP_COUNT, { ...draft, directConnected: true })} />
                         {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} /> : null}
                       </>
                     ) : (
-                      <>
-                        <ScenarioPicker draft={draft} scenario={scenario} onChange={setScenario} onEdit={edit} />
-                        {scenario !== null ? (
-                          <LaunchStep
-                            draft={draft}
-                            onChange={setDraft}
-                            errors={errors}
-                            // The simulated month starts on its own date, so the budget line is for that month.
-                            today={scenarioStartDate(SCENARIOS[scenario], todayIn(draft.card.timeZone))}
-                            onEdit={edit}
-                            simulation={{ scenario }}
-                          />
-                        ) : null}
-                      </>
+                      <LaunchStep
+                        draft={draft}
+                        onChange={setDraft}
+                        errors={errors}
+                        // The simulated month starts on its own date, so the budget line is for that month.
+                        today={simulationStartDate(todayIn(draft.card.timeZone))}
+                        onEdit={edit}
+                        simulation
+                      />
                     )}
                   </div>
                 </div>

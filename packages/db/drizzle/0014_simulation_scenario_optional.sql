@@ -1,0 +1,1 @@
+ALTER TABLE "simulations" ALTER COLUMN "scenario" DROP NOT NULL;

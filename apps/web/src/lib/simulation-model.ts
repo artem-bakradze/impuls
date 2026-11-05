@@ -1,103 +1,90 @@
 import { isStepComplete } from "@impuls/worker/simulation-report";
-import type { SimulationRecord, TurnDigest } from "@impuls/worker";
+import { PERIOD_DAYS } from "@impuls/worker/simulation-period";
+import type { PeriodAdInput, PeriodDays, PeriodForm } from "@impuls/worker/simulation-period";
+import type { SimulationRecord } from "@impuls/worker";
 import { z } from "zod";
 
-/** What the simulation pult shows (simulation-mode spec «Виртуальное время и пульт»). */
+/** What the simulation's player shows (simulation-mode spec «Симуляция как отдельный режим»). */
 export interface SimulationStatus {
   /** Day of the simulation, from 1. */
   day: number;
-  totalDays: number;
   /** Virtual «now», ISO. */
   at: string;
   timeZone: string;
-  /** `stepping` while «Прожить неделю» or «+1 день» runs; the time stands otherwise. */
+  /** `stepping` while a period goes; the time stands otherwise. */
   status: "paused" | "stepping";
-  /** The step that runs: a week has its number, for «Неделя 2: идёт 10-й день». */
-  step: { kind: "week" | "day"; week: number | null } | null;
-  /** Weeks lived so far: the newest week story is this one. */
-  weeks: number;
+  /** The days of the period that goes, from 1. */
+  step: { from: number; to: number } | null;
+  /** Periods lived so far, with the weeks and days of older runs. */
+  periods: number;
   failed?: boolean;
-  /** Days left to the scenario's end; a step past it extends the run, so the player does not show it. */
-  daysLeft: number;
-  /** The scenario's last day is reached; the next step extends the run, so the player does not show it. */
-  ended: boolean;
-  /** How many history entries there are: the pult refreshes the page when it grows. */
+  /** How many history entries there are: the player refreshes the page when it grows. */
   changes: number;
-  /**
-   * The service is reviewing this virtual day, or the week on a Monday; the step waits meanwhile (add-agent-insights
-   * decision 8). A week's review on a model takes minutes, so the pult says so and counts the time.
-   */
-  agentTurn: { day: number; weekly: boolean } | null;
-  /** «Повторить этот прогон» (simulation-mode spec «Повтор прогона»). */
-  replay: {
-    /** The run had a turn on a model, so it can be repeated without one. */
-    available: boolean;
-    /** This run repeats the previous one. */
-    repeating: boolean;
-    /** «Вы изменили ход прогона — дальше сервис решает заново», until the next step. */
-    diverged: boolean;
-  };
+  /** The service is reviewing the period; the player counts the time meanwhile. */
+  agentTurn: boolean;
+  /** «Добавить статистику»: the ads shown now and what Direct would spend on each direction. */
+  form: PeriodForm;
 }
 
-/** «Сервис разбирает 8-й день…», or the week's review, which takes longer. */
-export const agentTurnText = (turn: { day: number; weekly?: boolean }): string =>
-  turn.weekly ? "Сервис разбирает неделю — обычно до 2–3 минут" : `Сервис разбирает ${turn.day}-й день…`;
+/** «дни 9–15», «день 9». */
+export const periodDaysText = (step: { from: number; to: number }): string => (step.from === step.to ? `день ${step.from}` : `дни ${step.from}–${step.to}`);
+
+/** «Сервис разбирает дни 9–15…» while a period goes. */
+export const periodReviewText = (step: { from: number; to: number }): string => `Сервис разбирает ${periodDaysText(step)}…`;
 
 /** «0:42», «2:05»: how long the service has been reviewing, counted on the owner's screen. */
 export const elapsedText = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-/** «Неделя 2: идёт 10-й день» while a week runs, «Идёт 10-й день» for «+1 день». */
-export const stepText = (status: Pick<SimulationStatus, "step" | "day">): string | null =>
-  status.step === null ? null : status.step.week !== null ? `Неделя ${status.step.week}: идёт ${status.day}-й день` : `Идёт ${status.day}-й день`;
-
-export const DIVERGED_TEXT = "Вы изменили ход прогона — дальше сервис решает заново";
-
 const DAY_MS = 86_400_000;
 
-/** Pure: the pult model from the simulation record and the business's journal. */
+/** Pure: the player's model from the simulation record, the business's journal and the window's form. */
 export const simulationStatusOf = (input: {
   simulation: SimulationRecord;
   timeZone: string;
   changes: number;
   runningTurn: { startedAt: Date; trigger: string } | null;
-  turns: readonly Pick<TurnDigest, "status" | "usageSource">[];
+  form: PeriodForm;
 }): SimulationStatus => {
   const { simulation } = input;
-  const totalDays = Math.round((simulation.endsAt.getTime() - simulation.startedAt.getTime()) / DAY_MS);
-  const dayOf = (at: Date) => Math.min(totalDays, Math.floor((at.getTime() - simulation.startedAt.getTime()) / DAY_MS) + 1);
-  const weeks = simulation.steps.filter((step) => step.kind === "week" && isStepComplete(step, simulation)).length;
+  const dayOf = (at: Date) => Math.floor((at.getTime() - simulation.startedAt.getTime()) / DAY_MS) + 1;
   const current = simulation.status === "stepping" ? simulation.steps.at(-1) : undefined;
   return {
     day: dayOf(simulation.simNow),
-    totalDays,
     at: simulation.simNow.toISOString(),
     timeZone: input.timeZone,
     status: simulation.status,
-    step: current ? { kind: current.kind, week: current.kind === "week" ? weeks + 1 : null } : null,
-    weeks,
+    step: current ? { from: dayOf(current.from), to: Math.max(dayOf(current.from), dayOf(current.to) - 1) } : null,
+    periods: simulation.steps.filter((step) => isStepComplete(step, simulation)).length,
     failed: simulation.steps.at(-1)?.state === "failed",
-    daysLeft: Math.max(0, Math.ceil((simulation.endsAt.getTime() - simulation.simNow.getTime()) / DAY_MS)),
-    ended: simulation.simNow.getTime() + 3_600_000 > simulation.endsAt.getTime(),
     changes: input.changes,
-    agentTurn: input.runningTurn ? { day: dayOf(input.runningTurn.startedAt), weekly: input.runningTurn.trigger === "weekly_review" } : null,
-    replay: {
-      available: input.turns.some((t) => t.status === "completed" && t.usageSource !== null),
-      repeating: simulation.replay !== null,
-      diverged: simulation.replay !== null && simulation.replay.diverged && !simulation.replay.notified,
-    },
+    agentTurn: input.runningTurn !== null,
+    form: input.form,
   };
 };
 
-export type SimulationAction = { action: "step_week" | "step_day" | "extend" | "go_real" } | { action: "restart"; mode: "repeat" | "fresh" };
+export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[] } | { action: "continue" | "restart" | "go_real" };
 
-/** Actions of the old pult: the time no longer runs by itself, so an old page is asked to reload. */
-const GONE_ACTIONS = ["pause", "resume", "until_decision", "speed"] as const;
+/** Actions of older players: the time no longer runs by itself or by days and weeks, so an old page is asked to reload. */
+const GONE_ACTIONS = ["pause", "resume", "until_decision", "speed", "step_week", "step_day", "extend"] as const;
 
-/** Body of a pult action; the old pult's actions parse too, to be answered «обновите страницу». */
+const count = z.number().int().min(0).max(100_000_000);
+
+/** Body of a player action; the older players' actions parse too, to be answered «обновите страницу». */
 export const SimulationControlBody = z.discriminatedUnion("action", [
-  z.object({ action: z.enum(["step_week", "step_day", "extend", "go_real"]) }),
-  z.object({ action: z.literal("restart"), mode: z.enum(["repeat", "fresh"]) }),
+  z.object({
+    action: z.literal("period"),
+    days: z.union(PERIOD_DAYS.map((d) => z.literal(d)) as [z.ZodLiteral<1>, z.ZodLiteral<3>, z.ZodLiteral<7>, z.ZodLiteral<14>]),
+    ads: z.array(z.object({ adId: z.string().min(1), impressions: count, clicks: count, leads: count, spendRub: count })).max(500),
+  }),
+  z.object({ action: z.enum(["continue", "go_real"]) }),
+  // «Повторить этот прогон» of the older player is gone; its «Прогнать заново» is today's «Начать заново».
+  z.object({ action: z.literal("restart"), mode: z.enum(["repeat", "fresh"]).optional() }),
   z.object({ action: z.enum(GONE_ACTIONS) }).passthrough(),
 ]);
 
-export const isCurrentAction = (body: z.infer<typeof SimulationControlBody>): body is SimulationAction => !(GONE_ACTIONS as readonly string[]).includes(body.action);
+/** Today's action of a parsed body, or null for an action of an older player. */
+export const currentAction = (body: z.infer<typeof SimulationControlBody>): SimulationAction | null => {
+  if ((GONE_ACTIONS as readonly string[]).includes(body.action)) return null;
+  if (body.action === "restart") return "mode" in body && body.mode === "repeat" ? null : { action: "restart" };
+  return body as SimulationAction;
+};

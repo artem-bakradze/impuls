@@ -4,18 +4,18 @@ import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
-import { DIVERGED_TEXT } from "@/lib/simulation-model";
+import type { PeriodAdInput, PeriodDays } from "@impuls/worker/simulation-period";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
+import { PeriodDialog } from "./PeriodDialog";
 
-/** Whether the day goes: a step runs or the service reviews its day. */
-export const isStepping = (status: SimulationStatus): boolean => status.status === "stepping" || status.agentTurn !== null;
+/** Whether a period goes: the step runs or the service reviews it. */
+export const isStepping = (status: SimulationStatus): boolean => status.status === "stepping" || status.agentTurn;
 
 /**
  * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
- * wide screen and over the answer on a narrow one: the day and its state, one main button for the next step with
- * «Прожить неделю» under it, and at its foot the training market's note with the real launch as a secondary button;
- * «Начать заново» is in its menu. Time moves only by these presses. The run has no end for the owner: neither the
- * scenario's length nor its name is shown, and after its last day the next step goes on (the worker extends the run).
+ * wide screen and over the answer on a narrow one: the day and its state, one main button «Добавить статистику» that
+ * opens the window of the next period, and at its foot the training market's note with the real launch as a secondary
+ * button; «Начать заново» is in its menu. Time moves only by the owner's periods, and the run has no end.
  */
 export function SimulationPlayer({
   status,
@@ -26,19 +26,16 @@ export function SimulationPlayer({
   status: SimulationStatus;
   busy: string | null;
   error: string | null;
-  act: (control: SimulationAction) => Promise<void>;
+  act: (control: SimulationAction, onAccepted?: () => void) => Promise<{ code: string; message: string } | null>;
 }) {
   const [restartOpen, setRestartOpen] = useState(false);
+  const [periodOpen, setPeriodOpen] = useState(false);
   const [modal, modalHolder] = Modal.useModal();
   const stepping = isStepping(status);
-  const firstDay = status.weeks === 0 && status.day === 1 && !stepping;
-  const tag = status.failed ? "прерван" : stepping ? "идёт" : firstDay ? "впереди" : "прожит";
+  const first = status.periods === 0 && !stepping && !status.failed;
+  const tag = status.failed ? "прерван" : stepping ? "идёт" : first ? "впереди" : "прожит";
 
   const run = (control: SimulationAction) => void act(control);
-  const restart = (mode: "repeat" | "fresh") => {
-    setRestartOpen(false);
-    run({ action: "restart", mode });
-  };
   const confirmGoReal = () =>
     modal.confirm({
       title: "Запустить настоящую рекламу?",
@@ -53,17 +50,11 @@ export function SimulationPlayer({
       if (key === "restart") setRestartOpen(true);
     },
   };
+  // The window closes once the server took the period; a refusal stays in it.
+  const sendPeriod = (days: PeriodDays, ads: PeriodAdInput[]) => act({ action: "period", days, ads }, () => setPeriodOpen(false));
 
-  const primaryLabel = status.failed
-    ? "Продолжить расчёт"
-    : stepping
-      ? status.agentTurn
-        ? "Сервис разбирает…"
-        : "День идёт…"
-      : firstDay
-        ? "Прожить день"
-        : "Прожить следующий день";
-  const primary = () => run({ action: status.failed ? "step_week" : "step_day" });
+  const primaryLabel = status.failed ? "Продолжить расчёт" : stepping ? "Сервис разбирает…" : "Добавить статистику";
+  const primary = () => (status.failed ? run({ action: "continue" }) : setPeriodOpen(true));
 
   return (
     <section className="sim-player panel" aria-label="Симуляция" data-testid="sim-player">
@@ -73,7 +64,7 @@ export function SimulationPlayer({
           <span className="studio-day-num" data-testid="studio-day">
             День {status.day}
           </span>
-          <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : firstDay ? "muted" : "done"}`} data-testid="studio-status">
+          <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : first ? "muted" : "done"}`} data-testid="studio-status">
             {tag}
           </span>
         </div>
@@ -85,13 +76,7 @@ export function SimulationPlayer({
         <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
           {primaryLabel}
         </button>
-        {!status.failed && !stepping ? (
-          <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
-            Прожить неделю
-          </button>
-        ) : null}
       </div>
-      {status.replay.diverged ? <Alert className="studio-alert" type="info" showIcon title={DIVERGED_TEXT} /> : null}
       {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
       <div className="sim-player-foot">
         <p className="studio-disclaimer" data-testid="studio-disclaimer">
@@ -102,22 +87,19 @@ export function SimulationPlayer({
         </Button>
       </div>
 
-      <Modal open={restartOpen} title="Начать симуляцию заново?" onCancel={() => setRestartOpen(false)} footer={null}>
-        <div className="studio-modal">
-          <p className="t-body t-muted">Тот же сценарий с первого дня: рынок будет тем же. История и цифры этого прогона удалятся.</p>
-          <Button type="primary" block onClick={() => restart("repeat")} disabled={!status.replay.available}>
-            Повторить этот прогон
-          </Button>
-          <span className="t-small">
-            {status.replay.available
-              ? "Сервис повторит те же решения — цифры совпадут, если вы будете действовать так же."
-              : "Повторять пока нечего: в этом прогоне сервис ещё не принимал своих решений."}
-          </span>
-          <Button block onClick={() => restart("fresh")}>
-            Прогнать заново
-          </Button>
-          <span className="t-small">Рынок будет тем же, но сервис будет решать заново и может решить иначе.</span>
-        </div>
+      {periodOpen ? <PeriodDialog status={status} onClose={() => setPeriodOpen(false)} onSend={sendPeriod} /> : null}
+      <Modal
+        open={restartOpen}
+        title="Начать симуляцию заново?"
+        onCancel={() => setRestartOpen(false)}
+        okText="Начать заново"
+        cancelText="Отмена"
+        onOk={() => {
+          setRestartOpen(false);
+          run({ action: "restart" });
+        }}
+      >
+        <p className="t-body t-muted">Цифры и история симуляции удалятся, а реклама начнётся с первого дня с теми же объявлениями.</p>
       </Modal>
     </section>
   );

@@ -1,10 +1,10 @@
 import { addDays, allowedWeeklyTotal, budgetSignal, evaluationFindings, fitLimits, monthKey, safetyNet, toLocalDate, turnReasons } from "@impuls/core";
-import type { Command, EffectivenessClass, Kopecks } from "@impuls/core";
+import type { Command, EffectivenessClass, Kopecks, LocalDate } from "@impuls/core";
 import { ADJUSTABLE_DEVICES, trafficSnapshot } from "./analyst";
 import type { JobContext } from "./context";
 import { adSnapshot, directionSnapshot } from "./executor";
 import { businessLockKey } from "./locks";
-import { agentBudgetSpent, findingsSeenByLastTurn, runAgentTurn } from "./agent-turn";
+import { agentBudgetSpent, findingsSeenByLastTurn, runAgentTurn, runPeriodTurn } from "./agent-turn";
 import { QUIET_DAY_CODE } from "./change-kinds";
 import { isRuleInsightCode, saveQuietDay, saveRuleInsight, saveRulesDay } from "./insights";
 import { prepareExperiment } from "./experiments";
@@ -312,7 +312,7 @@ const agentHadChanceSince = async (ctx: JobContext, businessId: string, since: D
  * A day without reasons is quiet: no model call, and the rules wait for the agent as after a turn. When the agent is
  * off, unavailable or out of its cost limit, the rules act on the new evaluation the same day (optimization-engine).
  */
-export const dailyEvaluation = async (ctx: JobContext, businessId: string): Promise<void> => {
+export const dailyEvaluation = async (ctx: JobContext, businessId: string, options: { period?: { from: LocalDate; to: LocalDate } } = {}): Promise<void> => {
   const platform = ctx.platformFor(businessId);
   const previous = await ctx.store.lastEvaluation(businessId);
   const now = ctx.clock.now();
@@ -341,13 +341,17 @@ export const dailyEvaluation = async (ctx: JobContext, businessId: string): Prom
   // A runtime that decides nothing is no agent: its turns are not run and the rules decide (add-agent-insights).
   const withAgent = agentEnabled && ctx.agent.decides;
   const reasons = withAgent ? turnReasons(findings, new Set(previous?.findings ?? []), await findingsSeenByLastTurn(ctx, businessId)) : [];
-  if (withAgent && reasons.length === 0 && !(await agentBudgetSpent(ctx, businessId))) {
+  const views = reasons.map((r) => ({ kind: r.kind, objectKind: r.objectKind, objectId: r.objectId }));
+  // A simulation's period is reviewed whatever the reasons (ad-agent spec «Разбор периода в симуляции»).
+  if (options.period === undefined && withAgent && reasons.length === 0 && !(await agentBudgetSpent(ctx, businessId))) {
     await saveQuietDay(ctx, businessId);
     return;
   }
-  const outcome = withAgent
-    ? await runAgentTurn(ctx, businessId, { kind: "daily_review", reasons: reasons.map((r) => ({ kind: r.kind, objectKind: r.objectKind, objectId: r.objectId })) })
-    : null;
+  const outcome = !withAgent
+    ? null
+    : options.period !== undefined
+      ? await runPeriodTurn(ctx, businessId, options.period, views)
+      : await runAgentTurn(ctx, businessId, { kind: "daily_review", reasons: views });
   if (automationEnabled && outcome?.status !== "completed") {
     await saveRulesDay(ctx, businessId, !withAgent ? "disabled" : outcome?.status === "skipped" && outcome.reason === "cost_limit" ? "cost_limit" : "unavailable");
     await runSafetyNet(ctx, businessId, now, view.directionClasses, borderlineSince, false);

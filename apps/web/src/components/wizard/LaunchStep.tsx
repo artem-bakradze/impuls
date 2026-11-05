@@ -43,8 +43,8 @@ interface Props {
   /** What counts as a lead is changed right here, and the counter check writes its result into the draft. */
   onChange?: (draft: OnboardingDraft) => void;
   errors?: Record<string, string>;
-  /** «Запустить в симуляции» with this scenario instead of Direct. */
-  simulation?: { scenario: string };
+  /** «Запустить в симуляции» on the training market instead of Direct. */
+  simulation?: boolean;
 }
 
 export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors = {} }: Props) {
@@ -56,7 +56,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
 
   const launch = async () => {
     setState({ kind: "running" });
-    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", simulation ? { simulation } : {});
+    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", simulation ? { simulation: true } : {});
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });
     } else if (outcome.kind === "done") {
@@ -102,17 +102,17 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
       </ul>
       {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
       {/* One notice about counting leads: the check itself for a real launch, the training data's note in a simulation. */}
-      {simulation === undefined && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation !== undefined)} />}
+      {!simulation && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation === true)} />}
       {/* What happens after the button (business-onboarding spec «Что будет после запуска»). */}
       <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">
         {simulation
-          ? "Дальше откроется студия: каждый прожитый день сервис смотрит рекламу и показывает, что заметил и изменил."
+          ? "Дальше откроется «Реклама»: вы вносите статистику за выбранный период, а сервис сразу разбирает её и показывает, что заметил и изменил."
           : "Дальше Яндекс проверит объявления — обычно в течение дня. Первые цифры появятся на следующий день, а потом сервис каждое утро смотрит рекламу."}{" "}
         Всё, что он меняет, видно в истории, и почти любое изменение можно вернуть одной кнопкой.
       </Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
-      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push(simulation ? "/simulation" : "/summary")}>{simulation ? "Открыть симуляцию" : "Открыть рекламу"}</Button>} /> : null}
+      {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть рекламу</Button>} /> : null}
       <Button
         type="primary"
         size="large"

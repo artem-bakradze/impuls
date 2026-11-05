@@ -99,6 +99,13 @@
       "when": 1793796414547,
       "tag": "0013_stable_journal_order",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793858983040,
+      "tag": "0014_simulation_scenario_optional",
+      "breakpoints": true
     }
   ]
 }

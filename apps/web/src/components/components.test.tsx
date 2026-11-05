@@ -194,16 +194,17 @@ describe("LaunchStep", () => {
     expect(screen.queryByText("Маникюр: Маникюр с покрытием")).toBeNull();
   });
 
-  it("speaks of the chosen way on the last step: the simulation has its own title and a scenario selected in advance", () => {
+  it("speaks of the chosen way on the last step: the simulation has its own title and no scenario to choose", () => {
     render(<Wizard initialDraft={ready()} initialStep={3} directApiMode="simulator" directOutcome={null} />);
     expect(screen.getByText("Шаг 3 из 3")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Объявления и запуск" })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Симуляция"));
     expect(screen.getByRole("heading", { name: "Запустите симуляцию" })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("списываются с его баланса");
-    expect(screen.getByLabelText("Обычный месяц")).toBeChecked();
-    expect(document.body.textContent).toContain("месяц рекламы проходит по дням");
-    expect(screen.getByTestId("after-launch")).toHaveTextContent("откроется студия");
+    expect(screen.queryByLabelText("Обычный месяц")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/сценари/i);
+    expect(document.body.textContent).toContain("цифры рекламы задаёте вы сами");
+    expect(screen.getByTestId("after-launch")).toHaveTextContent("откроется «Реклама»: вы вносите статистику за выбранный период");
     expect(screen.getByRole("button", { name: /Запустить симуляцию/ })).toBeInTheDocument();
     // The simulated month starts on the 1st: the budget line is for a full month.
     expect(document.body.textContent).not.toContain("В этом месяце — до");

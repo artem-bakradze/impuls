@@ -2,7 +2,7 @@ import OpenAI, { ConflictError } from "openai";
 import type { AgentSessionEvent, TokenUsage } from "openai/resources/beta/agents/agents";
 import { ProxyAgent } from "undici";
 import { AGENT_INSTRUCTIONS_VERSION, instructionsFor } from "./instructions";
-import type { AgentRuntime, AgentToolbox, ToolCallRecord, TurnReasonView, TurnResult, TurnSnapshot, TurnTrigger, TurnUsage } from "./runtime";
+import type { AgentRuntime, AgentToolbox, EventTrigger, ToolCallRecord, TurnReasonView, TurnResult, TurnSnapshot, TurnTrigger, TurnUsage } from "./runtime";
 import { isActionTool, parseActionCall, parseHypothesisCall, parseObservationCall, toolDefinitions } from "./tools";
 
 export interface OpenAiAgentRuntimeOptions {
@@ -33,6 +33,7 @@ const TRIGGER_TEXT: Record<TurnTrigger["kind"], string> = {
   launch: "Реклама только что запущена. Проверь, что всё настроено разумно; результатов ещё нет.",
   daily_review: "Утренняя оценка рекламы нашла поводы для решения.",
   weekly_review: "Понедельник: разбор недели.",
+  period_review: "Пришла статистика сразу за период: разбор периода.",
   moderation_rejected: "Директ отклонил объявления.",
   experiment_finished: "Закончились A/B-проверки.",
   settings_changed: "Владелец изменил цель, бюджет или настройки.",
@@ -52,6 +53,9 @@ const REASON_TEXT: Record<TurnReasonView["kind"], string> = {
 const reasonsText = (reasons: readonly TurnReasonView[]): string =>
   reasons.length === 0 ? "" : ` Поводы: ${reasons.map((r) => `${r.objectKind} ${r.objectId} — ${REASON_TEXT[r.kind]}`).join("; ")}.`;
 
+/** Events joined to the period's turn, in the words of their own turns. */
+const eventsText = (events: readonly EventTrigger[]): string => (events.length === 0 ? "" : ` С прошлого хода: ${events.map((e) => TRIGGER_TEXT[e.kind]).join(" ")}`);
+
 const triggerInput = (trigger: TurnTrigger): string => {
   const details =
     "adIds" in trigger
@@ -60,7 +64,9 @@ const triggerInput = (trigger: TurnTrigger): string => {
         ? ` Проверки: ${trigger.experimentIds.join(", ")}.`
         : trigger.kind === "daily_review"
           ? reasonsText(trigger.reasons ?? [])
-          : "";
+          : trigger.kind === "period_review"
+            ? `${trigger.from === trigger.to ? ` День: ${trigger.from}.` : ` Дни: ${trigger.from} — ${trigger.to}.`}${reasonsText(trigger.reasons ?? [])}${eventsText(trigger.events ?? [])}`
+            : "";
   return `${TRIGGER_TEXT[trigger.kind]}${details} Действуй по инструкции.`;
 };
 

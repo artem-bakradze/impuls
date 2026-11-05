@@ -1,5 +1,5 @@
 import { toLocalDate } from "@impuls/core";
-import { SCENARIO_IDS, SCENARIOS, scenarioStartDate } from "@impuls/worker/scenarios";
+import { simulationStartDate } from "@impuls/worker/simulation-period";
 import { z } from "zod";
 import { buildLaunchPlan, firstIncompleteStep, hasOwnSite, STEP_COUNT, stepProblems } from "@/lib/onboarding";
 import { findBusiness, readDraft } from "@/lib/server/business";
@@ -9,8 +9,8 @@ import { platformCapabilities } from "@/lib/server/read-context";
 import { parseBody } from "@/lib/server/request";
 import { apiUserId } from "@/lib/server/session";
 
-/** `simulation`: «Запустить в симуляции» with a market scenario instead of Direct (simulation-mode spec). */
-const Body = z.object({ simulation: z.object({ scenario: z.enum(SCENARIO_IDS) }).optional() });
+/** `simulation`: «Запустить в симуляции» on the training market instead of Direct (simulation-mode spec). */
+const Body = z.object({ simulation: z.literal(true).optional() });
 
 /** «Запустить»: the worker creates the campaigns (launch job); web only enqueues the plan. */
 export async function POST(request: Request) {
@@ -33,12 +33,12 @@ export async function POST(request: Request) {
     }
     const today = toLocalDate(new Date(), business.timeZone);
     // A simulation starts on its own virtual date (the 1st of the next month), so its limits are for that month.
-    const launchDay = body.simulation ? scenarioStartDate(SCENARIOS[body.simulation.scenario], today) : today;
+    const launchDay = body.simulation ? simulationStartDate(today) : today;
     const plan = buildLaunchPlan(draft, launchDay, platformCapabilities(body.simulation ? "simulation" : "direct").minWeeklyLimit / 100);
     if (plan.directions.length === 0) {
       throw new ApiError(400, "EMPTY_PLAN", "Оставьте хотя бы одно объявление");
     }
-    const jobId = await enqueueWebJob({ kind: "launch", businessId: business.id, plan, ...(body.simulation && { simulation: body.simulation }) });
+    const jobId = await enqueueWebJob({ kind: "launch", businessId: business.id, plan, ...(body.simulation && { simulation: true as const }) });
     return { jobId };
   });
 }

@@ -54,13 +54,16 @@ export const isStepComplete = (step: SimulationStep, simulation: Pick<Simulation
 /** JSONB restores top-level step dates; report dates are decoded only when the report is read. */
 export const readSimulationSteps = (value: unknown): SimulationStep[] => {
   const schema = z.array(z.object({
-    kind: z.enum(["week", "day"]), from: z.coerce.date(), to: z.coerce.date(),
+    kind: z.enum(["week", "day", "period"]), from: z.coerce.date(), to: z.coerce.date(),
+    days: z.number().int().positive().optional(),
+    input: z.array(z.object({ adId: z.string(), impressions: z.number(), clicks: z.number(), leads: z.number(), spendRub: z.number() })).optional(),
+    recorded: z.boolean().optional(),
     state: z.enum(["pending", "running", "completed", "failed"]).optional(),
     completedAt: z.coerce.date().optional(), errorCode: z.string().optional(), report: z.string().optional(),
   }));
   const steps = schema.parse(value);
   for (const step of steps) {
-    if (step.state === "completed" && (step.completedAt === undefined || (step.kind === "week" && step.report === undefined))) {
+    if (step.state === "completed" && (step.completedAt === undefined || (step.kind !== "day" && step.report === undefined))) {
       throw new Error("Completed simulation step has no saved result");
     }
     if (step.report !== undefined) readWeekReport(step.report);

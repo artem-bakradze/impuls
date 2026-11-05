@@ -17,9 +17,9 @@ afterAll(async () => {
   await pool.end();
 });
 
-/** simulation-mode spec: a week without model calls takes at most 30 seconds on the real store. */
-describe("simulation speed on PostgreSQL", () => {
-  it("lives a week of «Пограничное объявление» within 30 seconds", async () => {
+/** A period of the owner's numbers on the real store: the step, its numbers and a run without a scenario are kept. */
+describe("simulation period on PostgreSQL", () => {
+  it("records two weeks of the owner's numbers and reviews them within 30 seconds", async () => {
     await db.execute(sql`DELETE FROM simulations WHERE business_id = 'speed-b1'`);
     await db.execute(sql`DELETE FROM users WHERE id = 'speed-u1'`).catch(() => undefined);
     const store = new PgStore(db);
@@ -56,15 +56,17 @@ describe("simulation speed on PostgreSQL", () => {
           { name: "Маникюр — Сайты-партнёры", channel: "network", weeklyLimitRub: total - Math.floor(total * 0.6), keywords: [], negativeKeywords: [], ads: [1, 2, 3].map((i) => ({ title: `Ноготок ${i}`, text: "Онлайн" })) },
         ],
       },
-      "borderline",
     );
+    const [ad] = (await store.ads("speed-b1")).filter((a) => a.title === "Маникюр 1");
+    const input = [{ adId: ad?.id ?? "", impressions: 2_000, clicks: 90, leads: 4, spendRub: 1_200 }];
     const started = Date.now();
-    await controlSimulation(ctx, "speed-b1", { action: "step_week" });
+    await controlSimulation(ctx, "speed-b1", { action: "period", days: 14, ads: input });
     const elapsed = (Date.now() - started) / 1_000;
     const simulation = await store.getSimulation("speed-b1");
-    console.log(`A virtual week took ${elapsed.toFixed(1)} s of work`);
-    expect(simulation?.status).toBe("paused");
-    expect(simulation?.steps.map((s) => s.kind)).toEqual(["week"]);
+    console.log(`A period of 14 virtual days took ${elapsed.toFixed(1)} s of work`);
+    expect(simulation).toMatchObject({ scenario: null, status: "paused", steps: [{ kind: "period", days: 14, input, recorded: true, state: "completed" }] });
+    const rows = await store.stats("speed-b1", "2026-11-01", "2026-12-31");
+    expect(rows.filter((r) => r.adId === ad?.platformAdId).reduce((s, r) => s + r.spend, 0)).toBe(120_000);
     expect(elapsed).toBeLessThan(30);
   }, 120_000);
 });

@@ -14,7 +14,7 @@ import { formatCount, formatRub, plural } from "@/lib/format";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { LastChange } from "@/lib/service-work";
-import { agentTurnText, elapsedText, stepText } from "@/lib/simulation-model";
+import { elapsedText, periodReviewText } from "@/lib/simulation-model";
 import type { SimulationStatus } from "@/lib/simulation-model";
 import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, nextStepText } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
@@ -138,7 +138,13 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
   const trend = trendOf((model.daily ?? []).slice(-14));
   const state = adsState({ state: model.state, simulation: model.simulation !== null, moderationPending: model.moderation.pending, shown: work.shown.length });
   const badge = firstDay ? null : goalBadge(model.goal);
-  const caption = firstDay ? (model.moderation.pending > 0 && !model.simulation ? "проверка Яндекса · первые данные завтра" : "первые данные завтра") : null;
+  const caption = firstDay
+    ? model.simulation
+      ? "первые данные — после статистики"
+      : model.moderation.pending > 0
+        ? "проверка Яндекса · первые данные завтра"
+        : "первые данные завтра"
+    : null;
   const period = model.dataPeriod ? words.range(model.dataPeriod.from, today) : today === "" ? "" : words.date(today);
   // What the service does next, while the ads run and there is data (analytics spec «Сводка»).
   const next = firstDay || state.kind === "paused" ? null : nextStepText(work.nextCheck, today, words);
@@ -146,7 +152,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
   const status = sim.status;
   const stepping = status !== null && isStepping(status);
   const elapsed = status?.agentTurn && sim.turnSeenAt !== null ? ` · ${elapsedText(Math.max(0, Math.round((sim.now - sim.turnSeenAt) / 1_000)))}` : "";
-  const thinking = status !== null && stepping ? (status.agentTurn ? `${agentTurnText(status.agentTurn)}${elapsed}` : (stepText(status) ?? "День идёт")) : null;
+  const thinking = status !== null && stepping ? `${status.step ? periodReviewText(status.step) : "Сервис разбирает статистику…"}${elapsed}` : null;
 
   return (
     <DayWordsContext.Provider value={words}>

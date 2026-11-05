@@ -2,26 +2,20 @@ import "server-only";
 import { addDays, costPerLead, resolveCso, toLocalDate } from "@impuls/core";
 import type { Kopecks, LocalDate, PerformanceStats } from "@impuls/core";
 import type { HistoryItem, Names } from "../history-view";
-import { buildDecisionScreen, scenarioTruth } from "../simulation-screen";
-import type { DecisionScreenModel } from "../simulation-screen";
 import { buildServiceWork } from "../service-work";
 import type { ServiceWorkModel } from "../service-work";
-import { livedWeeks } from "../week-story";
+import { livedPeriods } from "../lived-periods";
 import { buildHistory } from "./history";
 import { buildInsightFeed } from "./insights";
 import { store } from "./runtime";
 
-/** The ads and the journal of «Реклама» (analytics spec), with the simulation's comparison when there is one. */
+/** The ads and the journal of «Реклама» (analytics spec). */
 export type AdsWork = ServiceWorkModel & {
   site: string;
   history: HistoryItem[];
   names: Names;
-  /** Only in a simulation: the run without the service (simulation-mode «Контрольный прогон»). */
-  sim: (Pick<DecisionScreenModel, "comparison" | "result" | "decisionDays" | "day" | "totalDays" | "scenarioTitle"> & {
-    ended: boolean;
-    /** The simulation's first day: day 1 of «Дни симуляции вместо дат» (simulation-mode spec). */
-    startedOn: LocalDate;
-  }) | null;
+  /** Only in a simulation: its first day, day 1 of «Дни симуляции вместо дат» (simulation-mode spec). */
+  sim: { startedOn: LocalDate } | null;
 };
 
 const median = (values: readonly number[]): Kopecks | null => {
@@ -51,14 +45,12 @@ export const loadAdsWork = async (businessId: string): Promise<AdsWork> => {
   const business = await s.getBusiness(businessId);
   const simulation = business.mode === "simulation" ? await s.getSimulation(businessId) : null;
   const [directions, ads, changes, history, hypotheses] = await Promise.all([s.directions(businessId), s.ads(businessId), s.changes(businessId), buildHistory(businessId), s.hypotheses(businessId)]);
-  const goal = business.csoSource.kind === "user" ? business.csoSource.goal : business.csoSource.reference;
   const now = simulation?.simNow ?? new Date();
   const startedOn = simulation ? toLocalDate(simulation.startedAt, business.timeZone) : (business.launchedOn ?? toLocalDate(now, business.timeZone));
   const today = toLocalDate(now, business.timeZone);
   const observed = await s.stats(businessId, startedOn, today);
-  // The scenario's truth exists only in a simulation: on Direct the journal has no «На самом деле».
-  const truthOf = simulation ? scenarioTruth({ simulation, ads, goal }) : undefined;
-  const feed = await buildInsightFeed(businessId, { since: null, ...(truthOf && { truthOf }) });
+  // No «На самом деле»: the owner's numbers of a simulation have no hidden truth (simulation-mode spec).
+  const feed = await buildInsightFeed(businessId, { since: null });
 
   // The goal per lead as the morning evaluation resolves it: 30 days up to yesterday.
   const byCampaign = new Map<string, PerformanceStats>();
@@ -84,14 +76,9 @@ export const loadAdsWork = async (businessId: string): Promise<AdsWork> => {
     changes,
     ...(check && { checkAds: [check.control, ...(check.variant ? [check.variant] : [])] }),
     openChecks: hypotheses.filter((h) => h.status === "checking"),
-    weeks: simulation ? livedWeeks(simulation, business.timeZone) : calendarWeeks(startedOn, today),
+    weeks: simulation ? livedPeriods(simulation, business.timeZone) : calendarWeeks(startedOn, today),
   });
   // Presentation only: an ad without the owner's site leads to the mini-site, whose address is not the ad's concern here.
   const site = (business.card.siteUrl ? hostOf(business.card.siteUrl) : null) ?? "ваш сайт";
-  let sim: AdsWork["sim"] = null;
-  if (simulation) {
-    const m = buildDecisionScreen({ observed, simulation, timeZone: business.timeZone, monthlyBudgetRub: business.monthlyBudgetRub, directions, changes });
-    sim = { comparison: m.comparison, result: m.result, decisionDays: m.decisionDays, day: m.day, totalDays: m.totalDays, scenarioTitle: m.scenarioTitle, ended: m.result !== null, startedOn };
-  }
-  return { ...work, site, history: history.items, names: history.names, sim };
+  return { ...work, site, history: history.items, names: history.names, sim: simulation ? { startedOn } : null };
 };

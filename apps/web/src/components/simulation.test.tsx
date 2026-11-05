@@ -1,21 +1,22 @@
 import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { rubles } from "@impuls/core";
-import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, handleWebJob } from "@impuls/worker";
-import type { JobContext, LaunchPlan } from "@impuls/worker";
+import { campaignRoom } from "@impuls/platforms";
+import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, periodForm } from "@impuls/worker";
+import type { JobContext, LaunchPlan, PeriodAdInput } from "@impuls/worker";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
-import { emptyDraft } from "@/lib/onboarding";
 import { feedDays } from "@/lib/insights-model";
-import { buildDecisionScreen, scenarioTruth } from "@/lib/simulation-screen";
 import { buildServiceWork } from "@/lib/service-work";
 import type { AdsWork } from "@/lib/server/simulation-screen";
-import { buildWeekStory, livedWeeks } from "@/lib/week-story";
-import { isCurrentAction, SimulationControlBody } from "@/lib/simulation-model";
+import { livedPeriods } from "@/lib/lived-periods";
+import { currentAction, SimulationControlBody } from "@/lib/simulation-model";
 import { AdsSheet } from "./summary/AdsSheet";
-import { ComparisonNote } from "./summary/HistorySheet";
-import { ModeChoice, ScenarioPicker } from "./wizard/SimulationChoice";
+import { HistorySheet } from "./summary/HistorySheet";
+import { DayWordsContext } from "./ui/DayWordsContext";
+import { simulationWords } from "@/lib/day-words";
+import { ModeChoice } from "./wizard/SimulationChoice";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/summary" }));
 
@@ -28,8 +29,28 @@ const plan: LaunchPlan = {
   ],
 };
 
-/** A 30-day run of «Одно объявление не приносит клиентов» on the worker, in memory, with the rules or the agent. */
-const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy()) => {
+/**
+ * What the owner enters for a week: «Маникюр 1» spends without leads, «Маникюр 2» and «Ноготок 1» bring them cheaply,
+ * every amount a share of what Direct would let the direction spend now.
+ */
+const weekOf = (form: ReturnType<typeof periodForm>): PeriodAdInput[] =>
+  form.directions.flatMap((d) => {
+    const room = d.roomRub[7];
+    const first = (title: string) => d.ads.find((a) => a.title === title)?.id;
+    const rows: PeriodAdInput[] = [];
+    const add = (title: string, share: number, clicks: number, leads: number) => {
+      const adId = first(title);
+      const spendRub = Math.floor(room * share);
+      if (adId !== undefined && spendRub > 0) rows.push({ adId, impressions: clicks * 20, clicks, leads, spendRub });
+    };
+    add("Маникюр 1", 0.6, 40, 0);
+    add("Маникюр 2", 0.3, 30, 4);
+    add("Ноготок 1", 0.5, 20, 2);
+    return rows;
+  });
+
+/** Four weeks of the owner's numbers on the worker, in memory, with the rules or the agent. */
+const run = async (agent: AgentRuntime = new IdlePolicy()) => {
   const store = new MemoryStore();
   await store.saveBusiness({
     id: "b1",
@@ -49,24 +70,17 @@ const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy())
     throw new Error("no Direct in a simulation");
   };
   const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine() };
-  await launchSimulation(ctx, "b1", plan, "dead_ad");
-  // Four weeks and the last two days: the scenario's 30 days to its end. A week step is never cut at the end any more,
-  // so the last two days are day steps.
-  for (let week = 0; week < 4; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
-  for (let day = 0; day < 2; day++) await controlSimulation(ctx, "b1", { action: "step_day" });
-  if (rollBackOne) {
-    // The owner changes the show hours and takes it back; the worker routes both into the simulated world.
-    const direction = (await store.directions("b1"))[0];
-    await handleWebJob(ctx, { kind: "command", businessId: "b1", command: { type: "UpdateSchedule", directionId: direction?.id ?? "", schedule: "Пн–Вс 10:00–21:00" }, explanation: "Вы изменили время показа." });
-    const result = (await handleWebJob(ctx, { kind: "rollback", businessId: "b1", entryId: (await store.changes("b1")).at(-1)?.id ?? "" })) as { kind: string };
-    expect(result.kind).toBe("done");
+  await launchSimulation(ctx, "b1", plan);
+  for (let week = 0; week < 4; week++) {
+    const simulation = await store.getSimulation("b1");
+    if (!simulation) throw new Error("no simulation");
+    const form = periodForm({ state: simulation.state, room: (id, dates) => campaignRoom(simulation.state, id, dates), directions: await store.directions("b1"), ads: await store.ads("b1"), start: simulation.simNow, timeZone: "Europe/Moscow" });
+    await controlSimulation(ctx, "b1", { action: "period", days: 7, ads: weekOf(form) });
   }
   const simulation = await store.getSimulation("b1");
   if (!simulation) throw new Error("no simulation");
   const ads = await store.ads("b1");
-  const truthOf = scenarioTruth({ simulation, ads, goal: rubles(500) });
-  const model = buildDecisionScreen({ simulation, timeZone: "Europe/Moscow", monthlyBudgetRub: 15_000, directions: await store.directions("b1"), changes: await store.changes("b1") });
-  const days = feedDays({ insights: await store.insights("b1"), turns: await store.turnDigests("b1"), timeZone: "Europe/Moscow", since: null, entries: new Map(), truthOf });
+  const days = feedDays({ insights: await store.insights("b1"), turns: await store.turnDigests("b1"), timeZone: "Europe/Moscow", since: null, entries: new Map() });
   const changes = await store.changes("b1");
   const history: HistoryItem[] = changes.map((c) => ({
     id: c.id,
@@ -83,131 +97,76 @@ const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy())
     rollback: { kind: "available", consequences: [] },
     budgetAdjustment: false,
   }));
-  const storyOf = async (week: number, overrides: Partial<Parameters<typeof buildWeekStory>[0]> = {}) =>
-    buildWeekStory({
-      simulation,
-      week,
-      timeZone: "Europe/Moscow",
-      directions: await store.directions("b1"),
-      ads,
-      stats: await store.stats("b1", "2026-10-01", "2026-12-31"),
-      cso: rubles(500),
-      truthOf,
-      reviews: days,
-      history,
-      changes,
-      comparison: model.comparison,
-      ...overrides,
-    });
-  const story = await storyOf(4);
   const directions = await store.directions("b1");
-  const work = buildServiceWork({ ads, directions, stats: await store.stats("b1", "2026-12-01", "2026-12-30"), today: "2026-12-31", startedOn: "2026-12-01", timeZone: "Europe/Moscow", cso: rubles(500), reviews: days, history, changes, openChecks: (await store.hypotheses("b1")).filter((h) => h.status === "checking"), weeks: livedWeeks(simulation, "Europe/Moscow") });
-  const screenModel: AdsWork = { ...work, site: "nogotok.example", history, names: { directions: {}, channels: {}, ads: {}, strategies: {} }, sim: { comparison: model.comparison, result: model.result, decisionDays: model.decisionDays, day: model.day, totalDays: model.totalDays, scenarioTitle: model.scenarioTitle, ended: model.result !== null, startedOn: "2026-12-01" } };
-  return { ...model, work, screenModel, feed: { timeZone: "Europe/Moscow", check: null, days, names: { directions: {}, channels: {}, ads: {}, strategies: {} } }, ads, truthOf, story, storyOf };
+  const work = buildServiceWork({
+    ads,
+    directions,
+    stats: await store.stats("b1", "2026-12-01", "2026-12-31"),
+    today: "2026-12-29",
+    startedOn: "2026-12-01",
+    timeZone: "Europe/Moscow",
+    cso: rubles(500),
+    reviews: days,
+    history,
+    changes,
+    openChecks: (await store.hypotheses("b1")).filter((h) => h.status === "checking"),
+    weeks: livedPeriods(simulation, "Europe/Moscow"),
+  });
+  const screenModel: AdsWork = { ...work, site: "nogotok.example", history, names: { directions: {}, channels: {}, ads: {}, strategies: {} }, sim: { startedOn: "2026-12-01" } };
+  return { simulation, work, screenModel, ads, days, store };
 };
 
-describe("decisions screen model (simulation-mode spec)", () => {
-  it("compares with the run without the service and ticks the checklist with history links", async () => {
-    const model = await run(false);
-    expect(model.day).toBe(30);
-    // The scenario's items, the rollback and the budget; the cabinet item is not this scenario's and was not done.
-    expect(model.checklist.map((c) => c.key)).toEqual(expect.arrayContaining(["pause", "scale", "rollback", "budget"]));
-    expect(model.checklist.some((c) => c.key === "cabinet")).toBe(false);
-    // With and without the service, day by day, for every day of the scenario.
-    expect(model.comparison?.service).toHaveLength(30);
-    expect(model.comparison?.baseline).toHaveLength(30);
-    expect(model.comparison?.serviceNow.leads).toBe(model.result?.service.leads);
-    expect(model.comparison?.baselineNow.leads).toBe(model.result?.baseline.leads);
-    const item = (key: string) => model.checklist.find((c) => c.key === key);
-    expect(item("pause")).toMatchObject({ done: true });
-    expect(item("pause")?.entryId).toBeTruthy();
-    expect(item("scale")).toMatchObject({ done: true });
-    expect(item("budget")).toMatchObject({ done: true });
-    expect(item("rollback")).toMatchObject({ done: false, hint: "Откатите любое изменение в истории или в ленте — кнопка «Вернуть как было»" });
-    expect(model.decisionDays.length).toBeGreaterThan(0);
-    expect(model.result?.days).toBe(30);
-    expect(model.result?.service.spend).toBeGreaterThan(0);
+describe("ads and history of «Реклама» on the owner's numbers (simulation-mode spec)", () => {
+  it("lives the owner's periods with one review each, and the agent turns off the ad without leads", async () => {
+    const model = await run(new HeuristicPolicy());
+    expect(model.simulation.steps.map((s) => [s.kind, s.days, s.state])).toEqual([
+      ["period", 7, "completed"],
+      ["period", 7, "completed"],
+      ["period", 7, "completed"],
+      ["period", 7, "completed"],
+    ]);
+    expect((await model.store.turns("b1")).map((t) => t.trigger)).toEqual(["period_review", "period_review", "period_review", "period_review"]);
+    expect(model.ads.some((a) => a.title === "Маникюр 1" && a.status === "paused")).toBe(true);
   }, 60_000);
 
-  it("ticks «откат работает» after the owner rolls a change back", async () => {
-    const model = await run(true);
-    expect(model.checklist.find((c) => c.key === "rollback")).toMatchObject({ done: true, hint: null });
-  }, 60_000);
-
-  it("says what is true about the insight's ad or advertising, against the goal", async () => {
-    const model = await run(false);
-    const dead = model.ads.find((a) => a.title === "Маникюр 1");
-    expect(model.truthOf({ kind: "ad", id: dead?.id ?? "" })).toEqual({ text: "На самом деле: объявление не приводит обращений", tone: "danger" });
-    const good = model.ads.find((a) => a.title === "Маникюр 2");
-    expect(model.truthOf({ kind: "ad", id: good?.id ?? "" })?.text.replace(/\u00a0/g, " ")).toMatch(/^На самом деле: обращение примерно за \d[\d ]* ₽ — (в пределах|дороже) цели 500 ₽$/);
-  }, 60_000);
-
-  it("ticks the checklist by the agent's decisions too, and shows its insights with the truth", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    expect(model.checklist.find((c) => c.key === "pause")).toMatchObject({ done: true });
-    const insights = model.feed.days.flatMap((d) => d.insights);
-    expect(insights.some((i) => i.author === "agent")).toBe(true);
-    const pause = insights.find((i) => i.decision.text === "Отключили объявление «Маникюр 1»");
-    expect(pause?.truth?.text).toBe("На самом деле: объявление не приводит обращений");
-    // A change the guard refused is not tried again day after day.
-    const refused = insights.filter((i) => i.decision.status === "rejected").map((i) => i.decision.text);
-    expect(new Set(refused).size).toBe(refused.length);
-    expect(model.feed.days.some((d) => d.summary !== null || d.quiet)).toBe(true);
-  }, 60_000);
-
-  it("says the comparison in one line, without a table, graphs or checklist", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    if (!model.screenModel.sim) throw new Error("no simulation");
-    render(<ComparisonNote sim={model.screenModel.sim} />);
-    expect(screen.queryByTestId("sim-checklist")).toBeNull();
-    const comparison = screen.getByTestId("sim-comparison");
-    expect(comparison.querySelectorAll("table")).toHaveLength(0);
-    expect(comparison).toHaveTextContent(`Итог 30 дней: с сервисом ${model.result?.service.leads ?? ""}`);
-    expect(comparison).toHaveTextContent(`без него было бы ${model.result?.baseline.leads ?? ""}`);
-    expect(document.querySelectorAll(".results-trend")).toHaveLength(0);
-  }, 60_000);
-
-});
-
-describe("ads and journal of «Реклама» in a simulation (simulation-mode spec)", () => {
   it("shows the ads people see now and names the ones that are not shown", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    // The agent paused the ad without clients; a new variant may share its title.
+    const model = await run(new HeuristicPolicy());
     const dead = model.ads.find((a) => a.title === "Маникюр 1" && a.status === "paused");
-    expect(dead).toBeDefined();
     expect(model.work.hidden.map((h) => h.title)).toContain("Маникюр 1");
     expect(model.work.shown.some((a) => a.id === dead?.id)).toBe(false);
-    expect(model.work.shown.length).toBeGreaterThan(0);
     render(<AdsSheet work={model.screenModel} onClose={vi.fn()} />);
     expect(screen.getAllByTestId("shown-ad")).toHaveLength(model.work.shown.length);
     expect(screen.getByTestId("hidden-ads")).toHaveTextContent("Маникюр 1");
   }, 60_000);
 
-  it("keeps the agent's journal oldest first in sections of the lived weeks, with the change and the truth", async () => {
-    const model = await run(false, new HeuristicPolicy());
+  it("keeps the history in sections of the lived periods, each with its review, and no comparison or truth", async () => {
+    const model = await run(new HeuristicPolicy());
     const entries = model.work.journal.flatMap((s) => s.entries);
     expect(entries.map((e) => e.date)).toEqual([...entries.map((e) => e.date)].sort());
-    expect(model.work.journal.filter((s) => s.week !== null).map((s) => s.week)).toEqual([1, 2, 3, 4]);
-    // The launch day is before the calendar Monday: the week's header starts on that day, not on Monday.
-    expect(model.work.journal[0]?.from).toBe(model.work.journal[0]?.entries[0]?.date ?? "");
-    const pause = entries.find((e) => e.changes.some((c) => c.text === "Отключил объявление «Маникюр 1»"));
-    expect(pause?.truths.map((t) => t.text)).toContain("На самом деле: объявление не приводит обращений");
-    // Rejected proposals are never shown as changes.
-    expect(entries.flatMap((e) => e.changes).every((c) => !c.text.startsWith("Изменение не применено"))).toBe(true);
-    expect(entries.every((e) => e.paragraphs.every((p) => !p.includes("**") && !/^Разбор (дня|недели)/.test(p)))).toBe(true);
-  }, 60_000);
-
-  it("groups the ads by the rules' estimate and marks what the service changed", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    const order = ["effective", "borderline", "learning", "ineffective"];
-    const ranks = model.work.shown.map((a) => order.indexOf(a.verdict));
-    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
-    expect(model.work.journal[0]?.week).toBe(1);
-    render(<AdsSheet work={model.screenModel} onClose={vi.fn()} />);
-    for (const verdict of new Set(model.work.shown.map((a) => a.verdict))) expect(screen.getByTestId(`ads-${verdict}`)).toBeTruthy();
-    const marks = [...model.work.shown.flatMap((a) => (a.change ? [a.change] : [])), ...model.work.directionChanges];
-    expect(screen.queryAllByTestId("change-mark")).toHaveLength(marks.length);
-    expect(marks.every((m) => !/направлени|инсайт/i.test(m.text))).toBe(true);
+    const periods = model.work.journal.filter((s) => s.period);
+    expect(periods.map((s) => [s.from, s.to])).toEqual([
+      ["2026-12-01", "2026-12-07"],
+      ["2026-12-08", "2026-12-14"],
+      ["2026-12-15", "2026-12-21"],
+      ["2026-12-22", "2026-12-28"],
+    ]);
+    // Every period's review names its days.
+    expect(periods.map((s) => s.entries.find((e) => e.period !== undefined)?.period)).toEqual(periods.map((s) => ({ from: s.from, to: s.to })));
+    expect(entries.every((e) => e.truths.length === 0)).toBe(true);
+    render(
+      <DayWordsContext.Provider value={simulationWords("2026-12-01")}>
+        <HistorySheet work={model.screenModel} clientCost={{ kind: "unknown", costPerLead: null, hint: "", week: "2026-12-21" }} onClose={vi.fn()} onRollback={vi.fn()} />
+      </DayWordsContext.Provider>,
+    );
+    expect(screen.getAllByTestId("journal-week").map((h) => h.textContent?.replace(/ /g, " "))).toEqual([
+      "Дни 22–28 · разбор в день 29",
+      "Дни 15–21 · разбор в день 22",
+      "Дни 8–14 · разбор в день 15",
+      "Дни 1–7 · разбор в день 8",
+    ]);
+    expect(screen.queryByTestId("sim-comparison")).toBeNull();
+    expect(screen.queryByTestId("insight-truth")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/без него было бы|На самом деле/);
   }, 60_000);
 
   it("speaks plainly: no «инсайт», and «пункты» are percents", async () => {
@@ -225,77 +184,32 @@ describe("ads and journal of «Реклама» in a simulation (simulation-mode
     expect(entries[0]?.headline).toBe("Снизил цену перехода с телефонов.");
     expect(entries[0]?.paragraphs).toEqual([]);
   });
-
 });
 
-describe("week story (simulation-mode spec «История недели»)", () => {
-  it("tells a week with a decision: the ads with the rules' estimate and the truth, the insights, the decision", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    const weeks = await Promise.all([1, 2, 3, 4].map((w) => model.storyOf(w)));
-    const withDecision = weeks.find((w) => (w?.decisions.length ?? 0) > 0);
-    expect(withDecision).toBeDefined();
-    if (!withDecision) throw new Error("no week with a decision");
-    expect(withDecision.days).toHaveLength(7);
-    expect(withDecision.totals.spend).toBe(withDecision.days.reduce((sum, d) => sum + d.spend, 0));
-    const dead = withDecision.rows.find((r) => r.title === "Маникюр 1");
-    expect(dead?.truth?.text).toBe("На самом деле: объявление не приводит обращений");
-    expect(withDecision.rows.every((r) => ["learning", "effective", "borderline", "ineffective"].includes(r.verdict))).toBe(true);
-    expect(withDecision.noDecisionReason).toBeNull();
-    // Opened again, the same week reads the same.
-    expect(await model.storyOf(withDecision.week)).toEqual(withDecision);
-    // Every lived week is whole; the day steps at the end are not weeks.
-    expect(weeks.map((w) => w?.days.length)).toEqual([7, 7, 7, 7]);
-    expect(weeks[0]?.weeks.map((w) => w.week)).toEqual([1, 2, 3, 4]);
-  }, 60_000);
-
-  it("says why nothing changed in a week without decisions", async () => {
-    const model = await run(false, new HeuristicPolicy());
-    // While the ads collect data, the rules' estimate says so.
-    const collecting = await model.storyOf(1, { changes: [], stats: [] });
-    // New reports stay frozen even if today's statistics and commands were corrected.
-    expect(collecting).toEqual(await model.storyOf(1));
-    expect(collecting?.savedAt).toBeDefined();
-    // The first week's own decision comes on the morning after its seven days and belongs to it.
-    const first = await model.storyOf(1);
-    expect(first?.days.map((d) => d.date)).toEqual(["2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06", "2026-12-07"]);
-    expect(await model.storyOf(9)).toBeNull();
-  }, 60_000);
-
-});
-
-describe("step 6 choice", () => {
-  it("offers the simulation and explains why a scenario does not fit", () => {
+describe("step 3 choice (business-onboarding spec «Превью и запуск»)", () => {
+  it("offers the simulation on the owner's own numbers, without scenarios", () => {
     const onChange = vi.fn();
     render(<ModeChoice mode="direct" onChange={onChange} />);
     fireEvent.click(screen.getByLabelText("Симуляция"));
     expect(onChange).toHaveBeenCalledWith("simulation");
-
-    const draft = emptyDraft();
-    draft.budget.monthlyBudgetRub = 15_000;
-    draft.ads = { search: [{ title: "Маникюр", text: "У метро" }], network: [] };
-    const onEdit = vi.fn();
-    render(<ScenarioPicker draft={draft} scenario="regular" onChange={() => undefined} onEdit={onEdit} />);
-    // «Обычный месяц» first, the others under «Другие сценарии».
-    expect(screen.getByLabelText("Обычный месяц")).toBeChecked();
-    expect(screen.queryByLabelText("Пограничное объявление")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Другие сценарии/ }));
-    expect(screen.getByText("Нужно хотя бы 2 объявления в поиске — сейчас 1")).toBeTruthy();
-    expect(screen.getByLabelText("Одно объявление не приносит клиентов")).toBeDisabled();
-    expect(screen.getByLabelText("Пограничное объявление")).not.toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Добавить объявление" }));
-    expect(onEdit).toHaveBeenCalledWith(3);
+    expect(screen.getByText(/цифры рекламы задаёте вы сами/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/сценари|Обычный месяц/i);
   });
 });
 
-describe("pult actions", () => {
-  it("accepts the steps and both kinds of restart, and tells the old pult's actions apart", () => {
-    for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "restart", mode: "repeat" }, { action: "restart", mode: "fresh" }]) {
-      const parsed = SimulationControlBody.parse(body);
-      expect(isCurrentAction(parsed)).toBe(true);
+describe("player actions", () => {
+  it("accepts a period, «Продолжить расчёт» and «Начать заново», and tells the older players' actions apart", () => {
+    const period = { action: "period", days: 7, ads: [{ adId: "a1", impressions: 10, clicks: 1, leads: 0, spendRub: 30 }] };
+    expect(currentAction(SimulationControlBody.parse(period))).toEqual(period);
+    expect(currentAction(SimulationControlBody.parse({ action: "continue" }))).toEqual({ action: "continue" });
+    expect(currentAction(SimulationControlBody.parse({ action: "restart" }))).toEqual({ action: "restart" });
+    // «Прогнать заново» of the older player is today's «Начать заново»; its «Повторить этот прогон» is gone.
+    expect(currentAction(SimulationControlBody.parse({ action: "restart", mode: "fresh" }))).toEqual({ action: "restart" });
+    expect(currentAction(SimulationControlBody.parse({ action: "restart", mode: "repeat" }))).toBeNull();
+    for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "extend" }, { action: "pause" }, { action: "speed", speed: "fast" }]) {
+      expect(currentAction(SimulationControlBody.parse(body))).toBeNull();
     }
-    for (const body of [{ action: "pause" }, { action: "until_decision" }, { action: "speed", speed: "fast" }]) {
-      expect(isCurrentAction(SimulationControlBody.parse(body))).toBe(false);
-    }
-    expect(SimulationControlBody.safeParse({ action: "restart" }).success).toBe(false);
+    expect(SimulationControlBody.safeParse({ action: "period", days: 5, ads: [] }).success).toBe(false);
+    expect(SimulationControlBody.safeParse({ action: "period", days: 7, ads: [{ adId: "a1", impressions: -1, clicks: 0, leads: 0, spendRub: 0 }] }).success).toBe(false);
   });
 });

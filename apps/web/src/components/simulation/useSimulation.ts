@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { callApi, runWebJob } from "@/lib/client-api";
+import { callApi, waitForJob } from "@/lib/client-api";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 
 /**
- * The simulation's clock on «Реклама»: polls the virtual day, refreshes the server page only when a step is over, and
- * sends the owner's steps. It never walks the time by itself: every day is a deliberate press. Without a simulation
- * (Direct) it is given null and does nothing, so the screen calls it the same way in both modes.
+ * The simulation's clock on «Реклама»: polls the virtual day, refreshes the server page only when a period is over, and
+ * sends the owner's periods. It never walks the time by itself: every period is a deliberate press. Without a
+ * simulation (Direct) it is given null and does nothing, so the screen calls it the same way in both modes.
  */
 export const useSimulation = (initial: SimulationStatus | null) => {
   const router = useRouter();
@@ -20,17 +20,15 @@ export const useSimulation = (initial: SimulationStatus | null) => {
   const simulated = useRef(initial !== null);
   const seen = useRef({
     changes: initial?.changes ?? 0,
-    day: initial?.day ?? 0,
     status: initial?.status ?? "paused",
-    thinking: (initial?.agentTurn ?? null) !== null,
-    weeks: initial?.weeks ?? 0,
+    thinking: initial?.agentTurn ?? false,
   });
   /**
-   * A step the owner pressed that the worker has not taken yet: until then the server still says «paused» about the day
-   * before, and that must not put «прожит» back on the screen (simulation-mode spec: a step that is not over is not shown
-   * as lived). Cleared when the server shows the step moving or failing, or when its job ends.
+   * A period the server took that the worker has not started: until then the server still says «paused» about the day
+   * before, and that must not put «прожит» back on the screen (simulation-mode spec: a period that is not over is not
+   * shown as lived). Cleared when the server shows the period moving or failing, or when its job ends.
    */
-  const pressed = useRef<{ day: number; weeks: number } | null>(null);
+  const pressed = useRef<{ day: number; periods: number } | null>(null);
 
   useEffect(() => {
     if (!simulated.current) return;
@@ -41,59 +39,63 @@ export const useSimulation = (initial: SimulationStatus | null) => {
         const next = result.body;
         const waiting = pressed.current;
         if (waiting !== null) {
-          const moved = next.status === "stepping" || next.failed === true || next.day !== waiting.day || next.weeks !== waiting.weeks;
+          const moved = next.status === "stepping" || next.failed === true || next.day !== waiting.day || next.periods !== waiting.periods;
           if (!moved) return;
           pressed.current = null;
         }
         const before = seen.current;
-        // The page's numbers wait for the end of a step; during a step only the clock and the day strip move.
+        // The page's numbers wait for the end of a period; meanwhile only the player moves.
         if (next.status === "paused" && (before.status === "stepping" || next.changes !== before.changes)) {
           router.refresh();
         }
-        setTurnSeenAt((seenAt) => (next.agentTurn === null ? null : before.thinking && seenAt !== null ? seenAt : Date.now()));
-        seen.current = { changes: next.changes, day: next.day, status: next.status, thinking: next.agentTurn !== null, weeks: next.weeks };
+        setTurnSeenAt((seenAt) => (!next.agentTurn ? null : before.thinking && seenAt !== null ? seenAt : Date.now()));
+        seen.current = { changes: next.changes, status: next.status, thinking: next.agentTurn };
         setStatus(next);
       });
     }, 1_000);
     return () => window.clearInterval(timer);
   }, [router]);
 
-  const act = async (control: SimulationAction) => {
-    if (status === null) return;
+  /**
+   * Sends a player action. A refusal of the server is returned (and shown by the player unless it is a period's, which
+   * its window shows); `onAccepted` runs as soon as the server took the action, before the worker is done with it.
+   */
+  const act = async (control: SimulationAction, onAccepted?: () => void): Promise<{ code: string; message: string } | null> => {
+    if (status === null) return null;
     setBusy(control.action);
     setError(null);
-    if (control.action === "step_week" || control.action === "step_day") {
-      setStatus((current) =>
-        current === null
-          ? current
-          : {
-              ...current,
-              failed: false,
-              status: "stepping",
-              step: { kind: control.action === "step_week" ? "week" : "day", week: control.action === "step_week" ? current.weeks + 1 : null },
-            },
-      );
-      seen.current = { ...seen.current, status: "stepping" };
-      pressed.current = { day: status.day, weeks: status.weeks };
+    const started = await callApi<{ jobId: string }>("/api/simulation", "POST", control);
+    if (started.kind === "error") {
+      setBusy(null);
+      if (control.action !== "period") setError(started.message);
+      return { code: started.code, message: started.message };
     }
-    const outcome = await runWebJob<{ ok: true }>("/api/simulation", control);
-    // A step still queued after the wait stays pressed; a finished or refused one lets the server's state show again.
+    onAccepted?.();
+    if (control.action === "period" || control.action === "continue") {
+      const step = control.action === "period" ? { from: status.day, to: status.day + control.days - 1 } : status.step;
+      setStatus((current) => (current === null ? current : { ...current, failed: false, status: "stepping", step }));
+      seen.current = { ...seen.current, status: "stepping" };
+      pressed.current = { day: status.day, periods: status.periods };
+    }
+    const outcome = await waitForJob<{ ok: true }>(started.body.jobId);
+    // A period still queued after the wait stays pressed; a finished or refused one lets the server's state show again.
     if (outcome.kind !== "pending") pressed.current = null;
     setBusy(null);
     if (outcome.kind === "error") {
       setError(outcome.message);
-      return;
+      return null;
     }
     if (control.action === "go_real") {
       window.location.assign("/wizard");
-      return;
+      return null;
     }
     if (control.action === "restart") {
       // A new run starts from day 1 with a new journal: a full load is simpler than patching the screen's state.
       window.location.assign("/summary");
-      return;
+      return null;
     }
     router.refresh();
+    return null;
   };
 
   return { status, busy, error, act, turnSeenAt, now };

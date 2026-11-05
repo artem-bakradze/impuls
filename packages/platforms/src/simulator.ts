@@ -9,7 +9,7 @@ import {
 } from "@impuls/core";
 import type { Kopecks, LocalDate, Rng } from "@impuls/core";
 import { NO_DEVICE_ADJUSTMENTS, PlatformError } from "./contract";
-import { effectiveTraffic, isNeutral, segmentCells, splitTotals } from "./simulator-segments";
+import { allocate, effectiveTraffic, isNeutral, segmentCells, splitTotals } from "./simulator-segments";
 import type { DeviceTruth, QueryTruth } from "./simulator-segments";
 import type {
   AdPatch,
@@ -56,7 +56,8 @@ export interface SimulatorOptions {
   seed: number;
   timeZone: string;
   now: () => Date;
-  truthFor: (ad: PlatformAd) => AdTruth;
+  /** Null for a market without its own traffic: the simulation mode, where the owner enters the stats. */
+  truthFor: (ad: PlatformAd) => AdTruth | null;
   /**
    * Prefix of object ids. The simulator keeps its state in memory, so a long-running stand passes a per-start
    * prefix: ids of a restarted simulator must not collide with campaigns already stored in the database.
@@ -95,7 +96,74 @@ export interface StatCell extends DailyStatRow {
   availableAt: number;
   /** Index of the campaign settings in force when the cell was made (`settingsLog`). */
   mix?: number;
+  /** Entered by the owner for a period (simulation-mode «Статистика периода от владельца»): no breakdown by segment. */
+  entered?: true;
 }
+
+/** What the owner entered for one ad over a period; money in kopecks. */
+export interface PeriodAdTotals {
+  adId: string;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  spend: Kopecks;
+}
+
+/**
+ * Direct's spending room of one campaign on each day of a period, by the rule the simulator keeps hour by hour: at
+ * most twice an average day, at most the weekly limit in a week from Monday (simulation-on-owner-numbers decision 2).
+ */
+export const periodRoom = (
+  weeklyLimit: Kopecks,
+  dates: readonly LocalDate[],
+  spentOn: (date: LocalDate) => Kopecks,
+  spentInWeek: (monday: LocalDate) => Kopecks,
+): Kopecks[] => {
+  const dailyCap = Math.floor((weeklyLimit / 7) * 2);
+  const weekLeft = new Map<LocalDate, number>();
+  return dates.map((date) => {
+    const monday = weekStart(date);
+    const left = weekLeft.get(monday) ?? Math.max(0, weeklyLimit - spentInWeek(monday));
+    const room = Math.max(0, Math.min(dailyCap - spentOn(date), left));
+    weekLeft.set(monday, left - room);
+    return room;
+  });
+};
+
+/** The room of a campaign of a saved market: zero on every day for a stopped or unknown one. */
+export const campaignRoom = (state: Pick<SimulatorState, "campaigns" | "cells" | "weekSpend">, campaignId: string, dates: readonly LocalDate[]): Kopecks[] => {
+  const campaign = state.campaigns.find((c) => c.id === campaignId);
+  if (campaign === undefined || campaign.status !== "active") return dates.map(() => 0);
+  const weekSpend = new Map(state.weekSpend);
+  const spentOn = (date: LocalDate) => state.cells.filter((c) => c.campaignId === campaignId && c.date === date).reduce((s, c) => s + c.spend, 0);
+  return periodRoom(campaign.weeklyLimit, dates, spentOn, (monday) => weekSpend.get(`${campaignId}|${monday}`) ?? 0);
+};
+
+/** Moves single units between the days of the rows until every day adds up to `columns`; the rows keep their sums. */
+const fitColumns = (rows: number[][], columns: readonly number[]): void => {
+  for (;;) {
+    const sums = columns.map((_, d) => rows.reduce((s, r) => s + (r[d] ?? 0), 0));
+    const over = sums.findIndex((s, d) => s > (columns[d] ?? 0));
+    if (over < 0) return;
+    const under = sums.findIndex((s, d) => s < (columns[d] ?? 0));
+    const row = rows.find((r) => (r[over] ?? 0) > 0);
+    if (under < 0 || row === undefined) throw new Error("Period spend does not fit the days");
+    row[over] = (row[over] ?? 0) - 1;
+    row[under] = (row[under] ?? 0) + 1;
+  }
+};
+
+/** Moves units of `child` from days where it is above `parent` to days with room, e.g. clicks under impressions. */
+const fitUnder = (child: number[], parent: readonly number[]): void => {
+  for (let d = 0; d < child.length; d++) {
+    while ((child[d] ?? 0) > (parent[d] ?? 0)) {
+      const e = child.findIndex((c, i) => c < (parent[i] ?? 0));
+      if (e < 0) throw new Error("Period totals do not fit the days");
+      child[d] = (child[d] ?? 0) - 1;
+      child[e] = (child[e] ?? 0) + 1;
+    }
+  }
+};
 
 export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
   platform: "simulator",
@@ -328,7 +396,8 @@ export class SimulatedPlatform implements AdPlatform {
     const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, monitoringStopped: false, ...fields };
     this.ads.set(ad.id, ad);
     this.landingUrls.set(ad.id, landingUrl);
-    this.truths.set(ad.id, this.options.truthFor(ad));
+    const truth = this.options.truthFor(ad);
+    if (truth !== null) this.truths.set(ad.id, truth);
     return Promise.resolve({ ...ad });
   }
 
@@ -387,7 +456,7 @@ export class SimulatedPlatform implements AdPlatform {
         continue;
       }
       const truth = this.truths.get(cell.adId);
-      if (!truth) continue;
+      if (!truth || cell.entered) continue;
       const settings = this.settingsOf(cell.campaignId, cell.mix);
       const parts = splitTotals(cell, segmentCells(truth, settings.deviceAdjustments, settings.negativeKeywords, this.fallbackQueries(cell.campaignId)), dimension);
       for (const [segment, part] of parts) {
@@ -454,6 +523,55 @@ export class SimulatedPlatform implements AdPlatform {
 
   setTruth(adId: string, truth: AdTruth): void {
     this.truths.set(adId, truth);
+  }
+
+  /** Spending room of a campaign on each of the dates under its current limit. */
+  roomOf(campaignId: string, dates: readonly LocalDate[]): Kopecks[] {
+    return campaignRoom({ campaigns: [...this.campaigns.values()], cells: this.cells, weekSpend: [...this.weekSpend] }, campaignId, dates);
+  }
+
+  /**
+   * The owner's stats of a period (simulation-mode «Статистика периода от владельца»), visible at once. A campaign's
+   * spend goes over the days by their room, so neither a day nor a week goes over the limit; every ad's numbers follow
+   * its spend days, add up to what was entered exactly and keep leads ≤ clicks ≤ impressions on each day.
+   */
+  recordPeriod(dates: readonly LocalDate[], totals: readonly PeriodAdTotals[]): void {
+    const at = this.options.now().getTime();
+    const byCampaign = new Map<string, PeriodAdTotals[]>();
+    for (const row of totals) {
+      const ad = this.ad(row.adId);
+      byCampaign.set(ad.campaignId, [...(byCampaign.get(ad.campaignId) ?? []), row]);
+    }
+    for (const [campaignId, rows] of byCampaign) {
+      const room = this.roomOf(campaignId, dates);
+      const spend = rows.reduce((s, r) => s + r.spend, 0);
+      if (spend > room.reduce((s, r) => s + r, 0)) {
+        throw new PlatformError("PERIOD_OVER_LIMIT", `Period spend of ${campaignId} is over its room`, false);
+      }
+      const days = allocate(spend, room);
+      const fallback = room.some((r) => r > 0) ? room : dates.map(() => 1);
+      const spends = rows.map((r) => allocate(r.spend, days));
+      fitColumns(spends, days);
+      rows.forEach((row, i) => {
+        const own = spends[i] ?? [];
+        const weights = row.spend > 0 ? own : fallback;
+        const impressions = allocate(row.impressions, weights);
+        const clicks = allocate(row.clicks, weights);
+        const leads = allocate(row.leads, weights);
+        fitUnder(clicks, impressions);
+        fitUnder(leads, clicks);
+        dates.forEach((date, d) => {
+          const cell = { impressions: impressions[d] ?? 0, clicks: clicks[d] ?? 0, leads: leads[d] ?? 0, spend: own[d] ?? 0 };
+          if (cell.impressions + cell.clicks + cell.leads + cell.spend === 0) return;
+          this.cells.push({ date, campaignId, adId: row.adId, ...cell, availableAt: at, entered: true });
+        });
+      });
+      dates.forEach((date, d) => {
+        const key = `${campaignId}|${weekStart(date)}`;
+        this.weekSpend.set(key, (this.weekSpend.get(key) ?? 0) + (days[d] ?? 0));
+      });
+      this.balance -= spend;
+    }
   }
 
   /** Real spend (including not yet visible stats) — for test assertions only. */
@@ -531,7 +649,7 @@ export class SimulatedPlatform implements AdPlatform {
         kept.push(cell);
         continue;
       }
-      const key = `${cell.date}|${cell.adId}|${cell.mix ?? ""}`;
+      const key = `${cell.date}|${cell.adId}|${cell.mix ?? ""}|${cell.entered ? "e" : ""}`;
       const into = merged.get(key);
       if (!into) {
         merged.set(key, { ...cell });

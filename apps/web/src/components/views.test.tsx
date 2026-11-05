@@ -401,7 +401,6 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
       changes: [{ ...decisionEntry.changes[0]!, text: "Поднял цену перехода с компьютеров на 10%" }],
       found: [{ statement: "Запрос «маникюр рядом» приводит обращения", outcome: "подтвердилось", result: null }],
       checking: [{ statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16" }],
-      truths: [{ text: "На самом деле: обращение с компьютеров примерно за 443 ₽", tone: "success" as const }],
     };
     const owner = { ...ownerEntry, date: "2026-11-10", day: 10, changes: [{ ...ownerEntry.changes[0]!, reverted: true }] };
     render(<SummaryView model={summary()} work={work({ journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [week, owner] }] })} />);
@@ -411,11 +410,11 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(first).toHaveClass("j-owner");
     expect(first?.querySelector(".j-avatar")).toBeNull();
     expect(plain(first?.querySelector(".j-owner-bubble") ?? null)).toBe("Вы: время показа — было Пн–Вс 10:00–20:00 → стало Пн–Вс 10:00–21:00 — отменено");
-    // The service's message: its name and tag, the done action first, then its words, what it found and expects, the truth.
+    // The service's message: its name and tag, the done action first, then its words, what it found and expects.
     expect(second?.querySelector(".j-avatar")).not.toBeNull();
     expect(plain(second?.querySelector(".j-msg-who") ?? null)).toBe("Импульс · разбор недели");
     const bubble = second?.querySelector(".j-bubble");
-    expect([...(bubble?.children ?? [])].map((part) => part.className)).toEqual(["j-changes", "studio-msg-text", "j-more", "studio-msg-text", "studio-msg-text j-expect", "j-truth j-truth-success"]);
+    expect([...(bubble?.children ?? [])].map((part) => part.className)).toEqual(["j-changes", "studio-msg-text", "j-more", "studio-msg-text", "studio-msg-text j-expect"]);
     expect(bubble?.querySelector(".studio-msg-action [aria-label]")).toHaveAttribute("aria-label", "сделано");
     expect(plain(bubble?.querySelector(".j-more summary") ?? null)).toBe("Читать дальше");
     expect([...(bubble?.querySelectorAll(":scope > .studio-msg-text") ?? [])].map((p) => plain(p))).toEqual([
@@ -501,12 +500,12 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     window.location.hash = "";
   });
 
-  it("keeps the comparison with the control run in the history, not on the brief", () => {
-    const sim = { comparison: { service: [3, 6], baseline: [3, 5], serviceNow: { spend: 100_000, leads: 6, costPerLead: 16_667 }, baselineNow: { spend: 100_000, leads: 5, costPerLead: 20_000 } }, result: null, decisionDays: [2], day: 3, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false, startedOn: "2026-10-01" };
-    const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
+  it("has no comparison with a control run in a simulation, neither on the brief nor in the history", () => {
+    const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim: { startedOn: "2026-10-01" } })} />);
     expect(screen.queryByTestId("sim-comparison")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /История/ }));
-    expect(plain(screen.getByTestId("sim-comparison"))).toContain("За 2 дня: с сервисом 6 обращений, без него было бы 5пока рано сравнивать");
+    expect(screen.queryByTestId("sim-comparison")).toBeNull();
+    expect(plain(screen.getByTestId("agent-journal"))).not.toMatch(/без него было бы|пока рано сравнивать/);
     expect(plain(container).match(/учебн/gi)).toBeNull();
   });
 });

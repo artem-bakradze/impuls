@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SimulatedPlatform } from "./simulator";
+import { periodRoom, SimulatedPlatform } from "./simulator";
 
 const campaign = {
   name: "[Импульс] Маникюр — Поиск",
@@ -79,5 +79,76 @@ describe("SimulatedPlatform state", () => {
     await setUp(sim);
     run(sim, clock, 60 * 24);
     expect(JSON.stringify(sim.snapshot()).length).toBeLessThan(200_000);
+  });
+});
+
+describe("Period entered by the owner", () => {
+  const owned = (clock: { now: number }) =>
+    new SimulatedPlatform({ seed: 3, timeZone: "Europe/Moscow", now: () => new Date(clock.now), truthFor: () => null });
+  const dates = (from: string, n: number) =>
+    Array.from({ length: n }, (_, i) => new Date(new Date(`${from}T00:00:00Z`).getTime() + i * 86_400_000).toISOString().slice(0, 10));
+  const setUp = async (sim: SimulatedPlatform, weeklyLimit = 420_000) => {
+    const created = await sim.createCampaign({ ...campaign, weeklyLimit });
+    const a = await sim.createAd({ campaignId: created.id, title: "Маникюр с покрытием", text: "У метро", landingUrl: "https://nogotok.example" });
+    const b = await sim.createAd({ campaignId: created.id, title: "Маникюр за час", text: "У метро", landingUrl: "https://nogotok.example" });
+    return { campaignId: created.id, a: a.id, b: b.id };
+  };
+
+  it("gives a week inside one Monday week its whole limit", () => {
+    // Monday 2 November 2026 → Sunday 8 November.
+    const room = periodRoom(420_000, dates("2026-11-02", 7), () => 0, () => 0);
+    expect(room.reduce((s, r) => s + r, 0)).toBe(420_000);
+    expect(Math.max(...room)).toBeLessThanOrEqual(120_000);
+  });
+
+  it("counts a week through Monday by both weeks and what the first one already spent", () => {
+    // Thursday 5 November → Wednesday 11 November: 4 days of a week that spent 300 000, 3 days of the next one.
+    const room = periodRoom(420_000, dates("2026-11-05", 7), () => 0, (monday) => (monday === "2026-11-02" ? 300_000 : 0));
+    expect(room.slice(0, 4).reduce((s, r) => s + r, 0)).toBe(120_000);
+    expect(room.slice(4).reduce((s, r) => s + r, 0)).toBe(360_000);
+  });
+
+  it("records the entered totals exactly, visible at once, without a breakdown", async () => {
+    const clock = { now: new Date("2026-11-09T06:00:00Z").getTime() };
+    const sim = owned(clock);
+    const { campaignId, a, b } = await setUp(sim);
+    const days = dates("2026-11-09", 7);
+    sim.recordPeriod(days, [
+      { adId: a, impressions: 1_400, clicks: 70, leads: 0, spend: 153_000 },
+      { adId: b, impressions: 9, clicks: 5, leads: 3, spend: 4_001 },
+    ]);
+    const rows = await sim.getStats([campaignId], days[0] ?? "", days[6] ?? "");
+    const total = (adId: string) =>
+      rows.filter((r) => r.adId === adId).reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
+    expect(total(a)).toEqual({ impressions: 1_400, clicks: 70, leads: 0, spend: 153_000 });
+    expect(total(b)).toEqual({ impressions: 9, clicks: 5, leads: 3, spend: 4_001 });
+    for (const row of rows) {
+      expect(row.clicks).toBeLessThanOrEqual(row.impressions);
+      expect(row.leads).toBeLessThanOrEqual(row.clicks);
+    }
+    const room = sim.roomOf(campaignId, days);
+    expect(room.reduce((s, r) => s + r, 0)).toBe(420_000 - 157_001);
+    expect(await sim.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "device")).toEqual([]);
+    expect(await sim.getBalance()).toBe(100_000_000 - 157_001);
+  });
+
+  it("keeps every day and week under the limit when the whole room is spent", async () => {
+    const clock = { now: new Date("2026-11-05T06:00:00Z").getTime() };
+    const sim = owned(clock);
+    const { campaignId, a } = await setUp(sim);
+    const days = dates("2026-11-05", 14);
+    const room = sim.roomOf(campaignId, days);
+    sim.recordPeriod(days, [{ adId: a, impressions: 5_000, clicks: 400, leads: 9, spend: room.reduce((s, r) => s + r, 0) }]);
+    const rows = await sim.getStats([campaignId], days[0] ?? "", days[13] ?? "");
+    const byDay = new Map(rows.map((r) => [r.date, r.spend]));
+    days.forEach((date, d) => expect(byDay.get(date) ?? 0).toBeLessThanOrEqual(room[d] ?? 0));
+    expect(sim.roomOf(campaignId, days).every((r) => r === 0)).toBe(true);
+  });
+
+  it("refuses spend over the room", async () => {
+    const clock = { now: new Date("2026-11-09T06:00:00Z").getTime() };
+    const sim = owned(clock);
+    const { a } = await setUp(sim);
+    expect(() => sim.recordPeriod(dates("2026-11-09", 7), [{ adId: a, impressions: 100, clicks: 10, leads: 0, spend: 500_000 }])).toThrow(/over its room/);
   });
 });

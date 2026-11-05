@@ -9,8 +9,12 @@ import type { JournalEntry } from "./service-work";
  */
 
 /** «Разбор недели · 9 ноября», «Разбор дня · 11 ноября»; in a simulation «Разбор недели · день 9». */
-export const noteTitle = (entry: Pick<JournalEntry, "weekly" | "date" | "from">, words: DayWords = calendarWords): string =>
-  `${entry.weekly ? "Разбор недели" : "Разбор дня"} · ${entry.from !== null ? words.range(entry.from, entry.date) : words.date(entry.date)}`;
+export const noteTitle = (entry: Pick<JournalEntry, "weekly" | "date" | "from" | "period">, words: DayWords = calendarWords): string =>
+  entry.period !== undefined
+    ? entry.period.from === entry.period.to
+      ? `Разбор дня · ${words.date(entry.period.from)}`
+      : `Разбор · ${words.range(entry.period.from, entry.period.to)}`
+    : `${entry.weekly ? "Разбор недели" : "Разбор дня"} · ${entry.from !== null ? words.range(entry.from, entry.date) : words.date(entry.date)}`;
 
 /** The service's reasoning, then what its closed checks found. */
 export const noteSeen = (entry: Pick<JournalEntry, "headline" | "paragraphs" | "found">, words: DayWords = calendarWords): string[] => {

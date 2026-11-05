@@ -7,14 +7,23 @@ export interface TurnReasonView {
   objectId: string;
 }
 
-export type TurnTrigger =
+/** Events that run a turn of their own in Direct; in a simulation they join the period's turn. */
+export type EventTrigger =
   | { kind: "launch" }
-  | { kind: "daily_review"; reasons?: TurnReasonView[] }
-  /** Monday 07:00: the weekly strategic review on the strategy model (add-agent-analyst-stage1 decision 7). */
-  | { kind: "weekly_review" }
   | { kind: "moderation_rejected"; adIds: string[] }
   | { kind: "experiment_finished"; experimentIds: string[] }
   | { kind: "settings_changed" };
+
+export type TurnTrigger =
+  | EventTrigger
+  | { kind: "daily_review"; reasons?: TurnReasonView[] }
+  /** Monday 07:00: the weekly strategic review on the strategy model (add-agent-analyst-stage1 decision 7). */
+  | { kind: "weekly_review" }
+  /**
+   * The one turn after a period of stats a simulation's owner entered, whatever its length (ad-agent spec «Разбор
+   * периода в симуляции»): the days `from`–`to`, the evaluation's reasons and the events since the last turn.
+   */
+  | { kind: "period_review"; from: LocalDate; to: LocalDate; reasons?: TurnReasonView[]; events?: EventTrigger[] };
 
 /**
  * Turn snapshot. Built only from the allowlisted fields below — no personal data, no tokens (ad-agent spec).

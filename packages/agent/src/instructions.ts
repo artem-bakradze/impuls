@@ -72,14 +72,34 @@ export const WEEKLY_REVIEW_INSTRUCTIONS = `Разбор недели
 
 В конце напиши владельцу «разбор недели» одним абзацем вместо «разбора дня»: первое предложение — что меняем по итогам недели (или что ничего не меняем), затем что выяснили и что проверяем дальше. Говори с владельцем так же просто, как в разборе дня. Числа — только из фактов хода.`;
 
-/** Instructions of a turn and their version: the weekly review adds its block to the daily instructions. */
+/** The period review's block (ad-agent spec «Разбор периода в симуляции»), versioned on its own. */
+export const PERIOD_REVIEW_INSTRUCTIONS_VERSION = "2026-11-05.1";
+
+export const PERIOD_REVIEW_INSTRUCTIONS = `Разбор периода
+Статистика пришла сразу за несколько дней — период назван в поводе хода. Это единственный разбор за эти дни: ежедневных оценок внутри периода не было, поэтому реши всё, что решил бы за эти дни.
+1. Посмотри get_snapshot, get_recent_insights и get_hypotheses.
+2. Закрой гипотезы, день проверки которых наступил: save_hypothesis с id, статусом и результатом на фактах этого хода.
+3. Действуй по классам объявлений и направлений, как в ежедневном ходе.
+4. Разбивки по запросам и устройствам может не быть. Тогда решай по объявлениям и направлениям и не ссылайся на разрезы.
+5. Если есть что проверить дальше, запиши одну–две гипотезы (save_hypothesis без id, статус checking).
+
+В конце напиши владельцу «разбор периода» одним абзацем вместо «разбора дня»: первое предложение — что меняешь по итогам этих дней (или что ничего не меняешь), затем что выяснил и что проверяешь дальше. Говори так же просто, как в разборе дня. Числа — только из фактов хода.`;
+
+/** Instructions of a turn and their version: the weekly and the period review add their block to the daily instructions. */
 export const instructionsFor = (trigger: TurnTrigger): { text: string; version: string } =>
   trigger.kind === "weekly_review"
     ? { text: `${AGENT_INSTRUCTIONS}\n\n${WEEKLY_REVIEW_INSTRUCTIONS}`, version: weeklyVersion(AGENT_INSTRUCTIONS_VERSION) }
-    : { text: AGENT_INSTRUCTIONS, version: AGENT_INSTRUCTIONS_VERSION };
+    : trigger.kind === "period_review"
+      ? { text: `${AGENT_INSTRUCTIONS}\n\n${PERIOD_REVIEW_INSTRUCTIONS}`, version: periodVersion(AGENT_INSTRUCTIONS_VERSION) }
+      : { text: AGENT_INSTRUCTIONS, version: AGENT_INSTRUCTIONS_VERSION };
 
 const weeklyVersion = (base: string): string => `${base}+weekly.${WEEKLY_REVIEW_INSTRUCTIONS_VERSION}`;
+const periodVersion = (base: string): string => `${base}+period.${PERIOD_REVIEW_INSTRUCTIONS_VERSION}`;
 
 /** The instructions version a turn of this runtime is journaled with (ad-agent spec «Еженедельный стратегический разбор»). */
 export const turnInstructionsVersion = (runtime: Pick<AgentRuntime, "instructionsVersion">, trigger: TurnTrigger): string =>
-  trigger.kind === "weekly_review" ? weeklyVersion(runtime.instructionsVersion) : runtime.instructionsVersion;
+  trigger.kind === "weekly_review"
+    ? weeklyVersion(runtime.instructionsVersion)
+    : trigger.kind === "period_review"
+      ? periodVersion(runtime.instructionsVersion)
+      : runtime.instructionsVersion;
