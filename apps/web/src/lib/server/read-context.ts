@@ -35,4 +35,5 @@ export const readOnlyContext = (clock: Clock = systemClock): JobContext => ({
   platformFor: forbidden("call the ad platform"),
   agent: { name: "web-read-only", instructionsVersion: "none", decides: false, runTurn: forbidden("run agent turns") },
   creatives: { readsPages: false, extractCard: forbidden("call the LLM"), generate: forbidden("call the LLM"), variant: forbidden("call the LLM") },
+  images: { paid: false, draw: forbidden("draw ad pictures") },
 });

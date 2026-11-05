@@ -1,4 +1,4 @@
-import { IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
+import { IdlePolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import { createDb, createPool, databaseUrl, schema } from "@impuls/db";
 import { PgBoss } from "pg-boss";
 import { afterAll, describe, expect, it } from "vitest";
@@ -34,6 +34,7 @@ describe("pg-boss scheduler", () => {
       platformFor: () => platform,
       agent: new IdlePolicy(),
       creatives: new TemplateCreativeEngine(),
+      images: new TemplateImageEngine(),
     };
     await boss.start();
     await startScheduler(boss, ctx, createLogger(() => undefined));
@@ -113,6 +114,7 @@ describe("pg-boss scheduler", () => {
       turns: 1,
       estimatedTurns: 1,
       costRub: 12.5,
+      paidPictures: 0,
     });
     await expect(runCli(["agent", "costs", "--month", "октябрь"], store, send)).rejects.toThrow("Usage");
   });

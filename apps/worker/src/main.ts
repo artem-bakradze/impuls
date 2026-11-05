@@ -1,5 +1,5 @@
-import { HeuristicPolicy, IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiLlmClient, TemplateCreativeEngine } from "@impuls/agent";
-import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
+import { HeuristicPolicy, IdlePolicy, LlmCreativeEngine, OpenAiAgentRuntime, OpenAiImageEngine, OpenAiLlmClient, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
+import type { AgentRuntime, CreativeEngine, ImageEngine } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { and, createDb, createPool, decryptToken, encryptToken, eq, isNull, parseTokenKey, schema } from "@impuls/db";
 import { refreshYandexToken, SimulatedPlatform } from "@impuls/platforms";
@@ -98,15 +98,20 @@ const main = async (): Promise<void> => {
 
   const executor = new CommandExecutor({ store, locks, clock: systemClock, platformFor, miniSites: new FileMiniSiteStore(config.MINISITE_DIR) });
   let creatives: CreativeEngine;
+  let images: ImageEngine;
+  let imageLimit: JobContext["imageLimit"];
   if (config.CREATIVES === "openai") {
-    if (!config.OPENAI_API_KEY || !config.OPENAI_TEXT_MODEL) {
-      throw new Error("OPENAI_API_KEY and OPENAI_TEXT_MODEL are required with CREATIVES=openai");
+    if (!config.OPENAI_API_KEY || !config.OPENAI_TEXT_MODEL || !config.OPENAI_IMAGE_MODEL || !config.IMAGE_MONTHLY_LIMIT) {
+      throw new Error("OPENAI_API_KEY, OPENAI_TEXT_MODEL, OPENAI_IMAGE_MODEL and IMAGE_MONTHLY_LIMIT are required with CREATIVES=openai");
     }
     creatives = new LlmCreativeEngine(
       new OpenAiLlmClient({ apiKey: config.OPENAI_API_KEY, model: config.OPENAI_TEXT_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) }),
     );
+    images = new OpenAiImageEngine({ apiKey: config.OPENAI_API_KEY, model: config.OPENAI_IMAGE_MODEL, ...(config.OPENAI_PROXY_URL !== undefined && { proxyUrl: config.OPENAI_PROXY_URL }) });
+    imageLimit = { monthly: config.IMAGE_MONTHLY_LIMIT };
   } else {
     creatives = new TemplateCreativeEngine();
+    images = new TemplateImageEngine();
   }
   let agent: AgentRuntime;
   let agentCosts: AgentCosts | undefined;
@@ -148,6 +153,8 @@ const main = async (): Promise<void> => {
     platformFor,
     agent,
     creatives,
+    images,
+    ...(imageLimit !== undefined && { imageLimit }),
     ...(agentCosts !== undefined && { agentCosts }),
     ...(strategist !== undefined && { strategist }),
   };
@@ -156,7 +163,7 @@ const main = async (): Promise<void> => {
   boss.on("error", (error) => logger.error("pg-boss error", { error }));
   await boss.start();
   await startScheduler(boss, ctx, logger, advance, { mailer: new SmtpMailer(config.SMTP_URL, config.MAIL_FROM), appUrl: config.APP_URL, teamEmail: config.TEAM_ALERT_EMAIL });
-  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null });
+  logger.info("Worker started", { directApiMode: config.DIRECT_API_MODE, agentRuntime: config.AGENT_RUNTIME, creatives: config.CREATIVES, textModel: config.OPENAI_TEXT_MODEL ?? null, imageModel: config.OPENAI_IMAGE_MODEL ?? null, imagePriceRub: config.IMAGE_PRICE_RUB ?? null, imageMonthlyLimit: config.IMAGE_MONTHLY_LIMIT ?? null, agentModel: config.OPENAI_AGENT_MODEL ?? null, strategyModel: config.OPENAI_STRATEGY_MODEL ?? null });
 
   const shutdown = async (): Promise<void> => {
     await boss.stop();

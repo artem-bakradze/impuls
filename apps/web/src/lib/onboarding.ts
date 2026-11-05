@@ -49,6 +49,26 @@ const Url = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
 const AdDraft = z.object({ title: z.string().max(AD_TITLE_MAX), text: z.string().max(AD_TEXT_MAX) });
 export type AdDraft = z.infer<typeof AdDraft>;
 
+/** Why a partner-site ad shows a simple picture: the image model failed, or the month's paid pictures are spent. */
+export const IMAGE_NOTES = {
+  failed: "Не получилось нарисовать картинку — показываем простую",
+  limit: "Лимит картинок на этот месяц исчерпан — показываем простую",
+} as const;
+export type ImageNote = keyof typeof IMAGE_NOTES;
+
+/** A partner-site ad with its picture (network-ad-images); a draft made before the pictures has none yet. */
+const NetworkAdDraft = AdDraft.extend({
+  imageId: z.string().max(80).optional(),
+  imageNote: z.enum(["failed", "limit"]).nullable().optional(),
+});
+export type NetworkAdDraft = z.infer<typeof NetworkAdDraft>;
+
+/** Which picture a drawing is for: the ad's current picture, or its title while it has none yet. */
+export const pictureKey = (ad: Pick<NetworkAdDraft, "title" | "imageId">): string => ad.imageId ?? `new:${ad.title}`;
+
+/** Where the browser gets a picture: only the owner's own business may read it. */
+export const adImageUrl = (imageId: string): string => `/api/ad-images/${encodeURIComponent(imageId)}`;
+
 export const OnboardingDraftSchema = z.object({
   sources: z.object({ siteUrl: Url, mapsUrl: Url, vkUrl: Url, about: z.string().max(ABOUT_MAX_LENGTH) }),
   card: z.object({
@@ -69,7 +89,7 @@ export const OnboardingDraftSchema = z.object({
   goals: z.array(z.enum(GOAL_OPTIONS.map((g) => g.value) as [string, ...string[]])),
   /** Only the amount: the cost-per-lead goal is always selected automatically at launch (simplify-mvp-scope). */
   budget: z.object({ monthlyBudgetRub: z.number().int().positive().nullable() }),
-  ads: z.object({ search: z.array(AdDraft).max(5), network: z.array(AdDraft).max(5) }).nullable(),
+  ads: z.object({ search: z.array(AdDraft).max(5), network: z.array(NetworkAdDraft).max(5) }).nullable(),
   /** Search phrases and negative phrases generated together with the ads; shown only in «Для специалистов». */
   keywords: z.object({ search: z.array(z.string()), negative: z.array(z.string()) }).nullable().default(null),
   directConnected: z.boolean(),
@@ -510,7 +530,9 @@ export const buildLaunchPlan = (draft: OnboardingDraft, today: LocalDate, minWee
     });
   }
   if (limits.network > 0 && ads.network.length > 0) {
-    directions.push({ name: `${category} — Сайты-партнёры`, channel: "network", weeklyLimitRub: limits.network, keywords: [], negativeKeywords: [], ads: ads.network });
+    // A picture still being drawn is not waited for: the worker draws a missing one at launch.
+    const network = ads.network.map((ad) => ({ title: ad.title, text: ad.text, ...(ad.imageId !== undefined && { imageId: ad.imageId }) }));
+    directions.push({ name: `${category} — Сайты-партнёры`, channel: "network", weeklyLimitRub: limits.network, keywords: [], negativeKeywords: [], ads: network });
   }
   return { landingUrl: draft.sources.siteUrl, city: draft.card.city.trim(), directions };
 };

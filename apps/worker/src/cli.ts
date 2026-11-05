@@ -26,12 +26,17 @@ const agentCosts = async (store: PgStore, month: string, logger: Logger): Promis
     const turns = await store.turns(business.id);
     const counted = business.mode === "simulation" ? turns : turns.filter((t) => monthKey(toLocalDate(t.startedAt, business.timeZone)) === month);
     const kopecks = counted.reduce((sum, t) => sum + t.costKopecks, 0);
+    // Paid ad pictures of the month in the business's time zone (network-ad-images): their cost is this count times
+    // IMAGE_PRICE_RUB. A day before the month's UTC start covers every time zone.
+    const since = new Date(Date.parse(`${month}-01T00:00:00Z`) - 86_400_000);
+    const pictures = (await store.generatedImageTimes(business.id, since)).filter((at) => monthKey(toLocalDate(at, business.timeZone)) === month).length;
     logger.info("Agent costs", {
       businessId: business.id,
       period: business.mode === "simulation" ? "simulation_run" : month,
       turns: counted.length,
       estimatedTurns: counted.filter((t) => t.usageSource === "estimate").length,
       costRub: kopecks / 100,
+      paidPictures: pictures,
     });
   }
 };

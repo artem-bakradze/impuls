@@ -1,4 +1,4 @@
-import { HeuristicPolicy, TemplateCreativeEngine } from "@impuls/agent";
+import { HeuristicPolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime, AgentToolbox, TurnResult, TurnSnapshot, TurnTrigger } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, savedPeriodForm } from "@impuls/worker";
@@ -87,7 +87,7 @@ export const ownerWorld = async (agent: AgentRuntime = new HeuristicPolicy(), op
     directCalls.push(businessId);
     throw new Error("The Direct API must not be called in a simulation");
   };
-  const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine() };
+  const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine(), images: new TemplateImageEngine() };
   if (options.launch !== false) await launchSimulation(ctx, "b1", ownerPlan);
 
   const record = async () => {

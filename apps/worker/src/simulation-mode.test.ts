@@ -1,4 +1,4 @@
-import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
+import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime, TurnResult, TurnTrigger } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { describe, expect, it } from "vitest";
@@ -81,6 +81,7 @@ const world = async (agent: AgentRuntime = new IdlePolicy()) => {
     platformFor,
     agent,
     creatives: new TemplateCreativeEngine(),
+    images: new TemplateImageEngine(),
   };
   return { store, clock, ctx };
 };

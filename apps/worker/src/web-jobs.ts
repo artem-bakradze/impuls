@@ -1,6 +1,8 @@
 import { CreativesError, htmlToText, LlmError } from "@impuls/agent";
 import type { CardDraft, CardFacts, Creatives, SourcePage } from "@impuls/agent";
 import type { Command, LocalDate } from "@impuls/core";
+import { drawWizardImages } from "./ad-images";
+import type { DrawnImages } from "./ad-images";
 import { enqueueAgentEvent } from "./agent-turn";
 import { confirmClients } from "./analytics";
 import { changeBudget } from "./budget-settings";
@@ -32,7 +34,12 @@ export type WebJob =
   /** «Что для вас клиент?»: is the Metrica counter code on the owner's site (analytics spec)? */
   | { kind: "check_counter"; businessId: string; siteUrl: string }
   /** Ad texts, phrases and negative phrases for the preview step (ad-creatives spec). */
-  | { kind: "generate_creatives"; businessId: string; facts: CardFacts; channels: { search: boolean; network: boolean } };
+  | { kind: "generate_creatives"; businessId: string; facts: CardFacts; channels: { search: boolean; network: boolean } }
+  /**
+   * Pictures of partner-site ads (network-ad-images decision 3), drawn after the texts so they never hold them up:
+   * `previousImageId` null for an ad's first picture, the current one for «Другая картинка» and «Попробовать ещё раз».
+   */
+  | { kind: "draw_ad_images"; businessId: string; facts: CardFacts; ads: { title: string; previousImageId: string | null }[] };
 
 /** Job errors whose Russian message the wizard shows as is. */
 export class CreativeJobError extends Error {
@@ -118,7 +125,7 @@ export const WEB_JOB_QUEUE = "web-job";
 const SETTINGS_COMMANDS = new Set<Command["type"]>(["UpdateSchedule", "UpdateGeo", "UpdateCard", "UpdateMiniSite", "PauseAll", "ResumeAll"]);
 
 /** Jobs that read pages or call the LLM before launch: the same for both modes. */
-const MODE_FREE = new Set<WebJob["kind"]>(["extract_card", "check_counter", "generate_creatives"]);
+const MODE_FREE = new Set<WebJob["kind"]>(["extract_card", "check_counter", "generate_creatives", "draw_ad_images"]);
 
 /**
  * Executes a web job and returns a JSON-serializable result for the UI. A job of a simulated business runs in its
@@ -198,6 +205,11 @@ const handleJob = async (ctx: JobContext, job: WebJob): Promise<unknown> => {
     }
     case "generate_creatives":
       return generateCreatives(ctx, job);
+    case "draw_ad_images": {
+      // An object, not a bare list: pg-boss would keep a list as `{ value }`.
+      const drawn: DrawnImages = { images: await drawWizardImages(ctx, job.businessId, job.facts, job.ads) };
+      return drawn;
+    }
     case "simulation_control":
       throw new Error("simulation_control is routed before the mode switch");
   }

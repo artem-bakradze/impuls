@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -17,6 +18,12 @@ import {
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 /** Money is stored in kopecks. */
 const kopecks = (name: string) => bigint(name, { mode: "number" });
+/** Raw bytes (the ad pictures' PNG). */
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => "bytea",
+  toDriver: (value) => Buffer.from(value.buffer, value.byteOffset, value.byteLength),
+  fromDriver: (value) => new Uint8Array(value),
+});
 
 export const objectStatus = pgEnum("object_status", ["active", "paused"]);
 export const changeStatus = pgEnum("change_status", ["pending", "applied", "failed"]);
@@ -125,6 +132,24 @@ export const campaigns = pgTable(
   (t) => [uniqueIndex("campaigns_platform_id").on(t.platformCampaignId), index("campaigns_business").on(t.businessId)],
 );
 
+/** Pictures of the ads on partner sites (network-ad-images decision 2): drafts and launched ads alike. */
+export const adImages = pgTable(
+  "ad_images",
+  {
+    id: text("id").primaryKey(),
+    businessId: text("business_id").notNull().references(() => businesses.id),
+    png: bytea("png").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    /** `generated` pictures count in the monthly limit; `template` ones are free. */
+    source: text("source", { enum: ["generated", "template"] }).notNull(),
+    /** The template's variant; «Другая картинка» draws the next one. */
+    seed: integer("seed").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("ad_images_business").on(t.businessId, t.createdAt)],
+);
+
 export const ads = pgTable(
   "ads",
   {
@@ -136,6 +161,10 @@ export const ads = pgTable(
     text: text("text").notNull(),
     moderation: text("moderation", { enum: ["accepted", "pending", "rejected"] }).notNull().default("pending"),
     createdOn: date("created_on").notNull(),
+    /** The picture of an ad on partner sites; null for search ads and ads launched before pictures. */
+    imageId: text("image_id").references(() => adImages.id),
+    /** The picture's hash in the platform's image library: the simulator and Direct each have their own. */
+    imageHash: text("image_hash"),
   },
   (t) => [uniqueIndex("ads_platform_id").on(t.platformAdId), index("ads_campaign").on(t.campaignId)],
 );

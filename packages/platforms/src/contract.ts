@@ -74,6 +74,8 @@ export interface PlatformAd {
    * `status` stays active: the service did not stop the ad, and guards must not treat it as its own pause.
    */
   monitoringStopped: boolean;
+  /** The ad's picture in the platform's image library (network-ad-images); null for a text-only ad. */
+  imageHash: string | null;
 }
 
 /** Metrica goal that counts leads and the target cost per lead (ЦСО) for lead-paying strategies. */
@@ -110,6 +112,8 @@ export interface NewAd {
   text: string;
   /** Landing page (own site or mini-site) without tracking tags; the adapter adds its UTM tags. */
   landingUrl: string;
+  /** A picture from `uploadImage`: the ad on partner sites becomes a text-and-image ad. */
+  imageHash?: string;
 }
 
 export interface CampaignPatch {
@@ -157,6 +161,8 @@ export interface AdPlatform {
   createCampaign(input: NewCampaign): Promise<PlatformCampaign>;
   getCampaigns(ids: readonly string[]): Promise<PlatformCampaign[]>;
   updateCampaign(id: string, patch: CampaignPatch): Promise<PlatformCampaign>;
+  /** Puts a PNG into the advertiser's image library and returns its hash for `NewAd.imageHash`. */
+  uploadImage(png: Uint8Array, name: string): Promise<string>;
   createAd(input: NewAd): Promise<PlatformAd>;
   getAds(campaignIds: readonly string[]): Promise<PlatformAd[]>;
   updateAd(id: string, patch: AdPatch): Promise<PlatformAd>;

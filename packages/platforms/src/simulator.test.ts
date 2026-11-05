@@ -34,6 +34,26 @@ describe("SimulatedPlatform ids", () => {
   });
 });
 
+describe("SimulatedPlatform pictures", () => {
+  it("takes a picture like Direct: one hash for the same bytes, kept by the ad", async () => {
+    const platform = simulator();
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 7);
+    const hash = await platform.uploadImage(png, "Маникюр");
+    expect(await platform.uploadImage(png, "Другое имя")).toBe(hash);
+    expect(await platform.uploadImage(Uint8Array.of(1), "Маникюр")).not.toBe(hash);
+    const created = await platform.createCampaign({ ...campaign, channel: "network" });
+    const ad = await platform.createAd({ campaignId: created.id, title: "Маникюр", text: "Рядом", landingUrl: "https://example.ru", imageHash: hash });
+    expect(ad.imageHash).toBe(hash);
+    expect((await platform.getAds([created.id]))[0]?.imageHash).toBe(hash);
+    const textOnly = await platform.createAd({ campaignId: created.id, title: "Маникюр", text: "Рядом", landingUrl: "https://example.ru" });
+    expect(textOnly.imageHash).toBeNull();
+  });
+
+  it("refuses an empty picture", async () => {
+    await expect(simulator().uploadImage(new Uint8Array(0), "x")).rejects.toMatchObject({ code: "IMAGE_INVALID" });
+  });
+});
+
 describe("SimulatedPlatform state", () => {
   const start = new Date("2026-10-01T00:00:00Z").getTime();
   const world = (clock: { now: number }) =>

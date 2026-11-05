@@ -7,13 +7,14 @@ import { rollback } from "./history";
 import { PgLockManager } from "./pg-locks";
 import { PgStore } from "./pg-store";
 import { SimulationDriver } from "./simulation";
+import { NO_TRAFFIC_SETTINGS } from "./store";
 
 // Requires the compose PostgreSQL with migrations applied (pnpm db:migrate).
 const pool = createPool(databaseUrl());
 const db = createDb(pool);
 
 beforeAll(async () => {
-  await db.execute(sql`TRUNCATE users, businesses, campaigns, ads, change_log, stats_daily, user_decisions, sync_cursors,
+  await db.execute(sql`TRUNCATE users, businesses, campaigns, ads, ad_images, change_log, stats_daily, user_decisions, sync_cursors,
     evaluations, experiments, agent_turns, runtime_flags, heartbeats, incidents, notifications CASCADE`);
   await db.insert(schema.users).values({ id: "user-b1", googleSub: "sub-b1", email: "owner@example.com", name: "Владелец" });
 });
@@ -141,6 +142,43 @@ describe("PgStore with the full worker loop", () => {
     await store.setFlag("agent_enabled", false, null);
     expect(await store.getFlag("agent_enabled", "other")).toBe(false);
     await store.setFlag("agent_enabled", true, null);
+  });
+
+  it("keeps ad pictures byte for byte, links them to ads and counts the month's paid ones", async () => {
+    const store = new PgStore(db);
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 255);
+    const image = { id: "img-1", businessId: "b1", png, width: 1024, height: 1024, source: "generated" as const, seed: 5, createdAt: new Date("2026-10-20T10:00:00Z") };
+    await store.saveAdImage(image);
+    await store.saveAdImage({ ...image, id: "img-0", createdAt: new Date("2026-09-30T10:00:00Z") });
+    await store.saveAdImage({ ...image, id: "img-2", source: "template" });
+    expect(await store.adImage("img-1")).toEqual(image);
+    expect(await store.adImage("img-x")).toBeNull();
+    expect(await store.generatedImageTimes("b1", new Date("2026-10-01T00:00:00Z"))).toEqual([image.createdAt]);
+
+    await store.saveDirection({
+      id: "dir-img",
+      businessId: "b1",
+      name: "Маникюр — Сайты",
+      channel: "network",
+      status: "active",
+      weeklyLimit: rubles(1_000),
+      strategyId: "max_clicks",
+      createdOn: "2026-10-20",
+      lastLimitIncreaseOn: null,
+      lastStrategyChangeOn: null,
+      platformCampaignId: "pc-img",
+      pausedByBudget: false,
+      pausedByUser: false,
+      schedule: "",
+      city: "Москва",
+      keywords: [],
+      ...NO_TRAFFIC_SETTINGS,
+    });
+    const ad = { id: "ad-img", directionId: "dir-img", status: "active" as const, title: "Маникюр", text: "Текст", createdOn: "2026-10-20", platformAdId: "p-img", moderation: "pending" as const };
+    await store.saveAd({ ...ad, imageId: "img-1", imageHash: "hash-1" });
+    // An update without the picture fields keeps them.
+    await store.saveAd({ ...ad, moderation: "accepted" });
+    expect((await store.ads("b1")).find((a) => a.id === "ad-img")).toMatchObject({ moderation: "accepted", imageId: "img-1", imageHash: "hash-1" });
   });
 });
 

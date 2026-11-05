@@ -49,8 +49,11 @@ describe("loadConfig", () => {
   });
 
   it("requires the OpenAI key and text model for LLM creatives", () => {
-    expect(() => loadConfig({ ...complete, CREATIVES: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_TEXT_MODEL/);
-    expect(loadConfig({ ...complete, CREATIVES: "openai", OPENAI_API_KEY: "k", OPENAI_TEXT_MODEL: "gpt-6.1-terra" })).toMatchObject({ CREATIVES: "openai" });
+    expect(() => loadConfig({ ...complete, CREATIVES: "openai" })).toThrow(/OPENAI_API_KEY.*OPENAI_TEXT_MODEL.*OPENAI_IMAGE_MODEL.*IMAGE_PRICE_RUB.*IMAGE_MONTHLY_LIMIT/);
+    expect(() => loadConfig({ ...complete, CREATIVES: "openai", OPENAI_API_KEY: "k", OPENAI_TEXT_MODEL: "gpt-6.1-terra" })).toThrow(/OPENAI_IMAGE_MODEL/);
+    expect(
+      loadConfig({ ...complete, CREATIVES: "openai", OPENAI_API_KEY: "k", OPENAI_TEXT_MODEL: "gpt-6.1-terra", OPENAI_IMAGE_MODEL: "gpt-image-1-mini", IMAGE_PRICE_RUB: "4", IMAGE_MONTHLY_LIMIT: "30" }),
+    ).toMatchObject({ CREATIVES: "openai", IMAGE_PRICE_RUB: 4, IMAGE_MONTHLY_LIMIT: 30 });
     expect(() => loadConfig({ ...complete, CREATIVES: undefined })).toThrow(/CREATIVES/);
   });
 

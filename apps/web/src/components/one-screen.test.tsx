@@ -32,6 +32,7 @@ const ad = (overrides: Partial<ShownAd> = {}): ShownAd => ({
   title: "Автоматизация ресторанов доставки",
   text: "Подключение платформы",
   channel: "search",
+  imageId: null,
   verdict: "effective",
   fresh: false,
   pending: false,

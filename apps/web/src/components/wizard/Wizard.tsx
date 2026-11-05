@@ -3,12 +3,12 @@
 import { toLocalDate } from "@impuls/core";
 import { ArrowLeftOutlined, ArrowRightOutlined, WarningOutlined } from "@ant-design/icons";
 import { Alert, Button } from "antd";
-import { useState } from "react";
-import type { Creatives, ExtractCardResult } from "@impuls/worker";
+import { useEffect, useRef, useState } from "react";
+import type { Creatives, DrawnImages, ExtractCardResult } from "@impuls/worker";
 import { callApi, LLM_POLL_ATTEMPTS, runWebJob } from "@/lib/client-api";
-import { mergeExtractedCard, SIMULATION_STEP_TITLE, STEP_COUNT, stepIssues, unreadableNotice, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
+import { mergeExtractedCard, pictureKey, SIMULATION_STEP_TITLE, STEP_COUNT, stepIssues, unreadableNotice, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
-import type { OnboardingDraft } from "@/lib/onboarding";
+import type { NetworkAdDraft, OnboardingDraft } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
 import { BudgetStep } from "./BudgetStep";
 import { CardStep } from "./CardStep";
@@ -68,6 +68,13 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   const [notice, setNotice] = useState<string | null>(null);
   /** Step 3: real Direct or the simulation on the owner's numbers (simulation-mode spec). */
   const [mode, setMode] = useState<LaunchMode>("direct");
+
+  /** Partner-site pictures being drawn (network-ad-images), by `pictureKey`; «Запустить» stays available meanwhile. */
+  const [drawing, setDrawing] = useState<ReadonlySet<string>>(new Set());
+  /** Pictures already asked for on this visit, so a failed request is not repeated by itself. */
+  const asked = useRef(new Set<string>());
+  /** Requests on their way: a second click or effect run does not draw the same picture twice. */
+  const inFlight = useRef(new Set<string>());
 
   /** Errors are shown only after the owner tried to move on, not while they are still typing. */
   const [attempted, setAttempted] = useState(false);
@@ -135,8 +142,47 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
       return null;
     }
     const { search, network, keywords, negativeKeywords } = outcome.output;
+    // New texts get their own pictures, even when a title repeats an earlier one.
+    asked.current.clear();
     return { ...current, ads: { search, network }, keywords: { search: keywords, negative: negativeKeywords } };
   };
+
+  /**
+   * Draws pictures after the texts, so they never hold the texts up: an ad's first picture, or «Другая картинка» /
+   * «Попробовать ещё раз» for its current one. A picture that does not come leaves the ad as it was; the worker draws a
+   * missing one at launch.
+   */
+  const drawPictures = async (ads: readonly Pick<NetworkAdDraft, "title" | "imageId">[]) => {
+    const requests = ads
+      .filter((ad) => ad.title.trim() !== "" && !inFlight.current.has(pictureKey(ad)))
+      .map((ad) => ({ key: pictureKey(ad), title: ad.title, previousImageId: ad.imageId ?? null }));
+    if (requests.length === 0) return;
+    for (const request of requests) {
+      asked.current.add(request.key);
+      inFlight.current.add(request.key);
+    }
+    setDrawing((current) => new Set([...current, ...requests.map((r) => r.key)]));
+    const outcome = await runWebJob<DrawnImages>("/api/onboarding/ad-images", { ads: requests.map(({ title, previousImageId }) => ({ title, previousImageId })) }, LLM_POLL_ATTEMPTS);
+    for (const request of requests) inFlight.current.delete(request.key);
+    setDrawing((current) => new Set([...current].filter((key) => !requests.some((r) => r.key === key))));
+    if (outcome.kind !== "done") return;
+    setDraft((current) => {
+      if (current.ads === null) return current;
+      const network = current.ads.network.map((ad) => {
+        const drawn = outcome.output.images[requests.findIndex((r) => r.key === pictureKey(ad))];
+        return drawn === undefined ? ad : { ...ad, imageId: drawn.imageId, imageNote: drawn.note };
+      });
+      return { ...current, ads: { ...current.ads, network } };
+    });
+  };
+
+  // The preview step draws the pictures the ads do not have yet: new texts, or a draft made before the pictures.
+  const missing = step === STEP_COUNT ? (draft.ads?.network ?? []).filter((ad) => ad.imageId === undefined && !asked.current.has(pictureKey(ad))) : [];
+  const missingKeys = missing.map(pictureKey).join("\n");
+  useEffect(() => {
+    if (missing.length > 0) void drawPictures(missing);
+    // Runs when the set of ads without a picture changes, not on every render.
+  }, [missingKeys]);
 
   /** «Дальше» is always pressable: with something missing it shows the errors and scrolls to the first one. */
   const onNext = async () => {
@@ -219,7 +265,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
             ) : null}
             {step === STEP_COUNT ? (
               <>
-                <div className="surface surface-pad"><PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} /></div>
+                <div className="surface surface-pad"><PreviewStep {...stepProps} onRegenerate={() => void regenerate()} busy={busy !== null} drawing={drawing} onRedraw={(ad) => void drawPictures([ad])} /></div>
                 {busy !== null ? <GenerationProgress kind={busy} /> : null}
                 <div className="surface surface-pad">
                   <div className="stack" style={{ "--gap": "24px" } as React.CSSProperties}>
@@ -227,7 +273,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
                     {mode === "direct" ? (
                       <>
                         <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(STEP_COUNT, { ...draft, directConnected: true })} />
-                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} /> : null}
+                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} save={() => saveHere(draft)} /> : null}
                       </>
                     ) : (
                       <LaunchStep
@@ -237,6 +283,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
                         // The simulated month starts on its own date, so the budget line is for that month.
                         today={simulationStartDate(todayIn(draft.card.timeZone))}
                         onEdit={edit}
+                        save={() => saveHere(draft)}
                         simulation
                       />
                     )}

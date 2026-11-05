@@ -1,4 +1,4 @@
-import { TemplateCreativeEngine } from "@impuls/agent";
+import { TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import { addDays, daysBetween, toLocalDate } from "@impuls/core";
 import type { LocalDate } from "@impuls/core";
 import { campaignRoom, SimulatedPlatform, YANDEX_DIRECT_CAPABILITIES } from "@impuls/platforms";
@@ -97,6 +97,7 @@ export const simulationWorld = (base: JobContext, business: BusinessRecord, reco
     platformFor,
     agent: base.agent,
     creatives: new TemplateCreativeEngine(),
+    images: new TemplateImageEngine(),
     ...(base.agentCosts !== undefined && { agentCosts: base.agentCosts }),
     ...(base.strategist !== undefined && { strategist: base.strategist }),
   };

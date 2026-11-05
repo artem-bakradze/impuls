@@ -34,6 +34,7 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 | `AGENT_STRATEGY_PRICE_INPUT_RUB_PER_MTOK`, `AGENT_STRATEGY_PRICE_OUTPUT_RUB_PER_MTOK` | required with `OPENAI_STRATEGY_MODEL`: its price in rubles per million tokens. Its spend counts in the same monthly and run limits: with `gpt-6.1-sol` (a review ≈9 ₽ by the estimate) plan the monthly limit as daily turns plus ≈4–5 reviews, e.g. `100` |
 | `CREATIVES` | `openai` (card extraction and ad texts by the LLM) or `template` (card-only drafts, local stand and e2e) |
 | `OPENAI_API_KEY`, `OPENAI_TEXT_MODEL` | required with `CREATIVES=openai`; text model `gpt-6.1-terra` (see `docs/research/agents-api.md` for the agent model) |
+| `OPENAI_IMAGE_MODEL`, `IMAGE_PRICE_RUB`, `IMAGE_MONTHLY_LIMIT` | required with `CREATIVES=openai`: the model of the partner-site ad pictures (a `gpt-image-*` one), the price of one picture in rubles and the paid pictures per business per calendar month; past the limit a business gets template pictures |
 | `SMTP_URL`, `MAIL_FROM` | outgoing email |
 | `APP_URL` | public web URL for links in emails |
 | `TEAM_ALERT_EMAIL` | incidents are emailed here |
@@ -94,7 +95,7 @@ pass the checks (`MIN_VALID_SHARE`). With `OPENAI_STRATEGY_MODEL` set the eval r
 ## Agent costs
 
 ```bash
-pnpm --filter @impuls/worker cli agent costs --month [YYYY-MM]   # model spend per business; a simulation: its current run
+pnpm --filter @impuls/worker cli agent costs --month [YYYY-MM]   # model spend per business (a simulation: its current run) and the month's paid ad pictures, `paidPictures` × IMAGE_PRICE_RUB
 ```
 
 Each turn stores its tokens, their source (`api` or `estimate`) and the cost in kopecks. The OpenAI project budget

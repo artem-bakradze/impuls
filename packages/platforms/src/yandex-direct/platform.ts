@@ -21,6 +21,7 @@ import type {
 import { DirectClient } from "./client";
 import type { DirectLogger, DirectRequestGuard, JsonRecord } from "./client";
 import {
+  addedImageHash,
   AUTOTARGETING_KEYWORD,
   STRATEGY_AVERAGE_CPA,
   STRATEGY_WB_MAXIMUM_CLICKS,
@@ -83,7 +84,7 @@ export interface YandexDirectPlatformOptions {
 const CAMPAIGN_FIELDS = ["Id", "Name", "State", "Status"];
 const TEXT_CAMPAIGN_FIELDS = ["BiddingStrategy", "Settings"];
 const AD_FIELDS = ["Id", "CampaignId", "AdGroupId", "State", "Status", "StatusClarification"];
-const TEXT_AD_FIELDS = ["Title", "Title2", "Text", "Href"];
+const TEXT_AD_FIELDS = ["Title", "Title2", "Text", "Href", "AdImageHash"];
 /** Ads.get accepts at most 10 CampaignIds per request. */
 const ADS_GET_CAMPAIGN_CHUNK = 10;
 const ADS_GET_PAGE_LIMIT = 10_000;
@@ -346,15 +347,16 @@ export class YandexDirectPlatform implements AdPlatform {
     return this.getCampaign(id);
   }
 
+  async uploadImage(png: Uint8Array, name: string): Promise<string> {
+    const result = await this.client.call("adimages", "add", { AdImages: [{ ImageData: Buffer.from(png).toString("base64"), Name: name }] }, false);
+    return addedImageHash(result);
+  }
+
   async createAd(input: NewAd): Promise<PlatformAd> {
     const href = withUtm(input.landingUrl);
     const adGroupId = await this.adGroupOf(input.campaignId);
-    const result = await this.client.call(
-      "ads",
-      "add",
-      { Ads: [{ AdGroupId: adGroupId, TextAd: { Title: input.title, Text: input.text, Href: href, Mobile: "NO" } }] },
-      false,
-    );
+    const textAd = { Title: input.title, Text: input.text, Href: href, Mobile: "NO", ...(input.imageHash !== undefined && { AdImageHash: input.imageHash }) };
+    const result = await this.client.call("ads", "add", { Ads: [{ AdGroupId: adGroupId, TextAd: textAd }] }, false);
     const id = singleActionResult(result, "AddResults");
     // New ads are drafts; the contract's "create" means "submit for showing", so send it to moderation.
     if (this.options.submitAdsForModeration) {

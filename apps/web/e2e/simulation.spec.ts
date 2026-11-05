@@ -90,9 +90,12 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await expect(journal).not.toContainText(/без него было бы|На самом деле/);
   await page.getByRole("button", { name: "Закрыть" }).click();
 
-  // The ads sheet shows what was entered.
+  // The ads sheet shows what was entered, and the partner-site ads with their pictures.
   await page.getByRole("button", { name: /Объявления/ }).click();
   await expect(page.getByTestId("ad-stats").first()).toContainText("потрачено");
+  const sheetPicture = page.getByTestId("ad-row-image").first();
+  await expect(sheetPicture).toBeVisible();
+  await expect.poll(() => sheetPicture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1024);
   await page.getByRole("button", { name: "Закрыть" }).click();
 
   // The owner changes the show hours and takes it back from the history, in virtual time.

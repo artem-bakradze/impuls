@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyDraft } from "@/lib/onboarding";
-import type { OnboardingDraft } from "@/lib/onboarding";
+import type { NetworkAdDraft, OnboardingDraft } from "@/lib/onboarding";
 import type { HistoryItem, Names } from "@/lib/history-view";
 import { LoginCard } from "./LoginCard";
 import { RollbackDialog } from "./history/RollbackDialog";
 import type { RollbackOutput } from "./history/RollbackDialog";
+import { AdPreview } from "./wizard/AdPreview";
 import { BudgetStep } from "./wizard/BudgetStep";
 import { CardStep } from "./wizard/CardStep";
 import { DirectStep } from "./wizard/DirectStep";
@@ -214,6 +215,80 @@ describe("LaunchStep", () => {
     const draft = { ...ready(), counter: { siteUrl: "https://nogotok.example", status: "found" as const, counterId: 1 } };
     render(<LaunchStep draft={draft} today="2026-11-01" onEdit={() => undefined} />);
     expect(screen.getByTestId("measurement-status")).toHaveTextContent("получение обращений пока не подтверждено");
+  });
+});
+
+describe("partner-site pictures (ad-creatives «Картинки объявлений на сайтах-партнёрах»)", () => {
+  const network = (patch: Partial<NetworkAdDraft> = {}): NetworkAdDraft => ({ title: "Маникюр рядом", text: "Работаем до 22:00", ...patch });
+  const preview = (ad: NetworkAdDraft, picture: { drawing: boolean; onRedraw?: () => void }, onChange = vi.fn()) =>
+    render(<AdPreview ad={ad} channel="network" domain="nogotok.example" label="Объявление 1" onChange={onChange} onRemove={() => undefined} picture={picture} />);
+
+  it("shows the ad's picture with «Изменить», «Другая картинка» and «Убрать», and a new picture keeps the text", () => {
+    const onRedraw = vi.fn();
+    const onChange = vi.fn();
+    preview(network({ imageId: "img-1", imageNote: null }), { drawing: false, onRedraw }, onChange);
+    expect(screen.getByTestId("ad-image")).toHaveAttribute("src", "/api/ad-images/img-1");
+    for (const name of ["Объявление 1: изменить", "Объявление 1: другая картинка", "Объявление 1: убрать"]) {
+      expect(screen.getByRole("button", { name })).toBeVisible();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Объявление 1: другая картинка" }));
+    expect(onRedraw).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText("Маникюр рядом")).toBeInTheDocument();
+    expect(screen.queryByTestId("ad-image-note")).toBeNull();
+  });
+
+  it("says «Рисуем картинку…» in the picture's place while it is drawn", () => {
+    preview(network({ imageId: "img-1" }), { drawing: true, onRedraw: () => undefined });
+    expect(screen.getByRole("status")).toHaveTextContent("Рисуем картинку…");
+    expect(screen.queryByTestId("ad-image")).toBeNull();
+    expect(screen.getByRole("button", { name: "Объявление 1: другая картинка" })).toBeDisabled();
+  });
+
+  it("explains a simple picture: a failed one offers «Попробовать ещё раз», the spent limit does not", () => {
+    const onRedraw = vi.fn();
+    preview(network({ imageId: "img-1", imageNote: "failed" }), { drawing: false, onRedraw });
+    expect(screen.getByTestId("ad-image-note")).toHaveTextContent("Не получилось нарисовать картинку — показываем простую");
+    fireEvent.click(screen.getByRole("button", { name: "Попробовать ещё раз" }));
+    expect(onRedraw).toHaveBeenCalledTimes(1);
+    cleanup();
+    preview(network({ imageId: "img-2", imageNote: "limit" }), { drawing: false, onRedraw });
+    expect(screen.getByTestId("ad-image-note")).toHaveTextContent("Лимит картинок на этот месяц исчерпан — показываем простую");
+    expect(screen.queryByRole("button", { name: "Попробовать ещё раз" })).toBeNull();
+  });
+
+  it("draws the pictures the preview step's ads do not have yet, and «Запустить» saves the draft first", async () => {
+    const requests: { url: string; method: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
+        requests.push({ url, method: init?.method ?? "GET", body });
+        const answer = url === "/api/onboarding/ad-images" ? { jobId: "j1" } : url === "/api/jobs/j1" ? { state: "done", output: { images: [{ imageId: "img-9", note: null }] } } : { ok: true };
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(answer) });
+      }),
+    );
+    const draft = withSite();
+    draft.card = { ...draft.card, category: "Маникюр", city: "Москва", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }] };
+    draft.budget.monthlyBudgetRub = 15_000;
+    draft.ads = { search: [{ title: "Маникюр", text: "У метро" }], network: [network()] };
+    draft.keywords = { search: ["маникюр"], negative: [] };
+    render(<Wizard initialDraft={draft} initialStep={3} directApiMode="simulator" directOutcome={null} />);
+    fireEvent.click(screen.getByText(/Сайты-партнёры/));
+    expect(await screen.findByText("Рисуем картинку…")).toBeInTheDocument();
+    expect(await screen.findByTestId("ad-image", {}, { timeout: 3_000 })).toHaveAttribute("src", "/api/ad-images/img-9");
+    expect(requests.find((r) => r.url === "/api/onboarding/ad-images")?.body).toEqual({ ads: [{ title: "Маникюр рядом", previousImageId: null }] });
+
+    fireEvent.click(screen.getByRole("button", { name: "На сайтах-партнёрах Яндекса, объявление 1: другая картинка" }));
+    await waitFor(() => expect(requests.filter((r) => r.url === "/api/onboarding/ad-images").at(-1)?.body).toEqual({ ads: [{ title: "Маникюр рядом", previousImageId: "img-9" }] }));
+
+    fireEvent.click(screen.getByLabelText("Симуляция"));
+    fireEvent.click(screen.getByRole("button", { name: /Запустить симуляцию/ }));
+    await waitFor(() => expect(requests.some((r) => r.url === "/api/onboarding/launch")).toBe(true));
+    const saved = requests.filter((r) => r.url === "/api/onboarding" && r.method === "PUT").at(-1);
+    expect(requests.indexOf(saved as (typeof requests)[number])).toBeLessThan(requests.findIndex((r) => r.url === "/api/onboarding/launch"));
+    expect((saved?.body as { draft: OnboardingDraft }).draft.ads?.network[0]?.imageId).toBeDefined();
+    vi.unstubAllGlobals();
   });
 });
 

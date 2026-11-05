@@ -45,9 +45,11 @@ interface Props {
   errors?: Record<string, string>;
   /** «Запустить в симуляции» on the training market instead of Direct. */
   simulation?: boolean;
+  /** Saves the draft first, so the launch takes the ads and pictures as the owner sees them. */
+  save?: () => Promise<boolean>;
 }
 
-export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors = {} }: Props) {
+export function LaunchStep({ draft, today, onEdit, simulation, onChange, save, errors = {} }: Props) {
   const router = useRouter();
   const [goalsOpen, setGoalsOpen] = useState(errors.goals !== undefined);
   const [state, setState] = useState<{ kind: "idle" | "running" | "pending" | "advertiser_data" } | { kind: "error"; message: string }>({ kind: "idle" });
@@ -56,6 +58,10 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, errors 
 
   const launch = async () => {
     setState({ kind: "running" });
+    if (save !== undefined && !(await save())) {
+      setState({ kind: "idle" });
+      return;
+    }
     const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", simulation ? { simulation: true } : {});
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });

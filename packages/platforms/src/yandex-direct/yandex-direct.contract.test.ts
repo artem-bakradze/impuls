@@ -1,3 +1,4 @@
+import { deflateSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PlatformError } from "../contract";
 import type { DirectRequestLogEntry, JsonRecord } from "./client";
@@ -58,9 +59,39 @@ afterAll(async () => {
   expect(JSON.stringify(logs)).not.toContain(token);
 });
 
+/** A plain square PNG (RGB, one colour) of the size the service draws its pictures in. */
+const squarePng = (size: number): Uint8Array => {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (bytes: Buffer): number => {
+    let value = 0xffffffff;
+    for (const byte of bytes) value = (crcTable[(value ^ byte) & 0xff] as number) ^ (value >>> 8);
+    return (value ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.of(0), Buffer.alloc(size * 3, 0xc8)]);
+  const raw = Buffer.concat(Array.from({ length: size }, () => row));
+  return new Uint8Array(Buffer.concat([Buffer.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]));
+};
+
 describe("YandexDirectPlatform (production contract, drafts only)", () => {
   const startedAt = new Date(Date.now() - 60_000);
   let searchId = "";
+  let networkId = "";
   let adId = "";
 
   it("declares capabilities", () => {
@@ -101,7 +132,15 @@ describe("YandexDirectPlatform (production contract, drafts only)", () => {
       targeting: { city: "Москва", keywords: [], negativeKeywords: [] },
       schedule: "10:00–20:00",
     });
+    networkId = created.id;
     expect(created).toMatchObject({ weeklyLimit: 30_000, strategyId: "WB_MAXIMUM_CLICKS" });
+  });
+
+  it("uploads a square picture and creates a draft text-and-image ad with it (network-ad-images)", async () => {
+    const hash = await platform.uploadImage(squarePng(1024), `${CONTRACT_PREFIX}${runId}-picture`);
+    expect(hash).toMatch(/\S/);
+    const ad = await platform.createAd({ campaignId: networkId, title: "Маникюр с покрытием рядом", text: "Запись онлайн. Работаем до 22:00.", landingUrl: "https://example.com/", imageHash: hash });
+    expect(ad).toMatchObject({ campaignId: networkId, imageHash: hash });
   });
 
   it("updates limit, schedule and monitoring", async () => {

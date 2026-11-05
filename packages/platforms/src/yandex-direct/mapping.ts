@@ -219,6 +219,7 @@ export const parseAd = (raw: JsonRecord): PlatformAd => {
     rejectionReason: moderation === "rejected" ? clarification || null : null,
     // Direct names the site-monitoring pause explicitly; the service shows it on the summary (platform-integration).
     monitoringStopped: text(raw.State) === "OFF_BY_MONITORING",
+    imageHash: text(textAd.AdImageHash) || null,
   };
 };
 
@@ -242,6 +243,23 @@ export const singleActionResult = (result: JsonRecord, key: string): string => {
     throw new PlatformError("DIRECT_INVALID_RESPONSE", `Direct ${key} item has no Id`, false);
   }
   return id;
+};
+
+/** The hash of a picture added by `AdImages.add`, or the mapped error of the result. */
+export const addedImageHash = (result: JsonRecord): string => {
+  const item = records(result.AddResults)[0];
+  if (!item) {
+    throw new PlatformError("DIRECT_INVALID_RESPONSE", "Direct response has no AddResults", false);
+  }
+  const error = records(item.Errors)[0];
+  if (error) {
+    throw mapDirectError({ code: Number(error.Code), message: text(error.Message), detail: text(error.Details) });
+  }
+  const hash = text(item.AdImageHash);
+  if (!hash) {
+    throw new PlatformError("DIRECT_INVALID_RESPONSE", "Direct AdImages.add result has no AdImageHash", false);
+  }
+  return hash;
 };
 
 /** Checks a single action result that carries no single `Id` (`BidModifiers.add` returns `Ids`). */

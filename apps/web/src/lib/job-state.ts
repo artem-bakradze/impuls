@@ -1,5 +1,5 @@
 /** Worker errors whose Russian message is safe to show as is. Anything else gets a generic text. */
-const USER_FACING_CODES = new Set(["ALREADY_LAUNCHED", "EMPTY_PLAN", "NO_KEYWORDS", "CLIENTS_OUT_OF_RANGE", "CARD_UNREADABLE", "CREATIVES_FAILED", "SIMULATION_ADS_CHANGED"]);
+const USER_FACING_CODES = new Set(["ALREADY_LAUNCHED", "EMPTY_PLAN", "NO_KEYWORDS", "CLIENTS_OUT_OF_RANGE", "CARD_UNREADABLE", "CREATIVES_FAILED", "SIMULATION_ADS_CHANGED", "IMAGE_UPLOAD_FAILED"]);
 
 export type JobView =
   | { state: "pending" }

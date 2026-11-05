@@ -324,6 +324,37 @@ describe("request shape", () => {
     expect(ad).toMatchObject({ id: "201", campaignId: "101", status: "active", moderation: "pending", rejectionReason: null });
   });
 
+  it("uploads a picture to the image library and creates a text-and-image ad with its hash", async () => {
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 1, 2, 3);
+    const { platform, requests } = setup([
+      json({ AddResults: [{ AdImageHash: "hash-abc" }] }),
+      json({ AdGroups: [{ Id: 301 }] }),
+      json({ AddResults: [{ Id: 201 }] }),
+      json({ ModerateResults: [{ Id: 201 }] }),
+      json({ Ads: [rawAd({ Status: "MODERATION", TextAd: { Title: "Маникюр", Title2: null, Text: "Рядом с домом", Href: "https://example.ru", AdImageHash: "hash-abc" } })] }),
+    ]);
+    const hash = await platform.uploadImage(png, "Маникюр");
+    expect(hash).toBe("hash-abc");
+    expect(requests[0]?.url).toBe("https://api.direct.yandex.com/json/v5/adimages");
+    expect(requests[0]?.body).toEqual({ method: "add", params: { AdImages: [{ ImageData: Buffer.from(png).toString("base64"), Name: "Маникюр" }] } });
+
+    const ad = await platform.createAd({ campaignId: "101", title: "Маникюр", text: "Рядом с домом", landingUrl: "https://example.ru", imageHash: hash });
+    expect((requests[2]?.body as { params: { Ads: { TextAd: Record<string, unknown> }[] } }).params.Ads[0]?.TextAd).toMatchObject({ Title: "Маникюр", AdImageHash: "hash-abc" });
+    expect((requests[4]?.body as { params: { TextAdFieldNames: string[] } }).params.TextAdFieldNames).toContain("AdImageHash");
+    expect(ad).toMatchObject({ id: "201", imageHash: "hash-abc" });
+  });
+
+  it("reads a text-only ad without a picture and maps a refused picture to a platform error", async () => {
+    const { platform } = setup([
+      json({ Ads: [rawAd()] }),
+      json({ AddResults: [{ Errors: [{ Code: 5004, Message: "Неверный формат изображения" }] }] }),
+      json({ AddResults: [{}] }),
+    ]);
+    expect((await platform.getAds(["101"]))[0]).toMatchObject({ imageHash: null });
+    await expectPlatformError(platform.uploadImage(Uint8Array.of(1), "x"), "DIRECT_ERROR_5004", false);
+    await expectPlatformError(platform.uploadImage(Uint8Array.of(1), "x"), "DIRECT_INVALID_RESPONSE", false);
+  });
+
   it("leaves new ads as drafts when moderation is off (contract tests)", async () => {
     const { platform, requests } = setup([json({ AdGroups: [{ Id: 301 }] }), json({ AddResults: [{ Id: 201 }] }), json({ Ads: [rawAd({ Status: "DRAFT" })] })], {
       submitAdsForModeration: false,

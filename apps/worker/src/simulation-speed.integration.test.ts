@@ -1,4 +1,4 @@
-import { IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
+import { IdlePolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import { allowedWeeklyTotal, monthBudget, rubles, toLocalDate } from "@impuls/core";
 import { createDb, createPool, databaseUrl, schema, sql } from "@impuls/db";
 import { afterAll, describe, expect, it } from "vitest";
@@ -42,7 +42,7 @@ describe("simulation period on PostgreSQL", () => {
     const platformFor = () => {
       throw new Error("no Direct in a simulation");
     };
-    const ctx: JobContext = { store, clock: real, locks, executor: new CommandExecutor({ store, locks, clock: real, platformFor }), platformFor, agent: new IdlePolicy(), creatives: new TemplateCreativeEngine() };
+    const ctx: JobContext = { store, clock: real, locks, executor: new CommandExecutor({ store, locks, clock: real, platformFor }), platformFor, agent: new IdlePolicy(), creatives: new TemplateCreativeEngine(), images: new TemplateImageEngine() };
     const today = toLocalDate(real.now(), "Europe/Moscow");
     const total = Math.floor(allowedWeeklyTotal(0, monthBudget(15_000, today, today), today) / 100);
     await launchSimulation(

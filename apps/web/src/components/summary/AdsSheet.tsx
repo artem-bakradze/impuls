@@ -6,7 +6,7 @@ import type { MenuProps } from "antd";
 import { useState } from "react";
 import type { EffectivenessClass } from "@impuls/core";
 import { formatRub, plural } from "@/lib/format";
-import { AD_TEXT_MAX, AD_TITLE_MAX } from "@/lib/onboarding";
+import { AD_TEXT_MAX, AD_TITLE_MAX, adImageUrl } from "@/lib/onboarding";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import { VERDICT_GROUPS, verdictRule } from "@/lib/service-work";
 import type { ShownAd } from "@/lib/service-work";
@@ -39,6 +39,7 @@ function AdRow({ ad, site, commands }: { ad: ShownAd; site: string; commands: Re
   return (
     <article className="ad-row" data-testid="shown-ad">
       <div className="ad-row-head">
+        {ad.imageId !== null ? <img className="ad-row-image" src={adImageUrl(ad.imageId)} alt="Картинка объявления" width={1024} height={1024} loading="lazy" data-testid="ad-row-image" /> : null}
         <div className="ad-row-main">
           <div className="ad-row-meta">
             <span className="ad-row-favicon" aria-hidden="true">

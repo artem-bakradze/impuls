@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   addDays,
   createRng,
@@ -456,10 +457,18 @@ export class SimulatedPlatform implements AdPlatform {
     return Promise.resolve({ ...campaign });
   }
 
+  /** Takes a picture like Direct, without any request: the hash is the bytes' own, so the same picture has one hash. */
+  uploadImage(png: Uint8Array, name: string): Promise<string> {
+    if (png.length === 0 || name.trim() === "") {
+      return Promise.reject(new PlatformError("IMAGE_INVALID", "The picture is empty or has no name", false));
+    }
+    return Promise.resolve(`sim-${createHash("sha256").update(png).digest("hex").slice(0, 20)}`);
+  }
+
   createAd(input: NewAd): Promise<PlatformAd> {
     this.campaign(input.campaignId);
-    const { landingUrl, ...fields } = input;
-    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, monitoringStopped: false, ...fields };
+    const { landingUrl, imageHash, ...fields } = input;
+    const ad: PlatformAd = { id: this.id("a"), status: "active", moderation: "accepted", rejectionReason: null, monitoringStopped: false, imageHash: imageHash ?? null, ...fields };
     this.ads.set(ad.id, ad);
     this.landingUrls.set(ad.id, landingUrl);
     const truth = this.options.truthFor(ad);

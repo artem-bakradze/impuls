@@ -22,6 +22,8 @@ export interface ShownAd {
   title: string;
   text: string;
   channel: "search" | "network";
+  /** The picture of a partner-site ad (network-ad-images); null for search ads and ads launched before pictures. */
+  imageId: string | null;
   /** The rules' estimate over 14 days, as the morning evaluation sees it. */
   verdict: EffectivenessClass;
   /** Appeared in the last 7 days: a new variant of a check, say. */
@@ -473,6 +475,7 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
         title: ad.title,
         text: ad.text,
         channel: directions.get(ad.directionId)?.channel ?? "search",
+        imageId: ad.imageId ?? null,
         verdict: classify(own.filter((r) => r.date >= since14).reduce(add, empty()), daysBetween(ad.createdOn, input.today), input.cso),
         fresh: ad.createdOn > input.startedOn && ad.createdOn > since7,
         pending: ad.moderation === "pending",

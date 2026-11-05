@@ -37,6 +37,14 @@ describe("ContractGuard", () => {
     expect(sent).toEqual([]);
   });
 
+  it("uploads only pictures named with the reserved prefix", async () => {
+    const { platform, sent } = setup([{ AddResults: [{ AdImageHash: "h1" }] }]);
+    await blocked(platform.uploadImage(Uint8Array.of(1, 2), "Маникюр"));
+    expect(sent).toEqual([]);
+    expect(await platform.uploadImage(Uint8Array.of(1, 2), `${CONTRACT_PREFIX}picture`)).toBe("h1");
+    expect(sent).toEqual(["adimages.add"]);
+  });
+
   it("refuses to touch a campaign the run did not create", async () => {
     const { platform, sent } = setup([]);
     await blocked(platform.updateCampaign("555", { status: "paused" }));

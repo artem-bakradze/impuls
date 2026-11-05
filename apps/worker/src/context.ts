@@ -1,4 +1,4 @@
-import type { AgentRuntime, CreativeEngine } from "@impuls/agent";
+import type { AgentRuntime, CreativeEngine, ImageEngine } from "@impuls/agent";
 import type { AdPlatform } from "@impuls/platforms";
 import type { Clock } from "./clock";
 import type { CommandExecutor } from "./executor";
@@ -30,4 +30,8 @@ export interface JobContext {
   strategist?: { runtime: AgentRuntime; costs: AgentCosts };
   /** Card extraction and ad texts (ad-creatives spec); template or LLM, chosen by configuration. */
   creatives: CreativeEngine;
+  /** Pictures of the ads on partner sites (network-ad-images); the template or the image model, like the texts. */
+  images: ImageEngine;
+  /** Required with a paid image engine: paid pictures per business per calendar month. */
+  imageLimit?: { monthly: number };
 }

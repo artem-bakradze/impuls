@@ -18,6 +18,7 @@ export * from "./analytics";
 export * from "./optimization";
 export * from "./experiments";
 export * from "./web-jobs";
+export * from "./ad-images";
 export * from "./scheduler";
 export * from "./config";
 export * from "./logger";

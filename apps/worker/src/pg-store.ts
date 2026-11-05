@@ -4,7 +4,7 @@ import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
-import type { AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import type { AdImageRecord, AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
 import { readSimulationSteps } from "./simulation-report";
 
 const GLOBAL = "*";
@@ -117,6 +117,8 @@ export class PgStore implements Store {
       createdOn: ad.createdOn,
       platformAdId: ad.platformAdId,
       moderation: ad.moderation,
+      imageId: ad.imageId,
+      imageHash: ad.imageHash,
     }));
   }
 
@@ -130,8 +132,29 @@ export class PgStore implements Store {
       text: a.text,
       moderation: a.moderation,
       createdOn: a.createdOn,
+      // Absent means «not touched»: an update without the picture keeps it.
+      ...(a.imageId !== undefined && { imageId: a.imageId }),
+      ...(a.imageHash !== undefined && { imageHash: a.imageHash }),
     };
     await this.db.insert(schema.ads).values(values).onConflictDoUpdate({ target: schema.ads.id, set: values });
+  }
+
+  async saveAdImage(image: AdImageRecord): Promise<void> {
+    const values = { ...image };
+    await this.db.insert(schema.adImages).values(values).onConflictDoUpdate({ target: schema.adImages.id, set: values });
+  }
+
+  async adImage(id: string): Promise<AdImageRecord | null> {
+    const [row] = await this.db.select().from(schema.adImages).where(eq(schema.adImages.id, id));
+    return row ?? null;
+  }
+
+  async generatedImageTimes(businessId: string, since: Date): Promise<Date[]> {
+    const rows = await this.db
+      .select({ createdAt: schema.adImages.createdAt })
+      .from(schema.adImages)
+      .where(and(eq(schema.adImages.businessId, businessId), eq(schema.adImages.source, "generated"), gte(schema.adImages.createdAt, since)));
+    return rows.map((row) => row.createdAt);
   }
 
   private toChange(r: typeof schema.changeLog.$inferSelect): ChangeEntry {

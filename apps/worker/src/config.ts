@@ -50,6 +50,11 @@ const ConfigSchema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
   /** Required with CREATIVES=openai, e.g. gpt-6.1-terra. */
   OPENAI_TEXT_MODEL: z.string().min(1).optional(),
+  /** Required with CREATIVES=openai: the pictures of ads on partner sites (network-ad-images), e.g. gpt-image-1-mini. */
+  OPENAI_IMAGE_MODEL: z.string().min(1).optional(),
+  /** Required with CREATIVES=openai: the price of one picture in rubles (spend in the logs) and paid pictures per business per month. */
+  IMAGE_PRICE_RUB: z.coerce.number().positive().optional(),
+  IMAGE_MONTHLY_LIMIT: z.coerce.number().int().positive().optional(),
   /** Optional: HTTPS proxy for OpenAI when hosted in Russia (design decision 12). */
   OPENAI_PROXY_URL: z.url().optional(),
   /** Required in production: key for the encrypted Direct OAuth tokens (base64, 32 bytes). */
@@ -66,7 +71,7 @@ const ConfigSchema = z.object({
     }
   }
   if (config.CREATIVES === "openai") {
-    for (const key of ["OPENAI_API_KEY", "OPENAI_TEXT_MODEL"] as const) {
+    for (const key of ["OPENAI_API_KEY", "OPENAI_TEXT_MODEL", "OPENAI_IMAGE_MODEL", "IMAGE_PRICE_RUB", "IMAGE_MONTHLY_LIMIT"] as const) {
       if (!config[key]) {
         ctx.addIssue({ code: "custom", path: [key], message: "is required with CREATIVES=openai" });
       }

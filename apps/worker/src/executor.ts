@@ -376,11 +376,15 @@ export class CommandExecutor {
         if (business.card.siteUrl === "") {
           throw new Error(`Business ${businessId} has no site URL for a new ad`);
         }
+        // The variant differs by its text alone: it shows the original's picture without uploading it again.
+        const original = (await store.ads(businessId)).find((a) => a.id === command.adId);
+        const imageHash = original?.imageHash ?? null;
         const created = await platform.createAd({
           campaignId: target.record.platformCampaignId,
           title: command.variant.title,
           text: command.variant.text,
           landingUrl: business.card.siteUrl,
+          ...(imageHash !== null && { imageHash }),
         });
         const variantAdId = `ad-${randomUUID()}`;
         await store.saveAd({
@@ -392,6 +396,8 @@ export class CommandExecutor {
           createdOn: today,
           platformAdId: created.id,
           moderation: created.moderation,
+          imageId: original?.imageId ?? null,
+          imageHash: created.imageHash,
         });
         await store.saveExperiment({
           id: `exp-${businessId}-${command.adId}-${today}`,

@@ -1302,8 +1302,9 @@ li[data-state="done"] .gen-dot {
   overflow: hidden;
   box-shadow: var(--shadow-xs);
 }
+/* The picture is square, as Direct shows text-and-image ads (network-ad-images). */
 .ad-net .ad-image {
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
   background:
@@ -1312,6 +1313,41 @@ li[data-state="done"] .gen-dot {
     var(--surface-3);
   color: var(--accent-ink);
   font-size: var(--fs-xl);
+}
+.ad-net img.ad-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+.ad-net .ad-image-drawing {
+  align-content: center;
+  gap: 10px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+.ad-net .ad-image-drawing .anticon {
+  font-size: 30px;
+  color: var(--accent-ink);
+  animation: pictureDrawing 1.4s ease-in-out infinite;
+}
+@keyframes pictureDrawing {
+  50% { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ad-net .ad-image-drawing .anticon { animation: none; }
+}
+.ad-image-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 .ad-net .ad-body {
   padding: 14px;
@@ -2508,6 +2544,15 @@ button.log-link {
 .ad-row-main {
   min-width: 0;
   flex: 1;
+}
+/* A partner-site ad's picture next to its title and text, as on the partner sites. */
+.ad-row-image {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-3);
 }
 .ad-row-meta {
   display: flex;

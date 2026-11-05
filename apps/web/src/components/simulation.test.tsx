@@ -1,4 +1,4 @@
-import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine } from "@impuls/agent";
+import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { rubles } from "@impuls/core";
 import { campaignRoom } from "@impuls/platforms";
@@ -69,7 +69,7 @@ const run = async (agent: AgentRuntime = new IdlePolicy()) => {
   const platformFor = () => {
     throw new Error("no Direct in a simulation");
   };
-  const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine() };
+  const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine(), images: new TemplateImageEngine() };
   await launchSimulation(ctx, "b1", plan);
   for (let week = 0; week < 4; week++) {
     const simulation = await store.getSimulation("b1");

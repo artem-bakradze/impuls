@@ -86,6 +86,7 @@ const ad = (overrides: Partial<ShownAd> = {}): ShownAd => ({
   title: "Маникюр у метро",
   text: "Маникюр с покрытием от 1 800 ₽",
   channel: "search",
+  imageId: null,
   verdict: "effective",
   fresh: false,
   pending: false,
@@ -362,6 +363,17 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     // A mouse has them in the card itself.
     fireEvent.click(screen.getAllByRole("button", { name: "Маникюр у метро: изменить текст" })[0] as HTMLElement);
     expect(screen.getByLabelText("Маникюр у метро: заголовок")).toBeTruthy();
+  });
+
+  it("shows a partner-site ad with its picture next to the title and text, and a search ad without one", () => {
+    render(<SummaryView model={summary()} work={work({ shown: [ad(), ad({ id: "a4", title: "Маникюр рядом", channel: "network", imageId: "img-7" })] })} />);
+    fireEvent.click(screen.getByRole("button", { name: /Объявления/ }));
+    const rows = within(screen.getByTestId("shown-ads")).getAllByTestId("shown-ad");
+    const network = rows.find((row) => row.textContent?.includes("Маникюр рядом"));
+    const search = rows.find((row) => row.textContent?.includes("Маникюр у метро"));
+    expect(within(network as HTMLElement).getByTestId("ad-row-image")).toHaveAttribute("src", "/api/ad-images/img-7");
+    expect(plain(network ?? null)).toContain("сайты-партнёры");
+    expect(within(search as HTMLElement).queryByTestId("ad-row-image")).toBeNull();
   });
 
   it("says when an ad brought no leads", () => {

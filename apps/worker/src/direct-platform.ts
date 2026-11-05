@@ -65,6 +65,10 @@ export class BusinessDirectPlatform implements AdPlatform {
     return (await this.platform()).updateCampaign(id, patch);
   }
 
+  async uploadImage(png: Uint8Array, name: string): Promise<string> {
+    return (await this.platform()).uploadImage(png, name);
+  }
+
   async createAd(input: NewAd): Promise<PlatformAd> {
     return (await this.platform()).createAd(input);
   }

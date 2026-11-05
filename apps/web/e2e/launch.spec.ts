@@ -13,6 +13,17 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   // «Назад» from the ads keeps the card and the budget, and the ads written from them.
   await next(page);
   await expectStep(page, 3, "Объявления и запуск");
+  // Each partner-site ad has its own template picture, drawn after the texts; «Другая картинка» replaces only it.
+  await page.getByText(/^Сайты-партнёры · /).click();
+  const picture = page.getByTestId("ad-network").first().getByTestId("ad-image");
+  await expect(picture).toBeVisible();
+  await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1024);
+  const first = await picture.getAttribute("src");
+  const title = await page.getByTestId("ad-network").first().locator(".ad-title").textContent();
+  await page.getByRole("button", { name: "На сайтах-партнёрах Яндекса, объявление 1: другая картинка" }).click();
+  await expect(picture).not.toHaveAttribute("src", first ?? "");
+  await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1024);
+  await expect(page.getByTestId("ad-network").first().locator(".ad-title")).toHaveText(title ?? "");
   await page.getByRole("button", { name: "Назад" }).click();
   await expectStep(page, 2, "Вот как мы вас поняли");
   await expect(page.getByLabel("Бюджет в месяц")).toHaveValue("15 000");

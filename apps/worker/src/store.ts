@@ -164,6 +164,23 @@ export const NO_TRAFFIC_SETTINGS: Pick<DirectionRecord, "negativeKeywords" | "de
 export interface AdRecord extends Ad {
   platformAdId: string;
   moderation: "accepted" | "pending" | "rejected";
+  /** The picture of an ad on partner sites (network-ad-images); absent for search ads and older ads. */
+  imageId?: string | null;
+  /** The picture's hash in the platform's image library; a variant reuses it instead of uploading again. */
+  imageHash?: string | null;
+}
+
+/** A picture of an ad on partner sites, from the wizard draft on (network-ad-images decision 2). */
+export interface AdImageRecord {
+  id: string;
+  businessId: string;
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** `generated` pictures count in the monthly limit. */
+  source: "generated" | "template";
+  seed: number;
+  createdAt: Date;
 }
 
 export type Snapshot = Record<string, string | number | boolean | null>;
@@ -342,6 +359,10 @@ export interface Store {
   saveDirection(direction: DirectionRecord): Promise<void>;
   ads(businessId: string): Promise<AdRecord[]>;
   saveAd(ad: AdRecord): Promise<void>;
+  saveAdImage(image: AdImageRecord): Promise<void>;
+  adImage(id: string): Promise<AdImageRecord | null>;
+  /** When the paid pictures of a business drawn since `since` were drawn (the monthly limit counts them by month). */
+  generatedImageTimes(businessId: string, since: Date): Promise<Date[]>;
   appendChange(entry: Omit<ChangeEntry, "id">): Promise<ChangeEntry>;
   updateChange(id: string, patch: Partial<Pick<ChangeEntry, "status" | "after" | "error" | "revertedById" | "outcome" | "insightId">>): Promise<void>;
   saveInsight(insight: InsightRecord): Promise<void>;
@@ -418,6 +439,7 @@ export class MemoryStore implements Store {
   private readonly businessMap = new Map<string, BusinessRecord>();
   private readonly directionMap = new Map<string, DirectionRecord>();
   private readonly adMap = new Map<string, AdRecord>();
+  private readonly imageMap = new Map<string, AdImageRecord>();
   private readonly changeLog: ChangeEntry[] = [];
   private readonly statRows = new Map<string, DailyStatRow & { businessId: string }>();
   private readonly decisions = new Map<string, UserDecision[]>();
@@ -467,6 +489,17 @@ export class MemoryStore implements Store {
   saveAd(ad: AdRecord): Promise<void> {
     this.adMap.set(ad.id, { ...ad });
     return Promise.resolve();
+  }
+  saveAdImage(image: AdImageRecord): Promise<void> {
+    this.imageMap.set(image.id, { ...image });
+    return Promise.resolve();
+  }
+  adImage(id: string): Promise<AdImageRecord | null> {
+    const image = this.imageMap.get(id);
+    return Promise.resolve(image ? { ...image } : null);
+  }
+  generatedImageTimes(businessId: string, since: Date): Promise<Date[]> {
+    return Promise.resolve([...this.imageMap.values()].filter((i) => i.businessId === businessId && i.source === "generated" && i.createdAt >= since).map((i) => i.createdAt));
   }
   appendChange(entry: Omit<ChangeEntry, "id">): Promise<ChangeEntry> {
     const stored: ChangeEntry = { ...structuredClone(entry), id: `chg-${this.seq++}` };

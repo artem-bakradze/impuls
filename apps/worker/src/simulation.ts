@@ -1,4 +1,4 @@
-import { TemplateCreativeEngine } from "@impuls/agent";
+import { TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { SimulatedPlatform } from "@impuls/platforms";
 import type { AdTruth } from "@impuls/platforms";
@@ -85,6 +85,7 @@ export class SimulationDriver {
       platformFor: () => this.platform,
       agent: options.agent,
       creatives: new TemplateCreativeEngine(),
+      images: new TemplateImageEngine(),
     };
   }
 

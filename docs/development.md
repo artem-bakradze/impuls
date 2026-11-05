@@ -120,7 +120,7 @@ continue; it does not publish a partial week or create another window.
 ```bash
 pnpm --filter @impuls/worker cli flags set agent_enabled off --business <id>
 pnpm --filter @impuls/worker cli flags set automation_enabled off   # global
-pnpm --filter @impuls/worker cli agent costs --month               # model spend of the agent per business
+pnpm --filter @impuls/worker cli agent costs --month               # model spend of the agent and paid ad pictures per business
 ```
 
 ## Schema changes

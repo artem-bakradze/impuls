@@ -22,6 +22,8 @@ const ALLOWED: Readonly<Record<string, readonly string[]>> = {
   adgroups: ["get", "add"],
   keywords: ["get", "add"],
   ads: ["get", "add", "update", "suspend", "resume"],
+  // A picture in the advertiser's library is not shown anywhere until an ad uses it.
+  adimages: ["add"],
 };
 
 const ids = (value: unknown): number[] => (Array.isArray(value) ? value.filter((v): v is number => typeof v === "number") : []);
@@ -67,6 +69,13 @@ export class ContractGuard implements DirectRequestGuard {
     }
     if (service === "adgroups") {
       this.requireAll(ids(records(params.AdGroups).map((g) => g.CampaignId)), (id) => this.campaigns.has(id), "adgroups.add");
+      return;
+    }
+    if (service === "adimages") {
+      const images = records(params.AdImages);
+      if (images.length === 0 || images.some((image) => typeof image.Name !== "string" || !image.Name.startsWith(CONTRACT_PREFIX))) {
+        throw new ContractGuardError(`Contract pictures must be named ${CONTRACT_PREFIX}…`);
+      }
       return;
     }
     if (service === "keywords") {

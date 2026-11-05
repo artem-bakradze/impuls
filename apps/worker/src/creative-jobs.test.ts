@@ -1,5 +1,5 @@
-import { IdlePolicy, LlmCreativeEngine, ScriptedLlmClient } from "@impuls/agent";
-import type { CardFacts } from "@impuls/agent";
+import { drawTemplate, firstImageSeed, IdlePolicy, LlmCreativeEngine, LlmError, ScriptedLlmClient } from "@impuls/agent";
+import type { CardFacts, ImageEngine, ImageFacts } from "@impuls/agent";
 import { describe, expect, it } from "vitest";
 import { SimulationDriver } from "./simulation";
 import { handleWebJob } from "./web-jobs";
@@ -78,5 +78,106 @@ describe("generate_creatives job", () => {
       code: "CREATIVES_FAILED",
       message: "Не получилось подготовить объявления. Попробуйте ещё раз через минуту",
     });
+  });
+});
+
+describe("draw_ad_images job (ad-creatives «Картинки объявлений на сайтах-партнёрах»)", () => {
+  const facts: CardFacts = { ...card, city: "Санкт-Петербург", days: "Пн–Пт", advantages: ["Группы до 8 человек"] };
+  const business = {
+    id: "b1",
+    userId: "u1",
+    timeZone: "Europe/Moscow",
+    monthlyBudgetRub: 15_000,
+    launchedOn: null,
+    csoSource: { kind: "user" as const, goal: 30_000 },
+    miniSite: null,
+    leadGoalId: null,
+    mode: "direct" as const,
+    card: { category: "Студия йоги", services: [], area: "", hours: "", advantages: [], name: "Прана", address: "", city: "Санкт-Петербург", siteUrl: "https://prana.example/" },
+  };
+
+  /** A paid engine that answers from a script and records what it was asked and how many ran at once. */
+  const paid = (answers: ("ok" | "fail")[]) => {
+    const asked: ImageFacts[] = [];
+    let running = 0;
+    let peak = 0;
+    const engine: ImageEngine = {
+      paid: true,
+      draw: async (input) => {
+        asked.push(input);
+        running += 1;
+        peak = Math.max(peak, running);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        running -= 1;
+        if (answers.shift() === "fail") throw new LlmError("LLM_UNAVAILABLE", "timeout");
+        return { png: drawTemplate(input, 99, 16), width: 16, height: 16, source: "generated" };
+      },
+    };
+    return { engine, asked, peak: () => peak };
+  };
+
+  const drawn = (result: unknown) => (result as { images: { imageId: string; note: "failed" | "limit" | null }[] }).images;
+
+  it("draws template pictures without a model: the same ad gets the same one, «Другая картинка» another", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-29T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    await sim.store.saveBusiness(business);
+    const first = drawn(await handleWebJob(sim.ctx, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: null }, { title: "Хатха-йога", previousImageId: null }] }));
+    expect(first.map((d) => d.note)).toEqual([null, null]);
+    const [a, b] = await Promise.all(first.map((d) => sim.store.adImage(d.imageId)));
+    expect(a).toMatchObject({ businessId: "b1", source: "template", width: 1024, height: 1024 });
+    const again = drawn(await handleWebJob(sim.ctx, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: null }] }));
+    expect(Buffer.from((await sim.store.adImage(again[0]?.imageId ?? ""))?.png ?? []).equals(Buffer.from(a?.png ?? []))).toBe(true);
+    expect(Buffer.from(b?.png ?? []).equals(Buffer.from(a?.png ?? []))).toBe(false);
+
+    const other = drawn(await handleWebJob(sim.ctx, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: first[0]?.imageId ?? null }] }));
+    const next = await sim.store.adImage(other[0]?.imageId ?? "");
+    expect(next?.seed).toBe((a?.seed ?? 0) + 1);
+    expect(Buffer.from(next?.png ?? []).equals(Buffer.from(a?.png ?? []))).toBe(false);
+  });
+
+  it("sends the image model only the category, services, area and the ad's title, three at a time at most", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-29T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    await sim.store.saveBusiness(business);
+    const { engine, asked, peak } = paid(["ok", "ok", "ok", "ok"]);
+    const ctx = { ...sim.ctx, images: engine, imageLimit: { monthly: 10 } };
+    const ads = ["Йога на Невском", "Хатха-йога", "Йога утром", "Йога вечером"].map((title) => ({ title, previousImageId: null }));
+    const result = drawn(await handleWebJob(ctx, { kind: "draw_ad_images", businessId: "b1", facts: { ...facts, name: "Прана Анны Петровой", address: "Невский проспект, 100" }, ads }));
+    expect(result.map((d) => d.note)).toEqual([null, null, null, null]);
+    expect(asked[0]).toEqual({ category: "Студия йоги", services: ["Хатха-йога"], area: "Санкт-Петербург", adTitle: "Йога на Невском" });
+    expect(JSON.stringify(asked)).not.toMatch(/Анны|Невский проспект/);
+    expect(peak()).toBe(3);
+    expect((await sim.store.adImage(result[0]?.imageId ?? ""))?.source).toBe("generated");
+  });
+
+  it("gives a template picture with «Не получилось нарисовать» when the model fails, without retrying", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-29T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    await sim.store.saveBusiness(business);
+    const { engine, asked } = paid(["fail"]);
+    const result = drawn(await handleWebJob({ ...sim.ctx, images: engine, imageLimit: { monthly: 10 } }, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: null }] }));
+    expect(result[0]?.note).toBe("failed");
+    expect(asked).toHaveLength(1);
+    expect((await sim.store.adImage(result[0]?.imageId ?? ""))).toMatchObject({ source: "template", width: 1024 });
+  });
+
+  it("draws a template with «Лимит картинок…» once the month's paid pictures are spent", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-29T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    await sim.store.saveBusiness(business);
+    const old = { businessId: "b1", png: Uint8Array.of(1), width: 16, height: 16, source: "generated" as const, seed: 1 };
+    await sim.store.saveAdImage({ ...old, id: "img-september", createdAt: new Date("2026-09-30T10:00:00Z") });
+    await sim.store.saveAdImage({ ...old, id: "img-october", createdAt: new Date("2026-10-02T10:00:00Z") });
+    const { engine, asked } = paid(["ok", "ok"]);
+    const result = drawn(await handleWebJob({ ...sim.ctx, images: engine, imageLimit: { monthly: 2 } }, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: null }, { title: "Хатха-йога", previousImageId: null }] }));
+    // September's picture is another month; October's counts, so one paid picture is left.
+    expect(result.map((d) => d.note)).toEqual([null, "limit"]);
+    expect(asked).toHaveLength(1);
+    expect((await sim.store.adImage(result[1]?.imageId ?? ""))?.source).toBe("template");
+  });
+
+  it("treats another business's picture as none for «Другая картинка»", async () => {
+    const sim = new SimulationDriver({ start: new Date("2026-10-29T09:00:00Z"), seed: 1, agent: new IdlePolicy() });
+    await sim.store.saveBusiness(business);
+    await sim.store.saveAdImage({ id: "img-foreign", businessId: "b9", png: Uint8Array.of(1), width: 16, height: 16, source: "template", seed: 500, createdAt: new Date("2026-10-02T10:00:00Z") });
+    const result = drawn(await handleWebJob(sim.ctx, { kind: "draw_ad_images", businessId: "b1", facts, ads: [{ title: "Йога на Невском", previousImageId: "img-foreign" }] }));
+    expect((await sim.store.adImage(result[0]?.imageId ?? ""))?.seed).toBe(firstImageSeed("Йога на Невском"));
   });
 });
