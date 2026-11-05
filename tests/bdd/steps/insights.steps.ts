@@ -1,14 +1,16 @@
-import { HeuristicPolicy, QuietPolicy, ReplayPolicy } from "@impuls/agent";
+import { HeuristicPolicy, IdlePolicy, QuietPolicy, ReplayPolicy } from "@impuls/agent";
 import type { AgentRuntime, ToolResult, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { factKey } from "@impuls/core";
 import type { InsightDraft } from "@impuls/core";
-import { ACTION_META, controlSimulation, isBudgetAdjustment, QUIET_DAY_CODE, runAgentTurn } from "@impuls/worker";
+import { ACTION_META, controlSimulation, isBudgetAdjustment, QUIET_DAY_CODE, RULES_DAY_CODE, runAgentTurn } from "@impuls/worker";
 import type { ChangeEntry, SimulationDriver } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
 import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
 import { feedDays, QUIET_DAYS } from "../../../apps/web/src/lib/insights-model";
 import type { DayReviewModel, InsightCardModel } from "../../../apps/web/src/lib/insights-model";
+import { ownerWorld } from "./owner-world";
+import type { OwnerWorld } from "./owner-world";
 import { featurePath, launchedWorld, simulatedBusiness } from "./world";
 
 const feature = await loadFeature(featurePath("insights/insights.feature"), { language: "ru" });
@@ -232,6 +234,36 @@ describeFeature(feature, ({ Scenario }) => {
       expect(today?.summary).toBe("Разобрал рекламу: отключил объявление, которое не приводит клиентов.");
       expect(today?.quiet).toBe(false);
       expect(today?.insights.some((c) => c.decision.text === "Отключили объявление «Маникюр без записи»")).toBe(true);
+    });
+  });
+
+  Scenario("Сервис без помощника", ({ Given, When, Then }) => {
+    let sim: SimulationDriver;
+    Given("запущенная реклама, где у бизнеса помощник включён, а сервис запущен без помощника", async () => {
+      sim = await launchedWorld(30_000, { agent: new IdlePolicy() });
+      expect(await sim.store.getFlag("agent_enabled", "b1")).toBe(true);
+    });
+    When("проходит 14 дней", async () => {
+      await sim.runDays(14);
+    });
+    Then("разбор дня говорит «Сегодня решения принимали страховочные правила: помощник не подключён», а не «помощник выключен»", async () => {
+      const reasons = (await feed(sim)).map((d) => d.rulesReason).filter((r): r is string => r !== null);
+      expect(reasons).toContain("Сегодня решения принимали страховочные правила: помощник не подключён");
+      expect(reasons.some((r) => r.includes("помощник выключен"))).toBe(false);
+    });
+  });
+
+  Scenario("Период без помощника", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    Given("реклама в симуляции, а сервис запущен без помощника", async () => {
+      w = await ownerWorld(new IdlePolicy());
+    });
+    When("владелец вносит статистику за дни 1–7", async () => {
+      await w.enter(7);
+    });
+    Then("запись правил говорит «Решения за эти дни принимали страховочные правила: помощник не подключён», без слова «Сегодня»", async () => {
+      const rules = (await w.store.insights("b1")).filter((i) => i.reasonCode === RULES_DAY_CODE).map((i) => i.observation);
+      expect(rules).toEqual(["Решения за эти дни принимали страховочные правила: помощник не подключён"]);
     });
   });
 

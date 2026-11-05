@@ -353,7 +353,14 @@ export const dailyEvaluation = async (ctx: JobContext, businessId: string, optio
       ? await runPeriodTurn(ctx, businessId, options.period, views)
       : await runAgentTurn(ctx, businessId, { kind: "daily_review", reasons: views });
   if (automationEnabled && outcome?.status !== "completed") {
-    await saveRulesDay(ctx, businessId, !withAgent ? "disabled" : outcome?.status === "skipped" && outcome.reason === "cost_limit" ? "cost_limit" : "unavailable");
+    const reason = !agentEnabled
+      ? "disabled"
+      : !ctx.agent.decides
+        ? "not_connected"
+        : outcome?.status === "skipped" && outcome.reason === "cost_limit"
+          ? "cost_limit"
+          : "unavailable";
+    await saveRulesDay(ctx, businessId, reason, { period: options.period !== undefined });
     await runSafetyNet(ctx, businessId, now, view.directionClasses, borderlineSince, false);
   }
 };

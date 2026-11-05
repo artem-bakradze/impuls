@@ -45,8 +45,9 @@ describe("insights of the rules (insights spec «Инсайты страхово
   it("writes every rule insight in plain words on 2–4 facts it has", async () => {
     const sim = await rulesWorld(30_000);
     const all = await sim.store.insights("b1");
-    // Without the agent every day the rules decided on is marked with the reason, as the heading of its review.
-    expect(all.find((i) => i.reasonCode === RULES_DAY_CODE)?.observation).toBe("Сегодня решения принимали страховочные правила: помощник выключен");
+    // Without the agent every day the rules decided on is marked with the reason, as the heading of its review. The
+    // agent is on for the business, but the service runs without one: it is not connected, not switched off.
+    expect(all.find((i) => i.reasonCode === RULES_DAY_CODE)?.observation).toBe("Сегодня решения принимали страховочные правила: помощник не подключён");
     const insights = all.filter((i) => i.reasonCode !== RULES_DAY_CODE);
     expect(insights.length).toBeGreaterThan(0);
     for (const i of insights) {

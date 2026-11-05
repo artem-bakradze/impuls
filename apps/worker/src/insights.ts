@@ -329,23 +329,29 @@ export const saveRuleInsight = async (ctx: JobContext, businessId: string, reaso
 };
 
 /** Why the rules decided alone today, in the owner's words (insights spec «Разбор дня»). */
-export type RulesDayReason = "disabled" | "unavailable" | "cost_limit";
+/**
+ * Why the rules decided alone (insights spec «Разбор дня»): the agent is switched off for the business or the service,
+ * the service runs without one (`not_connected`: a runtime that decides nothing), its call failed, or its cost limit is spent.
+ */
+export type RulesDayReason = "disabled" | "not_connected" | "unavailable" | "cost_limit";
 
 const RULES_DAY_REASONS: Record<RulesDayReason, string> = {
   disabled: "помощник выключен",
+  not_connected: "помощник не подключён",
   unavailable: "помощник был недоступен",
   cost_limit: "лимит расходов на помощника исчерпан",
 };
 
 /** «Сегодня решения принимали страховочные правила: …» — a heading without facts, never shown without the rules' insights. */
-export const saveRulesDay = async (ctx: JobContext, businessId: string, reason: RulesDayReason): Promise<void> => {
+export const saveRulesDay = async (ctx: JobContext, businessId: string, reason: RulesDayReason, options: { period?: boolean } = {}): Promise<void> => {
   await ctx.store.saveInsight({
     id: randomUUID(),
     businessId,
     turnId: null,
     source: "rule",
     reasonCode: RULES_DAY_CODE,
-    observation: `Сегодня решения принимали страховочные правила: ${RULES_DAY_REASONS[reason]}`,
+    // A simulation's period is more than a day: its record names «эти дни», not «сегодня».
+    observation: `${options.period ? "Решения за эти дни" : "Сегодня решения"} принимали страховочные правила: ${RULES_DAY_REASONS[reason]}`,
     facts: [],
     decision: { kind: "none", text: "", status: "none", changeIds: [] },
     next: "",

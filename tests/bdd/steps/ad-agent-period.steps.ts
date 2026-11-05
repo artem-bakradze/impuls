@@ -84,10 +84,10 @@ describeFeature(feature, ({ Scenario }) => {
     When("владелец вносит период", async () => {
       await w.week();
     });
-    Then("в конце периода решают страховочные правила, модель не вызывается, а разбор показывает запись правил", async () => {
+    Then("в конце периода решают страховочные правила, модель не вызывается, а разбор говорит «Решения за эти дни принимали страховочные правила: помощник выключен»", async () => {
       expect(await w.store.turns("b1")).toEqual([]);
       const rules = (await w.store.insights("b1")).find((i) => i.reasonCode === RULES_DAY_CODE);
-      expect(rules?.observation).toBe("Сегодня решения принимали страховочные правила: помощник выключен");
+      expect(rules?.observation).toBe("Решения за эти дни принимали страховочные правила: помощник выключен");
       expect((await w.work()).journal.flatMap((s) => s.entries).some((e) => e.kind === "rules" && e.period !== undefined)).toBe(true);
     });
   });
@@ -101,10 +101,10 @@ describeFeature(feature, ({ Scenario }) => {
     When("владелец вносит период", async () => {
       await w.week();
     });
-    Then("период разбирают страховочные правила, а разбор говорит, что решали правила", async () => {
+    Then("период разбирают страховочные правила, а разбор говорит «Решения за эти дни принимали страховочные правила: лимит расходов на помощника исчерпан»", async () => {
       expect((await w.store.turns("b1")).filter((t) => t.status === "completed")).toEqual([]);
       const rules = (await w.store.insights("b1")).find((i) => i.reasonCode === RULES_DAY_CODE);
-      expect(rules?.observation).toBe("Сегодня решения принимали страховочные правила: лимит расходов на помощника исчерпан");
+      expect(rules?.observation).toBe("Решения за эти дни принимали страховочные правила: лимит расходов на помощника исчерпан");
     });
   });
 });
