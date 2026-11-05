@@ -7,7 +7,7 @@ import { checkModerationAndBalance, reconcileStats } from "./analytics";
 import { loadBusinessView } from "./state";
 import { createLogger } from "./logger";
 import type { SimulationWeekReport } from "./simulation-report";
-import { checkPeriod, periodDates, periodForm, simulationStartDate } from "./simulation-period";
+import { checkPeriod, lastEntered, periodDates, periodForm, simulationStartDate } from "./simulation-period";
 import type { PeriodAdInput, PeriodDays, PeriodForm } from "./simulation-period";
 import { ManualClock } from "./clock";
 import type { JobContext } from "./context";
@@ -211,7 +211,7 @@ export const leaveSimulation = async (base: JobContext, businessId: string): Pro
 
 /** The window «Добавить статистику» of a saved run, as the web shows and checks it before the worker checks again. */
 export const savedPeriodForm = (record: SimulationRecord, directions: readonly DirectionRecord[], ads: readonly AdRecord[], timeZone: string): PeriodForm =>
-  periodForm({ state: record.state, room: (id, dates) => campaignRoom(record.state, id, dates), directions, ads, start: record.simNow, timeZone });
+  periodForm({ state: record.state, room: (id, dates) => campaignRoom(record.state, id, dates), directions, ads, start: record.simNow, timeZone, last: lastEntered(record.steps) });
 
 export type SimulationControl =
   | { action: "period"; days: PeriodDays; ads: PeriodAdInput[] }

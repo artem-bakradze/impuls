@@ -20,11 +20,20 @@ export interface PeriodAdInput {
   spendRub: number;
 }
 
+/** An ad's numbers in the last period the owner entered for it, with that period's length. */
+export interface PeriodAdLast {
+  days: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  spendRub: number;
+}
+
 export interface PeriodFormDirection {
   id: string;
   name: string;
   channel: Channel;
-  ads: { id: string; title: string }[];
+  ads: { id: string; title: string; last?: PeriodAdLast }[];
   /** What Direct would spend on the direction at most over each period from the current day, in whole rubles. */
   roomRub: Record<PeriodDays, number>;
 }
@@ -71,6 +80,8 @@ export const periodForm = (input: {
   ads: readonly { id: string; title: string; directionId: string; platformAdId: string }[];
   start: Date;
   timeZone: string;
+  /** The ads' last entered numbers, for «Заполнить примерно». */
+  last?: ReadonlyMap<string, PeriodAdLast>;
 }): PeriodForm => {
   const shownOnPlatform = new Set(
     input.state.ads.filter((a) => a.status === "active" && a.moderation === "accepted" && a.monitoringStopped !== true).map((a) => a.id),
@@ -79,7 +90,12 @@ export const periodForm = (input: {
   const directions: PeriodFormDirection[] = [];
   for (const direction of input.directions) {
     if (!activeCampaigns.has(direction.platformCampaignId)) continue;
-    const ads = input.ads.filter((a) => a.directionId === direction.id && shownOnPlatform.has(a.platformAdId)).map((a) => ({ id: a.id, title: a.title }));
+    const ads = input.ads
+      .filter((a) => a.directionId === direction.id && shownOnPlatform.has(a.platformAdId))
+      .map((a) => {
+        const last = input.last?.get(a.id);
+        return last === undefined ? { id: a.id, title: a.title } : { id: a.id, title: a.title, last };
+      });
     if (ads.length === 0) continue;
     const room = (days: PeriodDays) =>
       Math.floor(input.room(direction.platformCampaignId, periodDates(input.start, days, input.timeZone)).reduce((s, r) => s + r, 0) / 100);
@@ -123,3 +139,64 @@ export const checkPeriod = (form: PeriodForm, days: PeriodDays, ads: readonly Pe
   }
   return { errors, changed: false };
 };
+
+/** The last non-zero numbers of every ad in the owner's completed periods, from the saved steps. */
+export const lastEntered = (steps: readonly { kind: string; state?: string | undefined; days?: number | undefined; input?: readonly PeriodAdInput[] | undefined }[]): Map<string, PeriodAdLast> => {
+  const last = new Map<string, PeriodAdLast>();
+  for (const step of steps) {
+    if (step.kind !== "period" || step.state !== "completed" || step.days === undefined) continue;
+    for (const row of step.input ?? []) {
+      if (row.impressions + row.clicks + row.leads + row.spendRub === 0) continue;
+      last.set(row.adId, { days: step.days, impressions: row.impressions, clicks: row.clicks, leads: row.leads, spendRub: row.spendRub });
+    }
+  }
+  return last;
+};
+
+/** A stable number in [0, 1) for a key: the same window gives the same numbers, different ads different ones. */
+const unit = (key: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+};
+const between = (key: string, low: number, high: number): number => low + unit(key) * (high - low);
+
+/** What a click costs and how often a showing is clicked when an ad has no past period, by channel (in rubles). */
+const TYPICAL: Record<Channel, { cpc: [number, number]; ctr: [number, number] }> = {
+  search: { cpc: [30, 60], ctr: [0.04, 0.08] },
+  network: { cpc: [12, 24], ctr: [0.005, 0.01] },
+};
+
+/**
+ * «Заполнить примерно» (simulation-mode spec «Статистика периода от владельца»): plausible numbers for every ad of the
+ * window. A direction spends about 70% of its room, shared by the ads' spend a day in their last period (or evenly);
+ * an ad keeps its last price per click, click rate and lead rate, and an ad without a last period gets the channel's
+ * usual ones with a lead rate of its own. Deterministic for the same window and period, and always within its checks.
+ */
+export const suggestPeriod = (form: PeriodForm, days: PeriodDays): PeriodAdInput[] =>
+  form.directions.flatMap((direction) => {
+    const budget = Math.floor(direction.roomRub[days] * 0.7);
+    const typical = TYPICAL[direction.channel];
+    const weights = direction.ads.map((ad) => {
+      const base = ad.last !== undefined && ad.last.spendRub > 0 ? ad.last.spendRub / ad.last.days : 1;
+      return base * between(`${ad.id}|${form.from}|${days}|share`, 0.8, 1.2);
+    });
+    const total = weights.reduce((s, w) => s + w, 0);
+    return direction.ads.map((ad, i): PeriodAdInput => {
+      const share = total > 0 ? Math.floor((budget * (weights[i] ?? 0)) / total) : 0;
+      const last = ad.last !== undefined && ad.last.clicks > 0 && ad.last.impressions > 0 ? ad.last : undefined;
+      const cpc = Math.max(1, last ? last.spendRub / last.clicks : between(`${ad.id}|cpc`, ...typical.cpc));
+      const ctr = last ? last.clicks / last.impressions : between(`${ad.id}|ctr`, ...typical.ctr);
+      const cr = last ? (last.leads / last.clicks) * between(`${ad.id}|${form.from}|${days}|cr`, 0.85, 1.15) : between(`${ad.id}|cr`, 0.02, 0.12);
+      // The whole share is spent: the price per click is the share over the clicks it buys, close to `cpc`.
+      const clicks = Math.round(share / cpc);
+      if (clicks === 0) return { adId: ad.id, impressions: 0, clicks: 0, leads: 0, spendRub: 0 };
+      const spendRub = share;
+      const impressions = Math.max(clicks, Math.round(clicks / Math.max(ctr, 0.0001)));
+      const leads = Math.min(clicks, Math.round(clicks * cr));
+      return { adId: ad.id, impressions, clicks, leads, spendRub };
+    });
+  });

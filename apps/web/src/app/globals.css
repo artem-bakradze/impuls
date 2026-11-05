@@ -1983,6 +1983,10 @@ button.log-link {
   background: var(--surface-2);
   color: var(--text-2);
 }
+/* Alone in its row (a simulation has no period over the number), the state starts the row. */
+.brief-state:first-child {
+  margin-left: 0;
+}
 .brief-state i {
   width: 7px;
   height: 7px;
@@ -3121,32 +3125,6 @@ button.log-link {
   font-weight: 650;
   letter-spacing: -0.035em;
 }
-.studio-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 4px;
-  font-size: var(--fs-xs);
-  letter-spacing: 0.02em;
-  color: var(--text-3);
-}
-.studio-tag::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.studio-tag.done { color: var(--success); }
-.studio-tag.live { color: var(--accent); }
-/* While the day goes, its dot breathes: the one sign of progress in the player. */
-.studio-tag.live::before { animation: studioPulse 1.7s ease-in-out infinite; }
-.studio-tag.bad { color: var(--danger); }
-.studio-tag.muted { color: var(--text-3); }
-.studio-go-real {
-  margin-left: auto;
-  align-self: center;
-}
 .studio-menu {
   align-self: center;
   color: var(--text-2);
@@ -3452,7 +3430,6 @@ button.log-link {
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .studio-tag.live::before,
   .studio-typing i,
   .studio-msg-reveal .studio-msg-text,
   .studio-msg-reveal .studio-msg-action,
@@ -3505,26 +3482,6 @@ button.log-link {
   justify-content: center;
   margin: 0;
 }
-.sim-player .studio-go-real {
-  align-self: stretch;
-  margin: 0;
-}
-/* Over the answer on a tablet the player has room: the step's buttons in a row, the note and the launch in a row. */
-@container (min-width: 560px) {
-  .sim-player-actions {
-    flex-direction: row;
-    align-items: center;
-    gap: 18px;
-  }
-  .sim-player-foot {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .sim-player .studio-go-real {
-    align-self: center;
-  }
-}
 /* Beside the answer the message is narrow: an action's undo goes under its words. */
 .review-rail .studio-msg-action {
   flex-wrap: wrap;
@@ -3568,8 +3525,17 @@ button.log-link {
   gap: 14px;
   padding-top: 4px;
 }
+.period-hint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: -4px;
+}
 .period-hint {
-  margin: -4px 0 0;
+  flex: 1 1 260px;
+  margin: 0;
 }
 .period-empty {
   margin: 0;

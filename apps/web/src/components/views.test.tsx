@@ -260,9 +260,9 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(plain(screen.getByTestId("history-count"))).toContain("3 изменения за неделю");
   });
 
-  it("says whether the ads run, with how many are shown", () => {
+  it("says the ads run without counting them: the count is the row «Объявления»", () => {
     render(<SummaryView model={summary()} work={work({ shown: [ad(), ad({ id: "a3" })] })} />);
-    expect(plain(screen.getByTestId("ads-state"))).toBe("идёт · 2 объявления");
+    expect(plain(screen.getByTestId("ads-state"))).toBe("реклама активна");
   });
 
   it("says the ads are paused or wait for Yandex", () => {
@@ -438,14 +438,15 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(within(sheet).getAllByRole("region").at(-1)).toHaveAttribute("aria-label", "Неделя 1");
   });
 
-  it("names the period of the numbers, by days in a simulation", () => {
+  it("names the period of the numbers on Direct, and leaves it to the player in a simulation", () => {
     const { unmount } = render(<SummaryView model={summary()} work={work()} />);
     expect(plain(screen.getByTestId("data-period"))).toBe("1–27 октября");
     unmount();
     const sim = { comparison: null, result: null, decisionDays: [], day: 9, totalDays: 30, scenarioTitle: "Обычный месяц", ended: false, startedOn: "2026-10-01" };
     const { container } = render(<SummaryView model={summary({ simulation: { weeks: 1 } })} work={work({ sim })} />);
-    // In a simulation the days are numbers (simulation-mode spec «Дни симуляции вместо дат»); the player names the day.
-    expect(plain(screen.getByTestId("data-period"))).toBe("дни 1–27");
+    // In a simulation the player names the day: no period over the number (analytics spec «Сводка»).
+    expect(screen.queryByTestId("data-period")).toBeNull();
+    expect(screen.getByTestId("ads-state")).toBeTruthy();
     expect(container.querySelector(".brief-mode")).toBeNull();
   });
 

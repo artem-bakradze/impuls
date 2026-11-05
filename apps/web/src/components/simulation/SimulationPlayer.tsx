@@ -13,9 +13,9 @@ export const isStepping = (status: SimulationStatus): boolean => status.status =
 
 /**
  * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
- * wide screen and over the answer on a narrow one: the day and its state, one main button «Добавить статистику» that
- * opens the window of the next period, and at its foot the training market's note with the real launch as a secondary
- * button; «Начать заново» is in its menu. Time moves only by the owner's periods, and the run has no end.
+ * wide screen and over the answer on a narrow one: the day, one main button «Добавить статистику» that opens the window
+ * of the next period and also says when a period is being reviewed or broke off, and at its foot the training market's
+ * note. «Начать заново» and «Запустить по-настоящему» are in its menu. Time moves only by the owner's periods.
  */
 export function SimulationPlayer({
   status,
@@ -32,8 +32,6 @@ export function SimulationPlayer({
   const [periodOpen, setPeriodOpen] = useState(false);
   const [modal, modalHolder] = Modal.useModal();
   const stepping = isStepping(status);
-  const first = status.periods === 0 && !stepping && !status.failed;
-  const tag = status.failed ? "прерван" : stepping ? "идёт" : first ? "впереди" : "прожит";
 
   const run = (control: SimulationAction) => void act(control);
   const confirmGoReal = () =>
@@ -45,9 +43,13 @@ export function SimulationPlayer({
       onOk: () => act({ action: "go_real" }),
     });
   const menu: MenuProps = {
-    items: [{ key: "restart", label: "Начать заново", disabled: stepping }],
+    items: [
+      { key: "restart", label: "Начать заново", disabled: stepping },
+      { key: "go_real", label: "Запустить по-настоящему", disabled: stepping },
+    ],
     onClick: ({ key }) => {
       if (key === "restart") setRestartOpen(true);
+      if (key === "go_real") void confirmGoReal();
     },
   };
   // The window closes once the server took the period; a refusal stays in it.
@@ -64,12 +66,9 @@ export function SimulationPlayer({
           <span className="studio-day-num" data-testid="studio-day">
             День {status.day}
           </span>
-          <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : first ? "muted" : "done"}`} data-testid="studio-status">
-            {tag}
-          </span>
         </div>
         <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново" className="studio-menu" />
+          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново, запустить по-настоящему" className="studio-menu" />
         </Dropdown>
       </div>
       <div className="sim-player-actions">
@@ -82,9 +81,6 @@ export function SimulationPlayer({
         <p className="studio-disclaimer" data-testid="studio-disclaimer">
           <ExperimentOutlined aria-hidden="true" /> Учебный рынок · деньги не списываются
         </p>
-        <Button className="studio-go-real" onClick={() => void confirmGoReal()} disabled={stepping}>
-          Запустить по-настоящему
-        </Button>
       </div>
 
       {periodOpen ? <PeriodDialog status={status} onClose={() => setPeriodOpen(false)} onSend={sendPeriod} /> : null}

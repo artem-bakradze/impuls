@@ -104,7 +104,8 @@ export const adsState = (input: { state: SummaryModel["state"]; simulation: bool
 export const adsStateText = (state: AdsState): string => {
   switch (state.kind) {
     case "running":
-      return `идёт · ${state.shown} ${plural(state.shown, "объявление", "объявления", "объявлений")}`;
+      // The number of ads is the row «Объявления N» below: the state says only that the advertising runs.
+      return "реклама активна";
     case "paused":
       return "на паузе";
     case "review":

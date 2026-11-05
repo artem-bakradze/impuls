@@ -27,7 +27,8 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);
   await expect(page.getByTestId("sim-player")).toBeVisible();
   await expect(page.getByTestId("studio-day")).toHaveText("День 1");
-  await expect(page.getByTestId("studio-status")).toHaveText("впереди");
+  await expect(page.getByTestId("sim-player")).not.toContainText(/впереди|прожит/);
+  await expect(page.getByTestId("sim-player").getByRole("button", { name: "Запустить по-настоящему", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Добавить статистику" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Прожить/ })).toHaveCount(0);
   await expect(page.getByTestId("studio-review")).toHaveCount(0);
@@ -56,7 +57,7 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await field("Расход, ₽").fill("100");
   await page.getByTestId("period-send").click();
   await expect(dialog).toContainText("Переходов не может быть больше, чем показов");
-  await expect(page.getByTestId("studio-status")).toHaveText("впереди");
+  await expect(page.getByTestId("studio-day")).toHaveText("День 1");
   for (const width of [360, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await overflow()).toBeLessThanOrEqual(0);
@@ -75,9 +76,10 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await expect(page.getByRole("heading", { level: 2, name: "Разбор · дни 1–7" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("period-review.png"), fullPage: true });
 
-  // The answer: the period by days, no month, the owner's numbers in it.
+  // The answer: no period over the number (the player says the day), the state without a count, no month.
   await expect(page.getByTestId("brief")).toBeVisible();
-  await expect(page.getByTestId("data-period")).toHaveText(/^дни \d+–\d+$/);
+  await expect(page.getByTestId("data-period")).toHaveCount(0);
+  await expect(page.getByTestId("ads-state")).toHaveText("реклама активна");
   await expect(page.getByTestId("review-rail")).not.toContainText(/января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря/);
 
   // The history: the period as its section, without a comparison with a control run.
@@ -110,27 +112,31 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await modal.getByRole("button", { name: "Понятно" }).click();
   await page.getByRole("button", { name: "Закрыть" }).click();
 
-  // An empty window is a period with no traffic: one day, reviewed by the service too.
+  // «Заполнить примерно»: plausible numbers of one day the window accepts, sent as they are.
   await page.getByRole("button", { name: "Добавить статистику" }).click();
   await dialog.getByText("1 день").click();
   await expect(page.getByText("Статистика за день 8")).toBeVisible();
+  await page.getByTestId("period-fill").click();
+  await expect(field("Показы")).not.toHaveValue("");
+  await expect(field("Расход, ₽")).not.toHaveValue("");
   await page.getByTestId("period-send").click();
   await lived(page, "День 9");
   await expect(page.getByRole("heading", { level: 2, name: "Разбор дня · день 8" })).toBeVisible();
 
-  // The old address of the studio opens «Реклама»; the real launch is a visible button of the player.
+  // The old address of the studio opens «Реклама»; the real launch is in the player's menu.
   await page.goto("/simulation");
   await page.waitForURL("**/summary");
   await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
-  await page.getByTestId("sim-player").getByRole("button", { name: "Запустить по-настоящему" }).click();
+  await page.getByRole("button", { name: /^Ещё/ }).click();
+  await page.getByRole("menuitem", { name: "Запустить по-настоящему" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");
   await expectStep(page, 3, "Объявления и запуск");
 });
 
-/** Waits until the period is reviewed: the player says it is lived on `day`, and the review is there. */
+/** Waits until the period is reviewed: the player is on `day` and offers the next period, and the review is there. */
 const lived = async (page: Page, day: string) => {
   await expect(page.getByTestId("studio-day")).toHaveText(day, { timeout: 180_000 });
-  await expect(page.getByTestId("studio-status")).toHaveText("прожит", { timeout: 180_000 });
+  await expect(page.getByRole("button", { name: "Добавить статистику" })).toBeEnabled({ timeout: 180_000 });
   await expect(page.getByTestId("studio-review")).toBeVisible({ timeout: 180_000 });
 };

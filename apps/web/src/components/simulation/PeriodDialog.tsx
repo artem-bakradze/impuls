@@ -2,7 +2,7 @@
 
 import { Alert, Button, InputNumber, Modal, Segmented } from "antd";
 import { useState } from "react";
-import { checkPeriod, PERIOD_DAYS } from "@impuls/worker/simulation-period";
+import { checkPeriod, PERIOD_DAYS, suggestPeriod } from "@impuls/worker/simulation-period";
 import type { PeriodAdInput, PeriodDays, PeriodError, PeriodField, PeriodForm } from "@impuls/worker/simulation-period";
 import { callApi } from "@/lib/client-api";
 import { formatRub, plural } from "@/lib/format";
@@ -56,6 +56,12 @@ export function PeriodDialog({
   const [sending, setSending] = useState(false);
 
   const set = (adId: string, field: PeriodField, value: number | null) => setValues((v) => ({ ...v, [adId]: { ...v[adId], [field]: value } }));
+  /** «Заполнить примерно»: plausible numbers of the chosen period in every field, which the owner may correct. */
+  const fill = () => {
+    setValues(Object.fromEntries(suggestPeriod(form, days).map(({ adId, ...numbers }) => [adId, numbers])));
+    setErrors([]);
+    setRefusal(null);
+  };
   const fieldError = (adId: string, field: PeriodField) => errors.find((e) => e.adId === adId && e.field === field)?.message ?? null;
 
   const send = async () => {
@@ -100,7 +106,14 @@ export function PeriodDialog({
           options={PERIOD_DAYS.map((d) => ({ value: d, label: DAY_LABELS[d] }))}
           aria-label="Период"
         />
-        <p className="t-small t-muted period-hint">Сервис получит эти цифры как отчёт Директа за эти дни и сразу разберёт их. Пустое поле — ноль.</p>
+        <div className="period-hint-row">
+          <p className="t-small t-muted period-hint">Сервис получит эти цифры как отчёт Директа за эти дни и сразу разберёт их. Пустое поле — ноль.</p>
+          {form.directions.length > 0 ? (
+            <Button size="small" onClick={fill} data-testid="period-fill">
+              Заполнить примерно
+            </Button>
+          ) : null}
+        </div>
         {refusal !== null ? <Alert type="warning" showIcon title={refusal} /> : null}
         {form.directions.length === 0 ? <p className="period-empty">Сейчас ни одно объявление не показывается</p> : null}
         {form.directions.map((direction) => {

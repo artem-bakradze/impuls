@@ -162,7 +162,8 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
           <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
             <div className="brief-card panel">
               <div className="brief-date">
-                <span data-testid="data-period">{period}</span>
+                {/* In a simulation the player says the day: no period over the number (analytics spec «Сводка»). */}
+                {model.simulation ? null : <span data-testid="data-period">{period}</span>}
                 <span className="brief-state" data-state={state.kind} data-testid="ads-state">
                   <i aria-hidden="true" />
                   {adsStateText(state)}

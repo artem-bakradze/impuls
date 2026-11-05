@@ -62,11 +62,12 @@ describe("the answer's state, goal and budget pace (analytics spec «Сводк�
   });
 
   it("says whether the ads run, wait for Yandex or are not shown", () => {
-    expect(adsStateText(adsState({ state: "running", simulation: true, moderationPending: 0, shown: 8 }))).toBe("идёт · 8 объявлений");
+    // The number of ads is the row «Объявления N»; the state only says the advertising runs.
+    expect(adsStateText(adsState({ state: "running", simulation: true, moderationPending: 0, shown: 8 }))).toBe("реклама активна");
     expect(adsStateText(adsState({ state: "paused", simulation: false, moderationPending: 0, shown: 8 }))).toBe("на паузе");
     expect(adsStateText(adsState({ state: "first_day", simulation: false, moderationPending: 3, shown: 0 }))).toBe("на проверке Яндекса");
     expect(adsStateText(adsState({ state: "first_day", simulation: true, moderationPending: 3, shown: 0 }))).toBe("объявления не показываются");
-    expect(adsStateText(adsState({ state: "running", simulation: false, moderationPending: 0, shown: 1 }))).toBe("идёт · 1 объявление");
+    expect(adsStateText(adsState({ state: "running", simulation: false, moderationPending: 0, shown: 1 }))).toBe("реклама активна");
   });
 
   it("marks a met goal green and never a reference", () => {

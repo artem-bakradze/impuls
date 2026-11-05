@@ -1,7 +1,7 @@
 import { HeuristicPolicy, IdlePolicy } from "@impuls/agent";
 import type { AgentRuntime, AgentToolbox, BreakdownAnswer, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { monthBudget, rubles, toLocalDate } from "@impuls/core";
-import { controlSimulation, createLogger, deliverNotifications, handleWebJob, launchSimulation, runAgentTurn, withSimulation } from "@impuls/worker";
+import { checkPeriod, controlSimulation, createLogger, deliverNotifications, handleWebJob, launchSimulation, runAgentTurn, suggestPeriod, withSimulation } from "@impuls/worker";
 import type { Mailer } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect, vi } from "vitest";
@@ -232,6 +232,56 @@ describeFeature(feature, ({ Scenario }) => {
       expect((await w.record()).steps).toMatchObject([{ kind: "period", state: "completed" }]);
       expect((await w.store.turns("b1")).map((t) => t.trigger)).toEqual(["period_review"]);
       expect((await w.store.stats("b1", "2026-10-01", "2027-01-31")).reduce((s, r) => s + r.spend + r.leads, 0)).toBe(0);
+    });
+  });
+
+  Scenario("Заполнить примерно", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    let form: Awaited<ReturnType<OwnerWorld["form"]>>;
+    let rows: ReturnType<typeof suggestPeriod> = [];
+    Given("реклама запущена в симуляции", async () => {
+      w = await ownerWorld();
+    });
+    When("владелец открывает окно недели и нажимает «Заполнить примерно»", async () => {
+      form = await w.form();
+      rows = suggestPeriod(form, 7);
+    });
+    Then("у каждого объявления заполнены четыре поля, которые окно принимает, расход каждого направления не больше того, что Директ потратил бы за 7 дней", () => {
+      expect(rows.map((r) => r.adId).sort()).toEqual(form.directions.flatMap((d) => d.ads.map((a) => a.id)).sort());
+      expect(rows.every((r) => r.impressions >= r.clicks && r.clicks >= r.leads && r.clicks > 0 && r.spendRub > 0)).toBe(true);
+      expect(checkPeriod(form, 7, rows)).toEqual({ errors: [], changed: false });
+      for (const direction of form.directions) {
+        const ids = new Set(direction.ads.map((a) => a.id));
+        expect(rows.filter((r) => ids.has(r.adId)).reduce((s, r) => s + r.spendRub, 0)).toBeLessThanOrEqual(direction.roomRub[7]);
+      }
+    });
+    And("ничего не отправлено, пока владелец не нажмёт «Отправить сервису»", async () => {
+      expect((await w.record()).steps).toEqual([]);
+      expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
+    });
+  });
+
+  Scenario("Цифры продолжают прошлый период", ({ Given, When, Then }) => {
+    let w: OwnerWorld;
+    let rows: ReturnType<typeof suggestPeriod> = [];
+    let ids: Record<string, string> = {};
+    Given("в прошлом периоде одно объявление приводило обращения по 200 ₽, а другое не привело ни одного", async () => {
+      w = await ownerWorld();
+      ids = Object.fromEntries((await w.rowsOf({ [GOOD]: CHEAP_LEADS, [BAD]: CHEAP_LEADS })).map((r, i) => [i === 0 ? GOOD : BAD, r.adId]));
+      await w.enter(7, { [GOOD]: { impressions: 1_000, clicks: 50, leads: 4, spendRub: 800 }, [BAD]: { impressions: 1_000, clicks: 40, leads: 0, spendRub: 600 } });
+    });
+    When("владелец нажимает «Заполнить примерно» в окне следующего периода", async () => {
+      rows = suggestPeriod(await w.form(), 7);
+    });
+    Then("у первого цена обращения близка к прежней, а у второго обращений нет", () => {
+      const good = rows.find((r) => r.adId === ids[GOOD]);
+      const bad = rows.find((r) => r.adId === ids[BAD]);
+      expect(good?.leads).toBeGreaterThan(0);
+      const costPerLead = (good?.spendRub ?? 0) / (good?.leads ?? 1);
+      expect(costPerLead).toBeGreaterThan(200 * 0.7);
+      expect(costPerLead).toBeLessThan(200 * 1.4);
+      expect(bad?.clicks).toBeGreaterThan(0);
+      expect(bad?.leads).toBe(0);
     });
   });
 

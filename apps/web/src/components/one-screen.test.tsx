@@ -145,7 +145,9 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     const { container } = render(<SummaryView model={model()} work={work({ sim, lastChange: { text: "Цена перехода +10%", date: "2026-11-11", reason: null, entryId: review.id, historyId: "c1", item } })} simulation={status()} />);
     const player = screen.getByTestId("sim-player");
     expect(plain(player.querySelector("[data-testid=studio-day]"))).toBe("День 11");
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("прожит");
+    // Just the day: no «прожит», no «впереди».
+    expect(screen.queryByTestId("studio-status")).toBeNull();
+    expect(plain(player)).not.toMatch(/прожит|впереди|прерван/);
     // The run has no visible length and no days or weeks to press: the owner enters periods.
     expect(plain(player)).not.toMatch(/из 30|сценари/);
     expect(player.querySelector(".studio-strip")).toBeNull();
@@ -155,7 +157,8 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     // The player is pressed where its result is read: in the review's column, right under the review.
     expect(player.parentElement?.className).toBe("brief-aside");
     expect(player.previousElementSibling).toBe(screen.getByTestId("review-rail"));
-    expect(player.querySelector(".sim-player-foot")?.textContent).toContain("Запустить по-настоящему");
+    // The real launch is in the player's menu, not a button of it.
+    expect(screen.queryByRole("button", { name: "Запустить по-настоящему" })).toBeNull();
     expect(screen.getByTestId("brief")).toBeTruthy();
     // The review beside the answer: the assistant's avatar, its name, the day as a number, the message.
     const rail = screen.getByTestId("review-rail");
@@ -183,7 +186,7 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     };
     const nextCheck = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16", more: 0 };
     render(<SummaryView model={model()} work={work({ sim, nextCheck, journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [expecting] }] })} simulation={status()} />);
-    expect(plain(screen.getByTestId("data-period"))).toBe("дни 1–11");
+    expect(screen.queryByTestId("data-period")).toBeNull();
     expect(plain(screen.getByTestId("next-step"))).toBe("Дальшев день 16 сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
     const texts = [...screen.getByTestId("studio-review").querySelectorAll(".studio-msg-text")].map((p) => plain(p));
     expect(texts).toEqual(["Сохранил наблюдение и проверю результаты ко дню 15.", "В день 16 проверю, останется ли стоимость обращений с компьютеров ниже цели."]);
@@ -192,7 +195,6 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
 
   it("types while the service reviews a period, with no way to send another", () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status({ status: "stepping", step: { from: 11, to: 17 } })} />);
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
     expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
     expect(screen.getByTestId("studio-thinking")).toHaveTextContent("Сервис разбирает дни 11–17…");
     expect(screen.getByRole("status", { name: "Сервис пишет разбор" })).toBeTruthy();
@@ -220,23 +222,23 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
 
   it("promises the first review before the first statistics", () => {
     render(<SummaryView model={model({ state: "first_day", leads: { value: 0, previous: 0 }, spentMonth: 0 })} work={work({ sim, journal: [], shown: [] })} simulation={status({ day: 1, periods: 0, changes: 1 })} />);
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("впереди");
     expect(screen.getByRole("button", { name: "Добавить статистику" })).toBeTruthy();
     expect(screen.getByText("Когда вы добавите статистику, я напишу здесь, что заметил в рекламе и что изменил.")).toBeTruthy();
     expect(screen.getByText("первые данные — после статистики")).toBeTruthy();
     expect(plain(document.body)).not.toContain("первые данные завтра");
   });
 
-  it("shows «Запустить по-настоящему» without opening a menu, behind the same confirmation", async () => {
+  it("keeps «Запустить по-настоящему» in the player's menu, behind the same confirmation", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Запустить по-настоящему" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ещё/ }));
+    fireEvent.click(await screen.findByText("Запустить по-настоящему"));
     expect((await screen.findAllByText("Запустить настоящую рекламу?")).length).toBeGreaterThan(0);
     expect(screen.getByText(/Данные симуляции удалятся без возможности вернуть/)).toBeTruthy();
   });
 
   it("starts over in one action, said without the words «модель» and «агент»", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Ещё: начать заново" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ещё/ }));
     fireEvent.click(await screen.findByText("Начать заново"));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Цифры и история симуляции удалятся, а реклама начнётся с первого дня с теми же объявлениями.");
@@ -318,8 +320,25 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
         ],
       },
     ]);
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
+    expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
     expect(screen.getByTestId("studio-thinking")).toHaveTextContent("Сервис разбирает дни 11–17…");
+  });
+
+  it("fills the window approximately, with numbers it accepts, and sends nothing", async () => {
+    const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(status()) }));
+    vi.stubGlobal("fetch", fetch);
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
+    await open();
+    fireEvent.click(screen.getByTestId("period-fill"));
+    const number = (title: string, label: string) => Number(field(title, label).value.replace(/\D/g, ""));
+    for (const title of ["Автоматизация ресторанов доставки", "Интеграция с агрегаторами"]) {
+      expect(number(title, "Показы")).toBeGreaterThanOrEqual(number(title, "Переходы"));
+      expect(number(title, "Переходы")).toBeGreaterThan(0);
+      expect(number(title, "Переходы")).toBeGreaterThanOrEqual(number(title, "Обращения"));
+      expect(number(title, "Расход, ₽")).toBeGreaterThan(0);
+    }
+    expect(number("Автоматизация ресторанов доставки", "Расход, ₽") + number("Интеграция с агрегаторами", "Расход, ₽")).toBeLessThanOrEqual(4_200);
+    expect(fetch.mock.calls.filter((call) => (call as unknown[])[1] !== undefined)).toEqual([]);
   });
 
   it("says the advertising changed and shows the ads shown now when the server refuses the period", async () => {
@@ -372,7 +391,7 @@ describe("a sent period (simulation-mode spec: a period that is not over is not 
     vi.unstubAllGlobals();
   });
 
-  it("keeps the period going until the worker takes it, instead of «прожит» about the day before", async () => {
+  it("keeps the period going until the worker takes it, instead of the day before as if nothing were sent", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let server: SimulationStatus = status();
     vi.stubGlobal(
@@ -389,18 +408,20 @@ describe("a sent period (simulation-mode spec: a period that is not over is not 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_100);
     });
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
+    expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
     expect(screen.queryByTestId("studio-review")).toBeNull();
     server = status({ status: "stepping", step: { from: 11, to: 17 }, agentTurn: true });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_100);
     });
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("идёт");
+    expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
     server = status({ day: 18, periods: 2 });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_100);
     });
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("прожит");
+    // The period is over: the main button offers the next one again (the job's own wait may still hold it a moment).
+    expect(screen.getByRole("button", { name: "Добавить статистику" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Сервис разбирает…" })).toBeNull();
     expect(screen.getByTestId("studio-day")).toHaveTextContent("День 18");
   });
 });
