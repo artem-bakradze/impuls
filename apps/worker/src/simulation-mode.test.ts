@@ -139,25 +139,42 @@ describe("simulation mode", () => {
     expect(record?.simNow.getTime()).toBeGreaterThan(decision?.createdAt.getTime() ?? 0);
   });
 
-  it("lives the last 2 days of the scenario with the last step, then offers to continue", async () => {
+  it("lives a whole week past the scenario's last day, extending the run by 30 days first", async () => {
     const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan(), "regular");
     for (let week = 0; week < 4; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
     await controlSimulation(ctx, "b1", { action: "step_day" });
     await controlSimulation(ctx, "b1", { action: "step_week" });
     const record = await store.getSimulation("b1");
-    expect(record?.steps.map((s) => [s.kind, Math.round((s.to.getTime() - s.from.getTime()) / 86_400_000)])).toEqual([
-      ["week", 7],
-      ["week", 7],
-      ["week", 7],
-      ["week", 7],
-      ["day", 1],
-      ["week", 1],
+    if (record === null) throw new Error("no simulation");
+    const days = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / 86_400_000);
+    // The last week is not cut to the scenario's last day: the run has no end for the owner.
+    expect(record.steps.map((s) => [s.kind, days(s.from, s.to), s.state])).toEqual([
+      ["week", 7, "completed"],
+      ["week", 7, "completed"],
+      ["week", 7, "completed"],
+      ["week", 7, "completed"],
+      ["day", 1, "completed"],
+      ["week", 7, "completed"],
     ]);
-    expect(record?.simNow.getTime()).toBe(record?.endsAt.getTime());
-    // At the end a step does nothing until the owner continues for 30 more days.
-    await controlSimulation(ctx, "b1", { action: "step_week" });
-    expect((await store.getSimulation("b1"))?.steps).toHaveLength(6);
+    expect(days(record.startedAt, record.endsAt)).toBe(60);
+    expect(days(record.startedAt, record.simNow)).toBe(36);
+    // The control run covers the extended run, as after «Продолжить ещё 30 дней».
+    expect(record.baseline?.days).toBe(60);
+  });
+
+  it("extends the run when a day step starts on the scenario's last moment", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan(), "regular");
+    for (let week = 0; week < 4; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
+    for (let day = 0; day < 2; day++) await controlSimulation(ctx, "b1", { action: "step_day" });
+    const ended = await store.getSimulation("b1");
+    expect(ended?.simNow.getTime()).toBe(ended?.endsAt.getTime());
+    await controlSimulation(ctx, "b1", { action: "step_day" });
+    const record = await store.getSimulation("b1");
+    if (record === null) throw new Error("no simulation");
+    expect(record.steps).toHaveLength(7);
+    expect(Math.round((record.simNow.getTime() - record.startedAt.getTime()) / 86_400_000)).toBe(31);
   });
 
   it("starts a calendar month on the 1st, «Конец месяца» 4 days before a month ends", () => {

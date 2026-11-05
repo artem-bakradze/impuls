@@ -134,7 +134,7 @@ test("an owner plays the simulation on «Реклама» and goes on to a real 
   await page.goto("/simulation");
   await page.waitForURL("**/summary");
   await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
-  await expect(page.getByTestId("studio-scenario")).toContainText("сценарий «");
+  await expect(page.getByTestId("sim-player")).not.toContainText(/из 30|сценарий/);
   await page.getByTestId("sim-player").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");

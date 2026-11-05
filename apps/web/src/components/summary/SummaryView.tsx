@@ -265,7 +265,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
           {/* The review, and in a simulation the player under it: the next step is pressed where its result is read. */}
           <div className="brief-aside">
             <ReviewRail review={review} thinking={thinking} reveal={review !== null && review.id !== openedReview.current} onRollback={setRollback} onMore={openHistory} />
-            {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} scenarioTitle={work.sim?.scenarioTitle ?? null} /> : null}
+            {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} /> : null}
           </div>
         </div>
 

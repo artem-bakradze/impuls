@@ -50,8 +50,10 @@ const run = async (rollBackOne: boolean, agent: AgentRuntime = new IdlePolicy())
   };
   const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine() };
   await launchSimulation(ctx, "b1", plan, "dead_ad");
-  // Four weeks and the last two days: 30 days in five steps, each with its week story.
-  for (let week = 0; week < 5; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
+  // Four weeks and the last two days: the scenario's 30 days to its end. A week step is never cut at the end any more,
+  // so the last two days are day steps.
+  for (let week = 0; week < 4; week++) await controlSimulation(ctx, "b1", { action: "step_week" });
+  for (let day = 0; day < 2; day++) await controlSimulation(ctx, "b1", { action: "step_day" });
   if (rollBackOne) {
     // The owner changes the show hours and takes it back; the worker routes both into the simulated world.
     const direction = (await store.directions("b1"))[0];
@@ -185,7 +187,7 @@ describe("ads and journal of «Реклама» in a simulation (simulation-mode
     const model = await run(false, new HeuristicPolicy());
     const entries = model.work.journal.flatMap((s) => s.entries);
     expect(entries.map((e) => e.date)).toEqual([...entries.map((e) => e.date)].sort());
-    expect(model.work.journal.filter((s) => s.week !== null).map((s) => s.week)).toEqual([1, 2, 3, 4, 5]);
+    expect(model.work.journal.filter((s) => s.week !== null).map((s) => s.week)).toEqual([1, 2, 3, 4]);
     // The launch day is before the calendar Monday: the week's header starts on that day, not on Monday.
     expect(model.work.journal[0]?.from).toBe(model.work.journal[0]?.entries[0]?.date ?? "");
     const pause = entries.find((e) => e.changes.some((c) => c.text === "Отключил объявление «Маникюр 1»"));
@@ -229,7 +231,7 @@ describe("ads and journal of «Реклама» in a simulation (simulation-mode
 describe("week story (simulation-mode spec «История недели»)", () => {
   it("tells a week with a decision: the ads with the rules' estimate and the truth, the insights, the decision", async () => {
     const model = await run(false, new HeuristicPolicy());
-    const weeks = await Promise.all([1, 2, 3, 4, 5].map((w) => model.storyOf(w)));
+    const weeks = await Promise.all([1, 2, 3, 4].map((w) => model.storyOf(w)));
     const withDecision = weeks.find((w) => (w?.decisions.length ?? 0) > 0);
     expect(withDecision).toBeDefined();
     if (!withDecision) throw new Error("no week with a decision");
@@ -241,9 +243,9 @@ describe("week story (simulation-mode spec «История недели»)", ()
     expect(withDecision.noDecisionReason).toBeNull();
     // Opened again, the same week reads the same.
     expect(await model.storyOf(withDecision.week)).toEqual(withDecision);
-    // The last step lived the scenario's last two days.
-    expect(weeks[4]?.days).toHaveLength(2);
-    expect(weeks[0]?.weeks.map((w) => w.week)).toEqual([1, 2, 3, 4, 5]);
+    // Every lived week is whole; the day steps at the end are not weeks.
+    expect(weeks.map((w) => w?.days.length)).toEqual([7, 7, 7, 7]);
+    expect(weeks[0]?.weeks.map((w) => w.week)).toEqual([1, 2, 3, 4]);
   }, 60_000);
 
   it("says why nothing changed in a week without decisions", async () => {

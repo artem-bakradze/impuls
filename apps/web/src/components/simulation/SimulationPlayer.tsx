@@ -4,48 +4,35 @@ import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
-import { DIVERGED_TEXT, stepWeekLabel } from "@/lib/simulation-model";
+import { DIVERGED_TEXT } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
-
-function DayStrip({ total, done, now }: { total: number; done: number; now: boolean }) {
-  return (
-    <div className="studio-strip" style={{ gridTemplateColumns: `repeat(${Math.max(1, total)}, minmax(0, 1fr))` }} aria-hidden="true">
-      {Array.from({ length: Math.max(1, total) }, (_, index) => (
-        <i key={index} data-state={index < done ? "done" : now && index === done ? "now" : "todo"} />
-      ))}
-    </div>
-  );
-}
 
 /** Whether the day goes: a step runs or the service reviews its day. */
 export const isStepping = (status: SimulationStatus): boolean => status.status === "stepping" || status.agentTurn !== null;
 
 /**
  * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
- * wide screen and over the answer on a narrow one: the scenario's day and state, its days strip, one main button for
- * the next step with «Прожить неделю» under it, and at its foot the training market's note with the real launch as a
- * secondary button; «Начать заново» is in its menu. Time moves only by these presses.
+ * wide screen and over the answer on a narrow one: the day and its state, one main button for the next step with
+ * «Прожить неделю» under it, and at its foot the training market's note with the real launch as a secondary button;
+ * «Начать заново» is in its menu. Time moves only by these presses. The run has no end for the owner: neither the
+ * scenario's length nor its name is shown, and after its last day the next step goes on (the worker extends the run).
  */
 export function SimulationPlayer({
   status,
   busy,
   error,
   act,
-  scenarioTitle,
 }: {
   status: SimulationStatus;
   busy: string | null;
   error: string | null;
   act: (control: SimulationAction) => Promise<void>;
-  scenarioTitle: string | null;
 }) {
   const [restartOpen, setRestartOpen] = useState(false);
   const [modal, modalHolder] = Modal.useModal();
   const stepping = isStepping(status);
-  const firstDay = status.weeks === 0 && status.day === 1 && !stepping && !status.ended;
-  const shownDay = status.ended ? status.totalDays : status.day;
-  const done = stepping ? Math.max(0, status.day - 1) : firstDay ? 0 : shownDay;
-  const tag = status.failed ? "прерван" : stepping ? "идёт" : status.ended ? "завершён" : firstDay ? "впереди" : "прожит";
+  const firstDay = status.weeks === 0 && status.day === 1 && !stepping;
+  const tag = status.failed ? "прерван" : stepping ? "идёт" : firstDay ? "впереди" : "прожит";
 
   const run = (control: SimulationAction) => void act(control);
   const restart = (mode: "repeat" | "fresh") => {
@@ -67,22 +54,16 @@ export function SimulationPlayer({
     },
   };
 
-  const primaryLabel = status.ended
-    ? "Продолжить ещё 30 дней"
-    : status.failed
-      ? "Продолжить расчёт"
-      : stepping
-        ? status.agentTurn
-          ? "Сервис разбирает…"
-          : "День идёт…"
-        : firstDay
-          ? "Прожить день"
-          : "Прожить следующий день";
-  const primary = () => {
-    if (status.ended) return run({ action: "extend" });
-    if (status.failed) return run({ action: "step_week" });
-    return run({ action: "step_day" });
-  };
+  const primaryLabel = status.failed
+    ? "Продолжить расчёт"
+    : stepping
+      ? status.agentTurn
+        ? "Сервис разбирает…"
+        : "День идёт…"
+      : firstDay
+        ? "Прожить день"
+        : "Прожить следующий день";
+  const primary = () => run({ action: status.failed ? "step_week" : "step_day" });
 
   return (
     <section className="sim-player panel" aria-label="Симуляция" data-testid="sim-player">
@@ -90,10 +71,9 @@ export function SimulationPlayer({
       <div className="sim-player-head">
         <div className="studio-day">
           <span className="studio-day-num" data-testid="studio-day">
-            День {shownDay}
+            День {status.day}
           </span>
-          <span className="studio-day-of">из {status.totalDays}</span>
-          <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : status.ended ? "done" : firstDay ? "muted" : "done"}`} data-testid="studio-status">
+          <span className={`studio-tag ${status.failed ? "bad" : stepping ? "live" : firstDay ? "muted" : "done"}`} data-testid="studio-status">
             {tag}
           </span>
         </div>
@@ -101,17 +81,13 @@ export function SimulationPlayer({
           <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново" className="studio-menu" />
         </Dropdown>
       </div>
-      <span className="studio-scenario" data-testid="studio-scenario">
-        {scenarioTitle ? `сценарий «${scenarioTitle}»` : "симуляция"}
-      </span>
-      <DayStrip total={status.totalDays} done={done} now={stepping} />
       <div className="sim-player-actions">
         <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
           {primaryLabel}
         </button>
-        {!status.ended && !status.failed && !stepping ? (
+        {!status.failed && !stepping ? (
           <button type="button" className="studio-link" onClick={() => run({ action: "step_week" })} disabled={busy !== null}>
-            {stepWeekLabel(status.daysLeft)}
+            Прожить неделю
           </button>
         ) : null}
       </div>

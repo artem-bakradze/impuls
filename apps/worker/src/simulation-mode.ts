@@ -468,19 +468,26 @@ const captureWeekReport = async (world: SimulationWorld): Promise<string> => {
  * «Прожить неделю» and «+1 день» (simulation-mode spec «Виртуальное время и пульт»): the step's window is recorded
  * first, so the pult shows which day goes; then the time moves in parts that end after every agent turn, so the pult
  * follows the step. Meanwhile the simulation is `stepping`. The step runs to its end on the server even if the tab is
- * closed; the window is cut to where the scenario ended.
+ * closed. The run has no end for the owner (simulation-mode spec «Симуляция как отдельный режим»): a step that goes past
+ * the scenario's last day first extends the run by another scenario length, as «Продолжить ещё 30 дней» did, and then
+ * runs whole.
  */
 const step = async (base: JobContext, businessId: string, kind: "week" | "day"): Promise<void> => {
-  const target = await withSimulation(base, businessId, (world) => {
+  const target = await withSimulation(base, businessId, async (world) => {
     const from = world.clock.now();
-    if (world.record.status === "stepping") return Promise.resolve(null);
+    if (world.record.status === "stepping") return null;
     const previous = world.record.steps.at(-1);
     if (previous?.state === "failed") {
       world.record = { ...world.record, status: "stepping", steps: world.record.steps.map((s, i) => i === world.record.steps.length - 1 ? { ...s, state: "running", errorCode: undefined } : s) };
-      return Promise.resolve(previous.to);
+      return previous.to;
     }
-    if (from.getTime() + HOUR_MS > world.record.endsAt.getTime()) return Promise.resolve(null);
-    const to = new Date(Math.min(from.getTime() + (kind === "week" ? WEEK_DAYS : 1) * DAY_MS, world.record.endsAt.getTime()));
+    const length = (kind === "week" ? WEEK_DAYS : 1) * DAY_MS;
+    if (from.getTime() + length > world.record.endsAt.getTime()) {
+      world.record = { ...world.record, endsAt: new Date(world.record.endsAt.getTime() + SIMULATION_DAYS * DAY_MS) };
+      world.record = { ...world.record, baseline: await fullBaseline(world) };
+      createLogger().info("Simulation run extended", { businessId, endsAt: world.record.endsAt.toISOString() });
+    }
+    const to = new Date(from.getTime() + length);
     // «Вы изменили ход прогона» has been on the pult since the last step: it is said once.
     const replay = world.record.replay?.diverged ? { ...world.record.replay, notified: true } : world.record.replay;
     world.record = { ...world.record, status: "stepping", steps: [...world.record.steps, { kind, from, to, state: "running" }], replay };

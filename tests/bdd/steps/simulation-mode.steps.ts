@@ -27,7 +27,7 @@ import { expect } from "vitest";
 import { feedDays } from "../../../apps/web/src/lib/insights-model";
 import type { DayReviewModel } from "../../../apps/web/src/lib/insights-model";
 import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
-import { agentTurnText, DIVERGED_TEXT, simulationStatusOf, stepText, stepWeekLabel } from "../../../apps/web/src/lib/simulation-model";
+import { agentTurnText, DIVERGED_TEXT, simulationStatusOf, stepText } from "../../../apps/web/src/lib/simulation-model";
 import { buildWeekStory } from "../../../apps/web/src/lib/week-story";
 import { buildDecisionScreen, scenarioTruth } from "../../../apps/web/src/lib/simulation-screen";
 import { featurePath } from "./world";
@@ -399,10 +399,10 @@ describeFeature(feature, ({ Scenario }) => {
       started = Date.now();
       await controlSimulation(w.ctx, "b1", { action: "step_week" });
     });
-    Then("не позже чем через 30 секунд пульт показывает «День 8 из 30», расходы и обращения выросли, а у недели 1 есть история", async () => {
+    Then("не позже чем через 30 секунд пульт показывает «День 8», расходы и обращения выросли, а у недели 1 есть история", async () => {
       expect((Date.now() - started) / 1_000).toBeLessThan(30);
       const status = await pult(w);
-      expect(`День ${status.day} из ${status.totalDays}`).toBe("День 8 из 30");
+      expect(`День ${status.day}`).toBe("День 8");
       const story = await weekStory(w, 1);
       expect(story?.totals.spend).toBeGreaterThan(0);
       expect(story?.days).toHaveLength(7);
@@ -465,22 +465,25 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario("Последний неполный шаг", ({ Given, When, Then }) => {
+  Scenario("Неделя у конца сценария", ({ Given, When, Then }) => {
     let w: World;
-    let label = "";
     Given("реклама запущена в симуляции со сценарием «Обычный месяц» и дошла до 29-го дня", async () => {
       w = await launched("Обычный месяц");
       for (let week = 0; week < 4; week++) await controlSimulation(w.ctx, "b1", { action: "step_week" });
+      expect((await pult(w)).day).toBe(29);
     });
-    When("владелец смотрит на пульт", async () => {
-      const status = await pult(w);
-      expect(status.day).toBe(29);
-      label = stepWeekLabel(status.daysLeft);
-    });
-    Then("основное действие называется «Прожить оставшиеся 2 дня», а после него пульт предлагает «Продолжить ещё 30 дней»", async () => {
-      expect(label).toBe("Прожить оставшиеся 2 дня");
+    When("владелец нажимает «Прожить неделю» у конца сценария", async () => {
       await controlSimulation(w.ctx, "b1", { action: "step_week" });
-      expect((await pult(w)).ended).toBe(true);
+    });
+    Then("симуляция проживает 7 дней до 36-го дня, а не оставшиеся 2, и конца у прогона нет", async () => {
+      const status = await pult(w);
+      expect(status.day).toBe(36);
+      expect(status.status).toBe("paused");
+      expect(status.ended).toBe(false);
+      expect(status.totalDays).toBe(60);
+      const simulation = await w.store.getSimulation("b1");
+      expect(simulation?.steps.at(-1)).toMatchObject({ kind: "week", state: "completed" });
+      expect((await weekStory(w, 5))?.days).toHaveLength(7);
     });
   });
 

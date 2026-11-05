@@ -3121,10 +3121,6 @@ button.log-link {
   font-weight: 650;
   letter-spacing: -0.035em;
 }
-.studio-day-of {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
 .studio-tag {
   display: inline-flex;
   align-items: center;
@@ -3143,12 +3139,10 @@ button.log-link {
 }
 .studio-tag.done { color: var(--success); }
 .studio-tag.live { color: var(--accent); }
+/* While the day goes, its dot breathes: the one sign of progress in the player. */
+.studio-tag.live::before { animation: studioPulse 1.7s ease-in-out infinite; }
 .studio-tag.bad { color: var(--danger); }
 .studio-tag.muted { color: var(--text-3); }
-.studio-scenario {
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-}
 .studio-go-real {
   margin-left: auto;
   align-self: center;
@@ -3156,23 +3150,6 @@ button.log-link {
 .studio-menu {
   align-self: center;
   color: var(--text-2);
-}
-.studio-strip {
-  display: grid;
-  gap: 4px;
-  height: 6px;
-  margin: 16px 0 10px;
-}
-.studio-strip i {
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--surface-3);
-}
-.studio-strip i[data-state="done"] { background: var(--accent); }
-.studio-strip i[data-state="now"] {
-  background: var(--accent);
-  animation: studioPulse 1.7s ease-in-out infinite;
 }
 /* The one note about the training market: a neutral caption, not a warning (simulation-mode spec). */
 .studio-disclaimer {
@@ -3475,7 +3452,7 @@ button.log-link {
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .studio-strip i[data-state="now"],
+  .studio-tag.live::before,
   .studio-typing i,
   .studio-msg-reveal .studio-msg-text,
   .studio-msg-reveal .studio-msg-action,
@@ -3486,8 +3463,8 @@ button.log-link {
 
 /*
  * The simulation's player: under the review on a wide screen, over the answer on a narrow one. Its day and state, the
- * days strip, the next step as the one main button with the week under it, and at its foot the training market's note
- * with the real launch.
+ * next step as the one main button with the week under it, and at its foot the training market's note with the real
+ * launch.
  */
 .sim-player {
   --sim-pad: 20px;
@@ -3503,18 +3480,12 @@ button.log-link {
 .sim-player-head .studio-menu {
   margin: -4px -8px -4px auto;
 }
-.sim-player .studio-scenario {
-  display: block;
-  margin-top: 2px;
-}
-.sim-player .studio-strip {
-  margin: 14px 0 18px;
-}
 .sim-player-actions {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
+  margin-top: 16px;
 }
 .sim-player-actions .studio-link {
   align-self: center;

@@ -133,7 +133,9 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     const player = screen.getByTestId("sim-player");
     expect(plain(player.querySelector("[data-testid=studio-day]"))).toBe("День 10");
     expect(screen.getByTestId("studio-status")).toHaveTextContent("прожит");
-    expect(screen.getByTestId("studio-scenario")).toHaveTextContent("сценарий «Обычный месяц»");
+    // The run has no visible length: no «из 30», no scenario's name, no days strip.
+    expect(plain(player)).not.toMatch(/из 30|сценари/);
+    expect(player.querySelector(".studio-strip")).toBeNull();
     expect(screen.getByTestId("studio-disclaimer")).toHaveTextContent("Учебный рынок · деньги не списываются");
     expect([...container.querySelectorAll(".studio-primary")].map((b) => b.textContent)).toEqual(["Прожить следующий день"]);
     expect(screen.getByRole("button", { name: "Прожить неделю" })).toBeTruthy();
@@ -224,10 +226,14 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     expect(dialog.textContent).not.toMatch(/модел|агент/i);
   });
 
-  it("offers to continue for 30 more days when the scenario ends", () => {
+  it("goes on after the scenario's last day with the same next step, without an end", () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status({ day: 30, daysLeft: 0, ended: true })} />);
-    expect(screen.getByRole("button", { name: "Продолжить ещё 30 дней" })).toBeTruthy();
-    expect(screen.getByTestId("studio-status")).toHaveTextContent("завершён");
+    expect(screen.getByTestId("studio-day")).toHaveTextContent("День 30");
+    expect(screen.getByTestId("studio-status")).toHaveTextContent("прожит");
+    expect(screen.getByRole("button", { name: "Прожить следующий день" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Прожить неделю" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Продолжить ещё|оставш/ })).toBeNull();
+    expect(screen.getByTestId("sim-player")).not.toHaveTextContent("завершён");
   });
 });
 

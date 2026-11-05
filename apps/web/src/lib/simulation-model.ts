@@ -17,9 +17,9 @@ export interface SimulationStatus {
   /** Weeks lived so far: the newest week story is this one. */
   weeks: number;
   failed?: boolean;
-  /** Days left to the scenario's end: below 7 the main action is «Прожить оставшиеся N дней». */
+  /** Days left to the scenario's end; a step past it extends the run, so the player does not show it. */
   daysLeft: number;
-  /** The scenario's last day is reached; the pult offers to continue. */
+  /** The scenario's last day is reached; the next step extends the run, so the player does not show it. */
   ended: boolean;
   /** How many history entries there are: the pult refreshes the page when it grows. */
   changes: number;
@@ -49,10 +49,6 @@ export const elapsedText = (seconds: number): string => `${Math.floor(seconds / 
 /** «Неделя 2: идёт 10-й день» while a week runs, «Идёт 10-й день» for «+1 день». */
 export const stepText = (status: Pick<SimulationStatus, "step" | "day">): string | null =>
   status.step === null ? null : status.step.week !== null ? `Неделя ${status.step.week}: идёт ${status.day}-й день` : `Идёт ${status.day}-й день`;
-
-/** «Прожить неделю», or the days left at the end of the scenario. */
-export const stepWeekLabel = (daysLeft: number): string =>
-  daysLeft >= 7 ? "Прожить неделю" : daysLeft === 1 ? "Прожить последний день" : `Прожить оставшиеся ${daysLeft} ${daysLeft < 5 ? "дня" : "дней"}`;
 
 export const DIVERGED_TEXT = "Вы изменили ход прогона — дальше сервис решает заново";
 
