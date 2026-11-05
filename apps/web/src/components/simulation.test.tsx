@@ -4,7 +4,7 @@ import { rubles } from "@impuls/core";
 import { campaignRoom } from "@impuls/platforms";
 import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, periodForm } from "@impuls/worker";
 import type { JobContext, LaunchPlan, PeriodAdInput } from "@impuls/worker";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
 import { feedDays } from "@/lib/insights-model";
@@ -16,7 +16,6 @@ import { AdsSheet } from "./summary/AdsSheet";
 import { HistorySheet } from "./summary/HistorySheet";
 import { DayWordsContext } from "./ui/DayWordsContext";
 import { simulationWords } from "@/lib/day-words";
-import { ModeChoice } from "./wizard/SimulationChoice";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => "/summary" }));
 
@@ -186,17 +185,6 @@ describe("ads and history of «Реклама» on the owner's numbers (simulati
   });
 });
 
-describe("step 3 choice (business-onboarding spec «Превью и запуск»)", () => {
-  it("offers the simulation on the owner's own numbers, without scenarios", () => {
-    const onChange = vi.fn();
-    render(<ModeChoice mode="direct" onChange={onChange} />);
-    fireEvent.click(screen.getByLabelText("Симуляция"));
-    expect(onChange).toHaveBeenCalledWith("simulation");
-    expect(screen.getByText(/цифры рекламы задаёте вы сами/)).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/сценари|Обычный месяц/i);
-  });
-});
-
 describe("player actions", () => {
   it("accepts a period, «Продолжить расчёт» and «Начать заново», and tells the older players' actions apart", () => {
     const period = { action: "period", days: 7, ads: [{ adId: "a1", impressions: 10, clicks: 1, leads: 0, spendRub: 30 }] };
@@ -206,7 +194,8 @@ describe("player actions", () => {
     // «Прогнать заново» of the older player is today's «Начать заново»; its «Повторить этот прогон» is gone.
     expect(currentAction(SimulationControlBody.parse({ action: "restart", mode: "fresh" }))).toEqual({ action: "restart" });
     expect(currentAction(SimulationControlBody.parse({ action: "restart", mode: "repeat" }))).toBeNull();
-    for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "extend" }, { action: "pause" }, { action: "speed", speed: "fast" }]) {
+    // «Запустить по-настоящему» is gone too: the mode follows the login (demo-login).
+    for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "extend" }, { action: "pause" }, { action: "speed", speed: "fast" }, { action: "go_real" }]) {
       expect(currentAction(SimulationControlBody.parse(body))).toBeNull();
     }
     expect(SimulationControlBody.safeParse({ action: "period", days: 5, ads: [] }).success).toBe(false);

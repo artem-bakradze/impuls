@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
@@ -158,7 +158,7 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     // The player is pressed where its result is read: in the review's column, right under the review.
     expect(player.parentElement?.className).toBe("brief-aside");
     expect(player.previousElementSibling).toBe(screen.getByTestId("review-rail"));
-    // The real launch is in the player's menu, not a button of it.
+    // A demo has no real ads: no «Запустить по-настоящему» in the player (demo-login).
     expect(screen.queryByRole("button", { name: "Запустить по-настоящему" })).toBeNull();
     expect(screen.getByTestId("brief")).toBeTruthy();
     // The review beside the answer: the assistant's avatar, its name, the day as a number, the message.
@@ -229,12 +229,12 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     expect(plain(document.body)).not.toContain("первые данные завтра");
   });
 
-  it("keeps «Запустить по-настоящему» in the player's menu, behind the same confirmation", async () => {
+  it("has two actions in the player's menu and no real launch (simulation-mode «Без настоящего запуска»)", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
     fireEvent.click(screen.getByRole("button", { name: /^Ещё/ }));
-    fireEvent.click(await screen.findByText("Запустить по-настоящему"));
-    expect((await screen.findAllByText("Запустить настоящую рекламу?")).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Данные симуляции удалятся без возможности вернуть/)).toBeTruthy();
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["Начать заново", "Новая кампания"]);
+    expect(screen.queryByText("Запустить по-настоящему")).toBeNull();
   });
 
   it("offers a new campaign in the player's menu, saying what goes and that the preparation starts again", async () => {
@@ -437,7 +437,35 @@ describe("a sent period (simulation-mode spec: a period that is not over is not 
 
 describe("two sections in both modes (simulation-mode spec «Симуляция как отдельный режим»)", () => {
   it("has no «Симуляция» in the navigation", () => {
-    render(<AppHeader launched signOutAction={() => Promise.resolve()} />);
+    render(<AppHeader launched demo={false} signOutAction={() => Promise.resolve()} />);
     expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual(["Импульс", "Реклама", "Настройки"]);
+  });
+});
+
+describe("leaving a demo (auth spec «Демо-вход»)", () => {
+  it("asks first in a demo, stays on «Остаться» and leaves on «Выйти»", async () => {
+    const signOut = vi.fn(() => Promise.resolve());
+    render(<AppHeader launched demo signOutAction={signOut} />);
+    const exit = within(screen.getByRole("banner")).getByRole("button", { name: /Выйти/ });
+    expect(exit.closest("form")).toBeNull();
+    fireEvent.click(exit);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Если выйти, вернуться в это демо не получится");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Остаться" }));
+    expect(signOut).not.toHaveBeenCalled();
+    fireEvent.click(exit);
+    // The first window may still be fading out: the newest one is the last.
+    const again = (await screen.findAllByRole("dialog")).at(-1);
+    if (again === undefined) throw new Error("no dialog");
+    fireEvent.click(within(again).getByRole("button", { name: "Выйти" }));
+    await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+  });
+
+  it("leaves another account at once, without a question", () => {
+    render(<AppHeader launched demo={false} signOutAction={() => Promise.resolve()} />);
+    const button = screen.getByRole("button", { name: /Выйти/ });
+    expect(button).toHaveAttribute("type", "submit");
+    expect(button.closest("form")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

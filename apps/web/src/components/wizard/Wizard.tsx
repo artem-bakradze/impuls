@@ -5,8 +5,10 @@ import { ArrowLeftOutlined, ArrowRightOutlined, WarningOutlined } from "@ant-des
 import { Alert, Button } from "antd";
 import { useEffect, useRef, useState } from "react";
 import type { Creatives, DrawnImages, ExtractCardResult } from "@impuls/worker";
+import type { AccountMode } from "@/lib/account-mode";
 import { callApi, LLM_POLL_ATTEMPTS, runWebJob } from "@/lib/client-api";
-import { mergeExtractedCard, pictureKey, SIMULATION_STEP_TITLE, STEP_COUNT, stepIssues, unreadableNotice, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
+import { launchStepWords } from "@/lib/launch-step";
+import { mergeExtractedCard, pictureKey, STEP_COUNT, stepIssues, unreadableNotice, WIZARD_STEPS, withNormalizedLinks } from "@/lib/onboarding";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
 import type { NetworkAdDraft, OnboardingDraft } from "@/lib/onboarding";
 import { Note } from "../ui/primitives";
@@ -17,8 +19,6 @@ import { GenerationProgress } from "./GenerationProgress";
 import type { GenerationKind } from "./GenerationProgress";
 import { LaunchStep } from "./LaunchStep";
 import { PreviewStep } from "./PreviewStep";
-import { ModeChoice } from "./SimulationChoice";
-import type { LaunchMode } from "./SimulationChoice";
 import { SourcesStep } from "./SourcesStep";
 import { simulationStartDate } from "@impuls/worker/simulation-period";
 
@@ -26,6 +26,8 @@ export interface WizardProps {
   initialDraft: OnboardingDraft;
   initialStep: number;
   directApiMode: "simulator" | "production";
+  /** The account's mode: a demo launches the simulation, other logins Direct; the wizard has no choice of its own. */
+  mode: AccountMode;
   /** Result of the Yandex OAuth redirect back to the wizard, if any. */
   directOutcome: DirectOAuthOutcome | null;
 }
@@ -37,14 +39,11 @@ export interface StepProps {
   errors?: Record<string, string>;
 }
 
+/** Leads of the first two steps; the last one speaks of the account's mode (`launchStepWords`). */
 const LEADS: Record<number, string> = {
   1: "На ваш сайт будет вести реклама. По нему мы поймём, чем вы занимаетесь.",
   2: "По этой карточке мы напишем объявления. Чего не нашли, не придумываем — допишите сами.",
-  3: "Поправьте объявления, если нужно, и выберите, как запустить: в своём Яндекс Директе или сначала в симуляции, без денег.",
 };
-
-/** The last step when the simulation is chosen: nothing about the Direct balance (business-onboarding spec). */
-const SIMULATION_LEAD = "Реклама на учебном рынке, без денег и без Директа: вы вносите цифры за период, а сервис сразу разбирает их и показывает, что заметил и решил.";
 
 /** One progress indicator: three segments, read together with «Шаг N из 3». */
 function Progress({ step }: { step: number }) {
@@ -57,7 +56,7 @@ function Progress({ step }: { step: number }) {
   );
 }
 
-export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome }: WizardProps) {
+export function Wizard({ initialDraft, initialStep, directApiMode, mode, directOutcome }: WizardProps) {
   const [draft, setDraft] = useState(initialDraft);
   const [step, setStep] = useState(initialStep);
   const [saving, setSaving] = useState(false);
@@ -66,8 +65,6 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   const [busy, setBusy] = useState<GenerationKind | null>(null);
   /** Shown on the card step when a page could not be read. */
   const [notice, setNotice] = useState<string | null>(null);
-  /** Step 3: real Direct or the simulation on the owner's numbers (simulation-mode spec). */
-  const [mode, setMode] = useState<LaunchMode>("direct");
 
   /** Partner-site pictures being drawn (network-ad-images), by `pictureKey`; «Запустить» stays available meanwhile. */
   const [drawing, setDrawing] = useState<ReadonlySet<string>>(new Set());
@@ -223,7 +220,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
   const stepProps: StepProps = { draft, onChange: setDraft, errors };
   const working = saving || busy !== null;
   const showNext = step < STEP_COUNT;
-  const simulating = step === STEP_COUNT && mode === "simulation";
+  const launchWords = launchStepWords(mode);
   /** «изменить» of the summary: the card and the budget are on step 2; the ads are on this very step. */
   const edit = (target: number) => {
     if (target >= STEP_COUNT) {
@@ -240,8 +237,8 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
         <span className="t-eyebrow" data-testid="wizard-step">
           Шаг {step} из {STEP_COUNT}
         </span>
-        <h1 className="t-h1">{simulating ? SIMULATION_STEP_TITLE : WIZARD_STEPS[step - 1]}</h1>
-        <p className="t-lead">{simulating ? SIMULATION_LEAD : LEADS[step]}</p>
+        <h1 className="t-h1">{step === STEP_COUNT ? launchWords.title : WIZARD_STEPS[step - 1]}</h1>
+        <p className="t-lead">{step === STEP_COUNT ? launchWords.lead : LEADS[step]}</p>
       </div>
 
       <div className="stack fade-in" key={`body-${step}`}>
@@ -269,11 +266,10 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
                 {busy !== null ? <GenerationProgress kind={busy} /> : null}
                 <div className="surface surface-pad">
                   <div className="stack" style={{ "--gap": "24px" } as React.CSSProperties}>
-                    <ModeChoice mode={mode} onChange={setMode} />
-                    {mode === "direct" ? (
+                    {launchWords.connectsDirect ? (
                       <>
                         <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(STEP_COUNT, { ...draft, directConnected: true })} />
-                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} save={() => saveHere(draft)} /> : null}
+                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} save={() => saveHere(draft)} mode={mode} /> : null}
                       </>
                     ) : (
                       <LaunchStep
@@ -284,7 +280,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, directOutcome
                         today={simulationStartDate(todayIn(draft.card.timeZone))}
                         onEdit={edit}
                         save={() => saveHere(draft)}
-                        simulation
+                        mode={mode}
                       />
                     )}
                   </div>

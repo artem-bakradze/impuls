@@ -25,14 +25,12 @@ export const e2eDatabaseUrl = (): string => {
 export const e2eDatabaseName = (): string => new URL(e2eDatabaseUrl()).pathname.replace(/^\//, "");
 
 /**
- * Environment of the web server under test. Google credentials are placeholders: e2e signs in through the
- * test-only email login (AUTH_TEST_LOGIN=enabled), which exists only in this mode.
+ * Environment of the web server under test. e2e signs in through «Демо-режим» or the test-only email login
+ * (AUTH_TEST_LOGIN=enabled), which exists only in this mode; Google is off for now.
  */
 export const e2eWebEnv = (): Record<string, string> => ({
   DATABASE_URL: e2eDatabaseUrl(),
   AUTH_SECRET: "e2e-only-secret-not-for-real-deployments-0123456789",
-  AUTH_GOOGLE_ID: "e2e-google-login-is-not-used",
-  AUTH_GOOGLE_SECRET: "e2e-google-login-is-not-used",
   AUTH_URL: `http://localhost:${E2E_PORT}`,
   AUTH_TRUST_HOST: "true",
   AUTH_TEST_LOGIN: "enabled",

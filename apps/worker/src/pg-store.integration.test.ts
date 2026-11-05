@@ -16,7 +16,7 @@ const db = createDb(pool);
 beforeAll(async () => {
   await db.execute(sql`TRUNCATE users, businesses, campaigns, ads, ad_images, change_log, stats_daily, user_decisions, sync_cursors,
     evaluations, experiments, agent_turns, runtime_flags, heartbeats, incidents, notifications CASCADE`);
-  await db.insert(schema.users).values({ id: "user-b1", googleSub: "sub-b1", email: "owner@example.com", name: "Владелец" });
+  await db.insert(schema.users).values({ id: "user-b1", googleSub: "sub-b1", kind: "google", email: "owner@example.com", name: "Владелец" });
 });
 
 afterAll(async () => {
@@ -190,7 +190,7 @@ describe("the journal's order on PostgreSQL (change-history spec «Порядо�
 
   // Where PostgreSQL puts a row is not the order of writing; the next test pins that down deterministically.
   it("takes the owner's change back at once when the agent's change of the same limit has the same virtual time", async () => {
-    await db.insert(schema.users).values({ id: "user-b2", googleSub: "sub-b2", email: "owner2@example.com", name: "Владелец" });
+    await db.insert(schema.users).values({ id: "user-b2", googleSub: "sub-b2", kind: "google", email: "owner2@example.com", name: "Владелец" });
     const store = new PgStore(db);
     const sim = new SimulationDriver({ start: new Date("2026-11-02T00:00:00Z"), seed: 3, agent: new IdlePolicy(), store, locks: new PgLockManager(pool) });
     const truth = { impressionsPerDay: 800, ctr: 0.06, cr: 0.1, costPerClick: rubles(20) };
@@ -251,5 +251,24 @@ describe("the journal's order on PostgreSQL (change-history spec «Порядо�
     await store.updateChange(second.id, { status: "applied" });
     await store.updateChange(first.id, { status: "applied" });
     expect((await store.changes("b2")).filter((c) => c.objectId === "tie").map((c) => c.explanation)).toEqual(["первое", "второе"]);
+  });
+});
+
+describe("a demo owner (demo-login)", () => {
+  it("has no email to send to and no personal data to purge", async () => {
+    await db.insert(schema.users).values({ id: "user-b3", googleSub: "demo:b3", kind: "demo", email: null, name: null });
+    // A business of its own, without campaigns: only the owner matters here.
+    await db.insert(schema.businesses).values({ id: "b3", userId: "user-b3", timeZone: "Europe/Moscow", monthlyBudgetRub: 9_000, csoMode: "auto", csoValue: 0, card: {} });
+    const store = new PgStore(db);
+    await expect(store.ownerEmail("b3")).rejects.toThrow("has no email");
+
+    await store.markOwnerDeleted("b3", new Date("2026-11-03T00:00:00Z"));
+    expect(await store.purgeDeletedOwners(new Date("2026-12-31T00:00:00Z"))).toBe(0);
+    const [row] = await db.select().from(schema.users).where(sql`${schema.users.id} = 'user-b3'`);
+    expect(row).toMatchObject({ googleSub: "demo:b3", email: null });
+  });
+
+  it("refuses an account other than a demo without an email", async () => {
+    await expect(db.insert(schema.users).values({ id: "user-x", googleSub: "test:x", kind: "test", email: null })).rejects.toThrow();
   });
 });

@@ -453,7 +453,8 @@ export class PgStore implements Store {
     const rows = await this.db
       .update(schema.users)
       .set({ email: sql`'deleted-' || ${schema.users.id} || '@invalid'`, name: null, googleSub: sql`'deleted-' || ${schema.users.id}` })
-      .where(and(lt(schema.users.deletedAt, before), sql`${schema.users.email} NOT LIKE 'deleted-%@invalid'`))
+      // A demo account has no email or name (demo-login): there is no personal data of it to remove.
+      .where(and(lt(schema.users.deletedAt, before), sql`${schema.users.email} IS NOT NULL`, sql`${schema.users.email} NOT LIKE 'deleted-%@invalid'`))
       .returning({ id: schema.users.id });
     return rows.length;
   }
@@ -462,6 +463,10 @@ export class PgStore implements Store {
     const [row] = await this.db.select({ email: schema.users.email }).from(schema.businesses).innerJoin(schema.users, eq(schema.businesses.userId, schema.users.id)).where(eq(schema.businesses.id, businessId));
     if (!row) {
       throw new Error(`No owner email for ${businessId}`);
+    }
+    // Only a demo has no email, and a demo is always a simulation, which sends no emails: reaching here breaks that rule.
+    if (row.email === null) {
+      throw new Error(`The owner of ${businessId} has no email: a demo account gets no emails`);
     }
     return row.email;
   }
@@ -497,20 +502,6 @@ export class PgStore implements Store {
 
   async deleteSimulation(businessId: string): Promise<void> {
     await this.db.delete(schema.simulations).where(eq(schema.simulations.businessId, businessId));
-  }
-
-
-  async reopenWizard(businessId: string, step: number): Promise<void> {
-    // The wizard draft lives in card.onboarding (web); only «Директ подключён» is reset there.
-    await this.db
-      .update(schema.businesses)
-      .set({
-        launchedOn: null,
-        mode: "direct",
-        onboardingStep: step,
-        card: sql`jsonb_set(${schema.businesses.card}, '{onboarding,directConnected}', 'false'::jsonb, false)`,
-      })
-      .where(eq(schema.businesses.id, businessId));
   }
 
   async restartOnboarding(businessId: string): Promise<void> {

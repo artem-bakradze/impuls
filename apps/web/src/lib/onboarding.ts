@@ -13,8 +13,6 @@ export const WIZARD_STEPS = [
 ] as const;
 
 export const STEP_COUNT = WIZARD_STEPS.length;
-/** Step 6 when the owner chose the simulation instead of Direct (business-onboarding spec «Превью и запуск»). */
-export const SIMULATION_STEP_TITLE = "Запустите симуляцию";
 export const MIN_BUDGET_RUB = 3_000;
 export const RECOMMENDED_BUDGET_RUB = 10_000;
 export const ABOUT_MAX_LENGTH = 1_000;

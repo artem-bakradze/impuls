@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   customType,
   date,
   index,
@@ -30,14 +31,25 @@ export const changeStatus = pgEnum("change_status", ["pending", "applied", "fail
 export const changeAuthor = pgEnum("change_author", ["service", "user", "cabinet"]);
 export const actor = pgEnum("actor", ["agent", "safety_net", "budget_guard", "user", "reconciliation"]);
 
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
-  googleSub: text("google_sub").notNull().unique(),
-  email: text("email").notNull(),
-  name: text("name"),
-  createdAt: createdAt(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+/**
+ * How the account signed in (demo-login): `demo` works only in the simulation and has no email or name; `google` and
+ * `test` (the e2e-only login) work only in Direct. `google_sub` keeps the provider subject: `google:…`, `test:…`, `demo:…`.
+ */
+export const userKinds = ["google", "test", "demo"] as const;
+
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    googleSub: text("google_sub").notNull().unique(),
+    kind: text("kind", { enum: userKinds }).notNull(),
+    email: text("email"),
+    name: text("name"),
+    createdAt: createdAt(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [check("users_email_unless_demo", sql`${t.kind} = 'demo' OR ${t.email} IS NOT NULL`)],
+);
 
 export const businesses = pgTable("businesses", {
   id: text("id").primaryKey(),

@@ -5,8 +5,10 @@ import { Alert, Button } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import type { AccountMode } from "@/lib/account-mode";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
 import { formatLocalDate } from "@/lib/format";
+import { launchStepWords } from "@/lib/launch-step";
 import { advertisedText, budgetCeilingText, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import { measurementState } from "@/lib/measurement";
@@ -43,18 +45,20 @@ interface Props {
   /** What counts as a lead is changed right here, and the counter check writes its result into the draft. */
   onChange?: (draft: OnboardingDraft) => void;
   errors?: Record<string, string>;
-  /** «Запустить в симуляции» on the training market instead of Direct. */
-  simulation?: boolean;
+  /** The account's mode (simulation-mode «Режим бизнеса «Симуляция»»): a demo launches on the training market. */
+  mode: AccountMode;
   /** Saves the draft first, so the launch takes the ads and pictures as the owner sees them. */
   save?: () => Promise<boolean>;
 }
 
-export function LaunchStep({ draft, today, onEdit, simulation, onChange, save, errors = {} }: Props) {
+export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors = {} }: Props) {
   const router = useRouter();
   const [goalsOpen, setGoalsOpen] = useState(errors.goals !== undefined);
   const [state, setState] = useState<{ kind: "idle" | "running" | "pending" | "advertiser_data" } | { kind: "error"; message: string }>({ kind: "idle" });
   const budget = draft.budget.monthlyBudgetRub ?? 0;
   const counter = counterOf(draft);
+  const simulation = mode === "simulation";
+  const words = launchStepWords(mode);
 
   const launch = async () => {
     setState({ kind: "running" });
@@ -62,7 +66,8 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, save, e
       setState({ kind: "idle" });
       return;
     }
-    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", simulation ? { simulation: true } : {});
+    // The server launches in the account's mode; the page does not ask for one.
+    const outcome = await runWebJob<{ status: "launched" | "needs_advertiser_data" }>("/api/onboarding/launch", {});
     if (outcome.kind === "done" && outcome.output.status === "needs_advertiser_data") {
       setState({ kind: "advertiser_data" });
     } else if (outcome.kind === "done") {
@@ -108,13 +113,10 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, save, e
       </ul>
       {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
       {/* One notice about counting leads: the check itself for a real launch, the training data's note in a simulation. */}
-      {!simulation && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation === true)} />}
+      {!simulation && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation)} />}
       {/* What happens after the button (business-onboarding spec «Что будет после запуска»). */}
       <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">
-        {simulation
-          ? "Дальше откроется «Реклама»: вы вносите статистику за выбранный период, а сервис сразу разбирает её и показывает, что заметил и изменил."
-          : "Дальше Яндекс проверит объявления — обычно в течение дня. Первые цифры появятся на следующий день, а потом сервис каждое утро смотрит рекламу."}{" "}
-        Всё, что он меняет, видно в истории, и почти любое изменение можно вернуть одной кнопкой.
+        {words.afterLaunch}
       </Note>
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
@@ -129,7 +131,7 @@ export function LaunchStep({ draft, today, onEdit, simulation, onChange, save, e
         disabled={state.kind === "pending"}
         style={{ height: 54, fontSize: "var(--fs-md)" }}
       >
-        {simulation ? "Запустить симуляцию" : "Запустить"}
+        {words.button}
       </Button>
     </div>
   );

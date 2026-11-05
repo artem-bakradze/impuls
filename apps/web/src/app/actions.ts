@@ -1,10 +1,12 @@
 "use server";
 
-import { signIn, signOut, TEST_LOGIN_PROVIDER } from "@/auth";
+import { signIn, signOut } from "@/auth";
+import { DEMO_LOGIN_PROVIDER, TEST_LOGIN_PROVIDER } from "@/lib/account-mode";
 import { webConfig } from "@/lib/server/config";
 
-export async function signInWithGoogle(): Promise<void> {
-  await signIn("google", { redirectTo: "/" });
+/** «Демо-режим»: a new demo account at once, without forms (auth spec «Демо-вход»). */
+export async function signInAsDemo(): Promise<void> {
+  await signIn(DEMO_LOGIN_PROVIDER, { redirectTo: "/" });
 }
 
 /** e2e-only login; refused unless AUTH_TEST_LOGIN=enabled. */

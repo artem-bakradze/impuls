@@ -4,8 +4,6 @@ import { parseWebConfig, WebConfigError } from "./config-check";
 const valid = {
   DATABASE_URL: "postgres://impuls:impuls@localhost:54329/impuls",
   AUTH_SECRET: "x".repeat(32),
-  AUTH_GOOGLE_ID: "id",
-  AUTH_GOOGLE_SECRET: "secret",
   DIRECT_API_MODE: "simulator",
   SUPPORT_EMAIL: "support@impuls.test",
 };
@@ -22,6 +20,10 @@ describe("web configuration", () => {
     delete rest.SUPPORT_EMAIL;
     expect(() => parseWebConfig(rest)).toThrow(/SUPPORT_EMAIL/);
     expect(() => parseWebConfig({ ...valid, SUPPORT_EMAIL: "support" })).toThrow(/SUPPORT_EMAIL/);
+  });
+
+  it("starts without a Google OAuth app: the Google login is off for now", () => {
+    expect(parseWebConfig(valid).DIRECT_API_MODE).toBe("simulator");
   });
 
   it("keeps the test login off unless explicitly enabled", () => {

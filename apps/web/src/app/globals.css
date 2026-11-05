@@ -643,44 +643,80 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   }
 }
 
-/* ---------- Landing / login ---------- */
+/* ---------- Login: one card on the canvas of «Реклама» (product-demo «Условия демосервиса») ---------- */
 
-.landing {
-  position: relative;
-  overflow: hidden;
-  min-height: calc(100vh - 30px);
-}
-.landing::before {
-  content: "";
-  position: absolute;
-  inset: -40% -10% auto -10%;
-  height: 900px;
-  background:
-    radial-gradient(40% 50% at 70% 30%, rgba(86, 70, 242, 0.16), transparent 70%),
-    radial-gradient(30% 40% at 20% 10%, rgba(14, 165, 233, 0.12), transparent 70%);
-  pointer-events: none;
-}
-.landing-grid {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 56px;
+.login {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 72px 0 96px;
+  justify-content: center;
+  gap: 16px;
+  padding: 48px 16px;
 }
-@media (max-width: 960px) {
-  .landing-grid {
-    grid-template-columns: 1fr;
-    gap: 40px;
-    padding: 40px 0 64px;
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
+}
+@media (max-width: 720px) {
+  .login {
+    justify-content: flex-start;
+    padding-top: 32px;
+  }
+  .login-card {
+    padding: 24px 18px;
   }
 }
-.landing-top {
-  position: relative;
+.login-head {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.login-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-weight: 650;
+  text-wrap: balance;
+}
+.login-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.login-terms {
+  margin: 0;
+}
+/* Unavailable for now: it looks off but stays focusable, so its hint is reachable from the keyboard. */
+.google-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  height: 72px;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.google-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .benefits {
   list-style: none;
@@ -714,134 +750,9 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   color: var(--accent);
   font-size: var(--fs-md);
 }
-.google-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  height: 52px;
-  padding: 0 24px;
-  border-radius: 12px;
-  border: 1px solid var(--text);
-  background: var(--text);
-  color: #fff;
-  font: inherit;
-  font-size: var(--fs-md);
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: var(--shadow-md);
-  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
-}
-.google-btn:hover {
-  background: #22222b;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-lg);
-}
-.google-btn .g-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #fff;
-  display: grid;
-  place-items: center;
-}
-.trust {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-3);
-}
-.trust span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.trust .anticon {
-  color: var(--success);
-}
-
-/* Product mock on the landing */
-.mock {
-  position: relative;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.75));
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
-  padding: 22px;
-  transform: perspective(1600px) rotateY(-6deg) rotateX(2deg);
-  transform-origin: left center;
-}
-@media (max-width: 960px) {
-  .mock {
-    transform: none;
-  }
-}
-.mock-kpis {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-.mock-kpi {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  background: var(--surface);
-}
-.mock-kpi .v {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  white-space: nowrap;
-}
-@media (max-width: 600px) {
-  .mock {
-    padding: 16px;
-  }
-  .mock-kpi {
-    padding: 10px;
-  }
-  .mock-kpi .v {
-    font-size: var(--fs-md);
-  }
-  .mock-float {
-    position: static;
-    margin-top: 10px;
-    max-width: none;
-    animation: none;
-  }
-}
-.mock-event {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-}
-/* Hangs below the card so it never covers the last event. */
-.mock-float {
-  position: absolute;
-  right: -18px;
-  bottom: -50px;
-  max-width: 260px;
-  box-shadow: var(--shadow-lg);
-  animation: float 6s var(--ease) infinite;
-}
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
 .test-login {
-  margin-top: 8px;
+  width: 100%;
+  max-width: 420px;
   padding: 16px;
   border-radius: 14px;
   border: 1px dashed var(--border-strong);
@@ -1284,7 +1195,6 @@ li[data-state="done"] .gen-dot {
 @media (max-width: 720px) {
   .ad-actions .ant-btn { min-height: 44px; }
   .ad-actions .ant-btn { min-width: 44px; }
-  .mock-kpis { grid-template-columns: minmax(0, 1fr); }
   .field .optional-input { max-width: 108px; }
   .first-day .ant-btn { max-width: 100%; height: auto; min-height: 44px; white-space: normal; }
   .first-day .ant-btn > span { white-space: normal; }

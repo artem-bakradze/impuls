@@ -11,6 +11,13 @@ export const login = async (page: Page, email: string): Promise<void> => {
   await page.getByRole("button", { name: "Войти для проверки" }).click();
 };
 
+/** «Демо-режим» (auth spec «Демо-вход»): a new demo account at once; it opens the first wizard step. */
+export const loginAsDemo = async (page: Page): Promise<void> => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Демо-режим" }).click();
+  await page.waitForURL("**/wizard");
+};
+
 /** Picks an option in an Ant Design select opened by its accessible label. */
 export const choose = async (page: Page, label: string, option: string): Promise<void> => {
   await page.getByLabel(label).click();

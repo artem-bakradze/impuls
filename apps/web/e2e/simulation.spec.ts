@@ -1,23 +1,24 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { choose, expectStep, fillBudget, fillFirstSteps, login, next, uniqueEmail } from "./helpers";
+import { choose, expectStep, fillBudget, fillFirstSteps, loginAsDemo, next } from "./helpers";
 
 /**
- * The simulation mode end to end with the test agent: one «Реклама» with the player, a period of the owner's own numbers
- * through «Добавить статистику», the assistant's review of it beside the answer, the history with rollback, and a real
- * launch (simulation-mode spec «Статистика периода от владельца»).
+ * The simulation mode end to end with the test agent, entered through «Демо-режим»: the wizard without a choice of mode,
+ * one «Реклама» with the player, a period of the owner's own numbers through «Добавить статистику», the assistant's
+ * review of it beside the answer, the history with rollback, «Новая кампания» and leaving the demo (simulation-mode spec
+ * «Статистика периода от владельца», demo-login).
  */
-test("an owner enters a period of stats in the simulation and goes on to a real launch", async ({ page }, testInfo) => {
+test("a demo's owner enters a period of stats in the simulation and starts a new campaign", async ({ page }, testInfo) => {
   test.setTimeout(360_000);
-  await login(page, uniqueEmail("simulation"));
-  await page.waitForURL("**/wizard");
+  await loginAsDemo(page);
   await fillFirstSteps(page);
   await fillBudget(page);
   await next(page);
 
-  await expectStep(page, 3, "Объявления и запуск");
-  await page.getByLabel("Симуляция").check();
+  // The demo's mode is the simulation: no choice of mode, no Direct to connect.
   await expectStep(page, 3, "Запустите симуляцию");
+  await expect(page.getByLabel("Симуляция")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Продолжить в тестовом режиме" })).toHaveCount(0);
   await expect(page.getByTestId("scenarios")).toHaveCount(0);
   await expect(page.getByText("Обычный месяц")).toHaveCount(0);
   await page.getByRole("button", { name: "Запустить симуляцию" }).click();
@@ -126,26 +127,30 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await lived(page, "День 9");
   await expect(page.getByRole("heading", { level: 2, name: "Разбор дня · день 8" })).toBeVisible();
 
-  // The old address of the studio opens «Реклама»; the real launch is in the player's menu.
+  // The old address of the studio opens «Реклама»; the player's menu has no real launch, a demo has no real ads.
   await page.goto("/simulation");
   await page.waitForURL("**/summary");
   await expect(page.getByTestId("studio-disclaimer")).toHaveText(/Учебный рынок · деньги не списываются/);
   await page.getByRole("button", { name: /^Ещё/ }).click();
-  await page.getByRole("menuitem", { name: "Запустить по-настоящему" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
-  await page.waitForURL("**/wizard");
-  await expectStep(page, 3, "Объявления и запуск");
+  await expect(page.getByRole("menuitem")).toHaveText(["Начать заново", "Новая кампания"]);
 
-  // «Новая кампания»: a simulation again, then everything goes and the preparation starts from the site.
-  await page.getByLabel("Симуляция").check();
-  await page.getByRole("button", { name: "Запустить симуляцию" }).click();
-  await page.waitForURL("**/summary", { timeout: 150_000 });
-  await page.getByRole("button", { name: /^Ещё/ }).click();
+  // «Новая кампания»: everything goes and the preparation starts from the site; the next launch is a simulation again.
   await page.getByRole("menuitem", { name: "Новая кампания" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Начать новую кампанию" }).click();
   await page.waitForURL("**/wizard");
   await expectStep(page, 1, "Где вас найти?");
   await expect(page.getByLabel("Ваш сайт")).toHaveValue("");
+
+  // Leaving the demo asks first: there is no way back into it.
+  await page.getByRole("banner").getByRole("button", { name: /Выйти/ }).click();
+  const leave = page.getByRole("dialog");
+  await expect(leave).toContainText("Если выйти, вернуться в это демо не получится");
+  await leave.getByRole("button", { name: "Остаться" }).click();
+  await expect(page).toHaveURL(/\/wizard$/);
+  await page.getByRole("banner").getByRole("button", { name: /Выйти/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Выйти" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  await expect(page.getByRole("button", { name: "Демо-режим" })).toBeVisible();
 });
 
 /** Waits until the period is reviewed: the player is on `day` and offers the next period, and the review is there. */

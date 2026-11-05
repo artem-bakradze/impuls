@@ -5,7 +5,7 @@ import { loginErrorMessage } from "@/lib/login-error";
 import { findBusiness } from "@/lib/server/business";
 import { isTestMode, webConfig } from "@/lib/server/config";
 import { currentUserId, homePath } from "@/lib/server/session";
-import { signInForTests, signInWithGoogle } from "./actions";
+import { signInAsDemo, signInForTests } from "./actions";
 
 export default async function StartPage({ searchParams }: { searchParams: Promise<{ error?: string | string[] }> }) {
   const userId = await currentUserId();
@@ -19,7 +19,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
       <LoginCard
         errorText={loginErrorMessage(typeof error === "string" ? error : undefined)}
         testLogin={webConfig().AUTH_TEST_LOGIN === "enabled"}
-        signInWithGoogle={signInWithGoogle}
+        signInAsDemo={signInAsDemo}
         signInForTests={signInForTests}
       />
     </>

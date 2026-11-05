@@ -40,22 +40,25 @@ The worker must run too: web only reads PostgreSQL and enqueues jobs (`web-job` 
 DATABASE_URL=postgres://impuls:impuls@localhost:54329/impuls \
 DIRECT_API_MODE=simulator SUPPORT_EMAIL=support@impuls.test \
 AUTH_SECRET=$(openssl rand -base64 32) AUTH_URL=http://localhost:3000 \
-AUTH_GOOGLE_ID=<Google OAuth client id> AUTH_GOOGLE_SECRET=<Google OAuth client secret> \
 pnpm --filter @impuls/web dev
 ```
+
+Sign in with «Демо-режим»: a new demo account without email, bound to this browser's session, that works only in the
+simulation. The Google login is off for now (the button is shown unavailable, no provider is connected), so there is no
+Google OAuth client to configure. `AUTH_TEST_LOGIN=enabled` adds the email-only login, which works only in Direct mode
+(the simulator's test copy of Direct on a stand).
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL |
 | `AUTH_SECRET` | yes, ≥ 32 chars | Signs session cookies (Auth.js) |
-| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | yes | Google OAuth client; redirect URI `<AUTH_URL>/api/auth/callback/google` |
 | `DIRECT_API_MODE` | yes | `simulator` or `production`; `simulator` shows the «Тестовый стенд — Яндекс Директ не подключён» banner (the simulation pult replaces it on a simulated business's screens) |
 | `SUPPORT_EMAIL` | yes | Support address shown in the settings; owners write there to delete the account (see `docs/deployment.md`) |
 | `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | in `production` | Yandex OAuth app «для авторизации пользователей» (not the debug app); redirect URI `<APP_URL>/api/direct/oauth/callback` |
 | `TOKEN_ENCRYPTION_KEY` | in `production` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts Direct OAuth tokens, same value in worker and web |
 | `APP_URL` | in `production` | Public URL of the app; the OAuth redirect URI is built from it |
 | `AUTH_URL` / `AUTH_TRUST_HOST` | read by Auth.js | Public URL of the app; or `AUTH_TRUST_HOST=true` behind a trusted proxy |
-| `AUTH_TEST_LOGIN` | no (off by default) | `enabled` adds an email-only login for e2e. Never set it on a real stand; it is refused with `DIRECT_API_MODE=production` |
+| `AUTH_TEST_LOGIN` | no (off by default) | `enabled` adds an email-only login for e2e; its accounts work in Direct mode only. Never set it on a real stand; it is refused with `DIRECT_API_MODE=production` |
 
 A missing or invalid required variable stops the server at startup with the list of problems. Sessions are signed
 JWT cookies valid for 30 days since the last visit (HttpOnly, SameSite=Lax, Secure in production builds).
@@ -83,7 +86,7 @@ have not completed for 2 hours.
 Full stand in Docker (web on http://localhost:3000, Mailpit on http://localhost:8025; stop a `docker run` Mailpit first):
 
 ```bash
-export AUTH_SECRET=$(openssl rand -base64 32) AUTH_GOOGLE_ID=... AUTH_GOOGLE_SECRET=...
+export AUTH_SECRET=$(openssl rand -base64 32)
 docker compose --profile app up -d --build
 ```
 

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   return handleApi("simulation.control", async () => {
     const business = await simulatedBusiness();
     const control = currentAction(await parseBody(request, SimulationControlBody));
-    // The player of an old page: days and weeks are now periods of the owner's numbers.
+    // The player of an old page: days and weeks are now periods of the owner's numbers, and «Запустить по-настоящему» is gone.
     if (control === null) {
       throw new ApiError(410, "SIMULATION_ACTION_GONE", "Пульт симуляции обновился — обновите страницу");
     }

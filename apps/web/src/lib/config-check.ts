@@ -20,8 +20,7 @@ const ConfigSchema = z
   .object({
     DATABASE_URL: z.string().min(1),
     AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
-    AUTH_GOOGLE_ID: z.string().min(1),
-    AUTH_GOOGLE_SECRET: z.string().min(1),
+    // No Google OAuth app: the Google login is off for now (auth spec «Вход через Google пока недоступен»).
     DIRECT_API_MODE: directApiMode,
     /** Support address shown in the settings: account deletion is done on request (auth spec). */
     SUPPORT_EMAIL: z.email(),

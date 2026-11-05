@@ -201,15 +201,6 @@ export const restartSimulation = async (base: JobContext, businessId: string): P
   return launchInWorld(base, fresh);
 };
 
-/** «Запустить по-настоящему»: the simulation's data is deleted, the wizard opens on its last step, «Объявления и запуск», with the draft kept. */
-export const leaveSimulation = async (base: JobContext, businessId: string): Promise<void> => {
-  await base.locks.withLock(simulationLockKey(businessId), async () => {
-    await base.store.deleteLaunchData(businessId);
-    await base.store.deleteSimulation(businessId);
-    await base.store.reopenWizard(businessId, 3);
-  });
-};
-
 /** The window «Добавить статистику» of a saved run, as the web shows and checks it before the worker checks again. */
 export const savedPeriodForm = (record: SimulationRecord, directions: readonly DirectionRecord[], ads: readonly AdRecord[], timeZone: string): PeriodForm =>
   periodForm({ state: record.state, room: (id, dates) => campaignRoom(record.state, id, dates), directions, ads, start: record.simNow, timeZone, last: lastEntered(record.steps) });
@@ -228,7 +219,7 @@ export const startNewCampaign = async (base: JobContext, businessId: string): Pr
 
 export type SimulationControl =
   | { action: "period"; days: PeriodDays; ads: PeriodAdInput[] }
-  | { action: "continue" | "restart" | "go_real" | "new_campaign" };
+  | { action: "continue" | "restart" | "new_campaign" };
 
 /** Freeze the public inputs of the period, never the agent's private session or user data. */
 const capturePeriodReport = async (world: SimulationWorld): Promise<string> => {
@@ -343,7 +334,10 @@ const continueStep = async (base: JobContext, businessId: string): Promise<void>
   if (resumed) await finishStep(base, businessId);
 };
 
-/** The player (simulation-mode spec «Симуляция как отдельный режим»); executed by the worker like any other change. */
+/**
+ * The player (simulation-mode spec «Симуляция как отдельный режим»); executed by the worker like any other change.
+ * There is no «Запустить по-настоящему» (demo-login): the mode follows the login, and a demo has no real ads.
+ */
 export const controlSimulation = async (base: JobContext, businessId: string, control: SimulationControl): Promise<{ ok: true }> => {
   switch (control.action) {
     case "period":
@@ -354,9 +348,6 @@ export const controlSimulation = async (base: JobContext, businessId: string, co
       break;
     case "restart":
       await restartSimulation(base, businessId);
-      break;
-    case "go_real":
-      await leaveSimulation(base, businessId);
       break;
     case "new_campaign":
       await startNewCampaign(base, businessId);

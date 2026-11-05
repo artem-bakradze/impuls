@@ -1,15 +1,19 @@
 "use client";
 
-import { CheckCircleFilled, CheckOutlined, ClockCircleOutlined, ExperimentOutlined, MessageOutlined, RiseOutlined, SafetyCertificateOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { Alert, Button, Input } from "antd";
-import { Logo, LogoMark } from "./ui/Logo";
+import { ArrowRightOutlined } from "@ant-design/icons";
+import { Alert, Button, Input, Tooltip } from "antd";
+import { useId } from "react";
+import { Logo } from "./ui/Logo";
 
 interface Props {
   errorText: string | null;
   testLogin: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInAsDemo: () => Promise<void>;
   signInForTests: (formData: FormData) => Promise<void>;
 }
+
+/** Why the Google button does nothing (auth spec «Вход через Google пока недоступен»). */
+export const GOOGLE_UNAVAILABLE = "Вход через Google пока недоступен — попробуйте демо-режим";
 
 /** Google's multicolour «G», required on «Sign in with Google» buttons by Google's branding guidelines. */
 function GoogleG() {
@@ -23,167 +27,56 @@ function GoogleG() {
   );
 }
 
-/** What the owner gets every week — a static picture of the product, not real data. */
-function ProductMock() {
+/**
+ * The start page (product-demo spec «Условия демосервиса»): one card on the calm canvas of «Реклама» — the logo, a
+ * title, one line, «Демо-режим», the Google button that is unavailable for now and the demo's terms. The test login of
+ * the stands sits under the card.
+ */
+export function LoginCard({ errorText, testLogin, signInAsDemo, signInForTests }: Props) {
+  const hintId = useId();
   return (
-    <div className="mock" aria-hidden="true">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 16 }}>
-        <div className="row" style={{ gap: 10 }}>
-          <LogoMark size={24} />
-          <span className="t-h3">Учебная неделя 14–20 октября</span>
+    <main className="login">
+      <section className="login-card surface" aria-labelledby="login-title" data-testid="login-card">
+        <Logo size={32} />
+        <div className="login-head">
+          {/* A no-break space keeps the dash at the end of the first line. */}
+          <h1 id="login-title" className="login-title">
+            Реклама в Яндексе{" "}— без настройки
+          </h1>
+          <p className="t-lead">Сервис сам пишет объявления и ведёт рекламу по вашему бюджету.</p>
         </div>
-        <span className="chip chip-success">Работает</span>
-      </div>
-      <div className="mock-kpis">
-        <div className="mock-kpi">
-          <div className="t-small">Обращения</div>
-          <div className="v t-num">27</div>
-          <div className="t-small" style={{ color: "var(--success)" }}>
-            ↑ 8 к прошлой
+        {errorText ? <Alert type="warning" showIcon title={errorText} /> : null}
+        <div className="login-actions">
+          <form action={signInAsDemo}>
+            <Button type="primary" htmlType="submit" size="large" block icon={<ArrowRightOutlined aria-hidden="true" />} iconPlacement="end">
+              Демо-режим
+            </Button>
+          </form>
+          {/* Focusable, so the hint is reached from the keyboard too; it starts nothing. */}
+          <Tooltip title={GOOGLE_UNAVAILABLE} trigger={["hover", "focus"]}>
+            <button type="button" className="google-btn" aria-disabled="true" aria-describedby={hintId} onClick={(event) => event.preventDefault()}>
+              <GoogleG />
+              Войти через Google
+            </button>
+          </Tooltip>
+          <span id={hintId} className="sr-only">
+            {GOOGLE_UNAVAILABLE}
+          </span>
+        </div>
+        <p className="t-small login-terms">Демосервис без оплаты · деньги не списываются</p>
+      </section>
+      {testLogin ? (
+        <form action={signInForTests} className="test-login" data-testid="test-login">
+          <div className="t-small" style={{ marginBottom: 10 }}>
+            Тестовый вход — только для проверок, без Google
           </div>
-        </div>
-        <div className="mock-kpi">
-          <div className="t-small">Цена обращения</div>
-          <div className="v t-num">640 ₽</div>
-          <div className="t-small" style={{ color: "var(--success)" }}>
-            ↓ 150 ₽
+          <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
+            <Input name="email" type="email" required placeholder="Почта" aria-label="Почта для тестового входа" style={{ flex: "1 1 180px" }} />
+            <Input name="name" required placeholder="Имя" aria-label="Имя для тестового входа" style={{ flex: "1 1 120px" }} />
+            <Button htmlType="submit">Войти для проверки</Button>
           </div>
-        </div>
-        <div className="mock-kpi">
-          <div className="t-small">Потрачено</div>
-          <div className="v t-num">17 280 ₽</div>
-          <div className="t-small">из 30 000 ₽</div>
-        </div>
-      </div>
-      <svg viewBox="0 0 300 70" style={{ width: "100%", height: 70, margin: "14px 0 8px" }}>
-        <defs>
-          <linearGradient id="mock-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#5646f2" stopOpacity="0.28" />
-            <stop offset="1" stopColor="#5646f2" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d="M0 55 L43 48 L86 52 L129 36 L172 40 L215 24 L258 28 L300 12 L300 70 L0 70 Z" fill="url(#mock-area)" />
-        <path d="M0 55 L43 48 L86 52 L129 36 L172 40 L215 24 L258 28 L300 12" fill="none" stroke="#5646f2" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
-      <div className="stack" style={{ "--gap": "8px" } as React.CSSProperties}>
-        <div className="mock-event">
-          <span className="icon-tile accent" style={{ width: 28, height: 28, fontSize: 13 }}>
-            <RiseOutlined />
-          </span>
-          <span>
-            <b>Добавили 20% рекламе в поиске:</b> 6 обращений по 520 ₽ — дешевле остальной.
-          </span>
-        </div>
-        <div className="mock-event">
-          <span className="icon-tile warning" style={{ width: 28, height: 28, fontSize: 13 }}>
-            <ThunderboltOutlined />
-          </span>
-          <span>
-            <b>Отключили «Маникюр без записи»:</b> 2 600 ₽ за 14 дней и ни одного обращения.
-          </span>
-        </div>
-      </div>
-      <div className="mock-event mock-float">
-        <CheckCircleFilled style={{ color: "var(--success)", fontSize: 18, marginTop: 1 }} />
-        <span>
-          Бюджет месяца под защитой: <b>больше 30 000 ₽ не потратим</b>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-export function LoginCard({ errorText, testLogin, signInWithGoogle, signInForTests }: Props) {
-  return (
-    <main className="landing">
-      <div className="container">
-        <div className="landing-top">
-          <Logo />
-        </div>
-        <div className="landing-grid">
-          <div className="stack" style={{ "--gap": "28px" } as React.CSSProperties}>
-            <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
-              <span className="chip chip-accent chip-plain" style={{ alignSelf: "flex-start" }}>
-                Реклама в Яндексе на автопилоте
-              </span>
-              <h1 className="t-display">Клиенты из Яндекса — без настройки рекламы</h1>
-              <p className="t-lead" style={{ maxWidth: 520 }}>
-                Расскажите о бизнесе и назовите бюджет. Импульс сам напишет объявления, запустит их и каждый день будет убирать то, что не приносит клиентов.
-              </p>
-            </div>
-            <ul className="benefits">
-              <li>
-                <span className="benefit-icon">
-                  <ClockCircleOutlined />
-                </span>
-                <span>
-                  <b>Начните с сайта и описания услуг.</b> Для учебного запуска аккаунт в Яндексе не нужен. Для настоящей рекламы его подключают на последнем шаге.
-                </span>
-              </li>
-              <li>
-                <span className="benefit-icon">
-                  <SafetyCertificateOutlined />
-                </span>
-                <span>
-                  <b>Контроль бюджета на календарный месяц.</b> Сервис проверяет лимиты перед изменениями и останавливает свою рекламу при исчерпании бюджета.
-                </span>
-              </li>
-              <li>
-                <span className="benefit-icon">
-                  <MessageOutlined />
-                </span>
-                <span>
-                  <b>Каждое изменение — простыми словами</b> и с кнопкой «Вернуть как было».
-                </span>
-              </li>
-              <li>
-                <span className="benefit-icon">
-                  <ExperimentOutlined />
-                </span>
-                <span>
-                  <b>Можно сначала посмотреть в симуляции:</b> месяц рекламы по дням, без денег и без Директа — после каждого дня видно, что сервис заметил и решил.
-                </span>
-              </li>
-            </ul>
-            {errorText ? <Alert type="warning" showIcon title={errorText} /> : null}
-            <div className="stack" style={{ "--gap": "14px" } as React.CSSProperties}>
-              {/* One action (product-demo «Условия демосервиса»): the simulation of one's own business is the way to try it. */}
-              <form action={signInWithGoogle}>
-                <button type="submit" className="google-btn" aria-label="Попробовать на своём бизнесе — войти через Google">
-                  <span className="g-mark">
-                    <GoogleG />
-                  </span>
-                  Попробовать на своём бизнесе
-                </button>
-              </form>
-              <p className="t-small">Вход через Google. Импульс — демосервис без оплаты; в симуляции деньги не списываются, настоящая реклама оплачивается отдельно в Яндексе.</p>
-              <div className="trust">
-                <span>
-                  <CheckOutlined aria-hidden="true" />
-                  Деньги на рекламу списываются только в вашем кабинете Яндекса
-                </span>
-                <span>
-                  <CheckOutlined aria-hidden="true" />
-                  Ваши собственные кампании в кабинете мы не трогаем
-                </span>
-              </div>
-            </div>
-            {testLogin ? (
-              <form action={signInForTests} className="test-login" data-testid="test-login">
-                <div className="t-small" style={{ marginBottom: 10 }}>
-                  Тестовый вход — только для проверок, без Google
-                </div>
-                <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
-                  <Input name="email" type="email" required placeholder="Почта" aria-label="Почта для тестового входа" style={{ flex: "1 1 180px" }} />
-                  <Input name="name" required placeholder="Имя" aria-label="Имя для тестового входа" style={{ flex: "1 1 120px" }} />
-                  <Button htmlType="submit">Войти для проверки</Button>
-                </div>
-              </form>
-            ) : null}
-          </div>
-          <ProductMock />
-        </div>
-      </div>
+        </form>
+      ) : null}
     </main>
   );
 }

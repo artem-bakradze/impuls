@@ -34,11 +34,41 @@ const scheduleChange: HistoryItem = {
   budgetAdjustment: false,
 };
 
-describe("LoginCard", () => {
-  it("describes the simulation by days, as the studio lives it", () => {
-    render(<LoginCard errorText={null} testLogin={false} signInWithGoogle={() => Promise.resolve()} signInForTests={() => Promise.resolve()} />);
-    expect(screen.getByText(/месяц рекламы по дням/)).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/по неделям|после каждой недели/);
+describe("LoginCard (product-demo «Условия демосервиса», auth «Вход через Google пока недоступен»)", () => {
+  const card = (props: Partial<Parameters<typeof LoginCard>[0]> = {}) =>
+    render(<LoginCard errorText={null} testLogin={false} signInAsDemo={() => Promise.resolve()} signInForTests={() => Promise.resolve()} {...props} />);
+  /** The card's own words: everything shown except the buttons and the hint that only a screen reader reads. */
+  const words = (): string[] => {
+    const clone = screen.getByTestId("login-card").cloneNode(true) as HTMLElement;
+    clone.querySelectorAll("button, .sr-only").forEach((el) => el.remove());
+    return (clone.textContent ?? "").split(/[\s—·]+/).filter((word) => /[\p{L}\d]/u.test(word));
+  };
+
+  it("is one card: «Демо-режим» first, Google second, the demo's terms, and nothing more", () => {
+    card();
+    expect(screen.getByRole("heading", { level: 1, name: "Реклама в Яндексе — без настройки" })).toBeTruthy();
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Демо-режим", "Войти через Google"]);
+    expect(screen.getByText("Демосервис без оплаты · деньги не списываются")).toBeTruthy();
+    expect(words().length).toBeLessThanOrEqual(30);
+    expect(document.body.textContent).not.toMatch(/Попробовать на своём бизнесе|Учебная неделя|Посмотреть на примере|Контроль бюджета/);
+    expect(screen.queryByTestId("test-login")).toBeNull();
+  });
+
+  it("keeps Google unavailable, says why on hover and on focus, and starts nothing on a press", async () => {
+    card();
+    const google = screen.getByRole("button", { name: "Войти через Google" });
+    expect(google).toHaveAttribute("aria-disabled", "true");
+    expect(google).toHaveAccessibleDescription("Вход через Google пока недоступен — попробуйте демо-режим");
+    expect(google.closest("form")).toBeNull();
+    fireEvent.click(google);
+    fireEvent.focus(google);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Вход через Google пока недоступен — попробуйте демо-режим");
+  });
+
+  it("shows the test login under the card only when it is on", () => {
+    card({ testLogin: true });
+    expect(screen.getByTestId("test-login")).toBeTruthy();
+    expect(screen.getByTestId("login-card").contains(screen.getByTestId("test-login"))).toBe(false);
   });
 });
 
@@ -169,7 +199,7 @@ describe("LaunchStep", () => {
 
   it("sums up in four lines, each with «изменить», and warns about the missing counter", () => {
     const onEdit = vi.fn();
-    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={onEdit} />);
+    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={onEdit} mode="direct" />);
     for (const title of ["Что рекламируем", "Где и когда", "Бюджет", "Что считаем обращением"]) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
@@ -181,7 +211,7 @@ describe("LaunchStep", () => {
   });
 
   it("says what happens after the launch and that changes are in the history", () => {
-    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} />);
+    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
     const note = screen.getByTestId("after-launch");
     expect(note).toHaveTextContent("Яндекс проверит объявления");
     expect(note).toHaveTextContent("Первые цифры появятся на следующий день");
@@ -190,30 +220,38 @@ describe("LaunchStep", () => {
   });
 
   it("names what is advertised without repeating the category", () => {
-    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} />);
+    render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
     expect(screen.getByText("Маникюр с покрытием")).toBeInTheDocument();
     expect(screen.queryByText("Маникюр: Маникюр с покрытием")).toBeNull();
   });
 
-  it("speaks of the chosen way on the last step: the simulation has its own title and no scenario to choose", () => {
-    render(<Wizard initialDraft={ready()} initialStep={3} directApiMode="simulator" directOutcome={null} />);
+  it("launches a demo's simulation on the last step, with no choice of mode and no scenario (business-onboarding «Шаг 6 говорит о выбранном способе»)", () => {
+    render(<Wizard initialDraft={ready()} initialStep={3} directApiMode="simulator" mode="simulation" directOutcome={null} />);
     expect(screen.getByText("Шаг 3 из 3")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Объявления и запуск" })).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Симуляция"));
     expect(screen.getByRole("heading", { name: "Запустите симуляцию" })).toBeInTheDocument();
-    expect(document.body.textContent).not.toContain("списываются с его баланса");
-    expect(screen.queryByLabelText("Обычный месяц")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Как запускаем" })).toBeNull();
+    expect(screen.queryByLabelText("Симуляция")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/баланс|Подключить Яндекс Директ|тестовая копия Директа/);
     expect(document.body.textContent).not.toMatch(/сценари/i);
-    expect(document.body.textContent).toContain("цифры рекламы задаёте вы сами");
-    expect(screen.getByTestId("after-launch")).toHaveTextContent("откроется «Реклама»: вы вносите статистику за выбранный период");
+    expect(screen.getByTestId("after-launch")).toHaveTextContent("Цифры рекламы вы задаёте сами: вносите статистику за выбранный период");
     expect(screen.getByRole("button", { name: /Запустить симуляцию/ })).toBeInTheDocument();
     // The simulated month starts on the 1st: the budget line is for a full month.
     expect(document.body.textContent).not.toContain("В этом месяце — до");
   });
 
+  it("offers Direct to an account of the test login, with no «Симуляция» (business-onboarding «Шаг запуска у аккаунта Google»)", () => {
+    render(<Wizard initialDraft={{ ...ready(), directConnected: false }} initialStep={3} directApiMode="simulator" mode="direct" directOutcome={null} />);
+    expect(screen.getByRole("heading", { name: "Объявления и запуск" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Симуляция")).toBeNull();
+    expect(screen.getByText("На этом стенде Яндекс Директ не подключён")).toBeInTheDocument();
+    expect(screen.getByText("Здесь доступна только тестовая копия Директа: настоящая реклама не запускается, деньги не списываются.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("выберите «Симуляция»");
+    expect(screen.getByRole("button", { name: "Продолжить в тестовом режиме" })).toBeInTheDocument();
+  });
+
   it("distinguishes a found counter from confirmed event delivery", () => {
     const draft = { ...ready(), counter: { siteUrl: "https://nogotok.example", status: "found" as const, counterId: 1 } };
-    render(<LaunchStep draft={draft} today="2026-11-01" onEdit={() => undefined} />);
+    render(<LaunchStep draft={draft} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
     expect(screen.getByTestId("measurement-status")).toHaveTextContent("получение обращений пока не подтверждено");
   });
 });
@@ -273,7 +311,7 @@ describe("partner-site pictures (ad-creatives «Картинки объявле�
     draft.budget.monthlyBudgetRub = 15_000;
     draft.ads = { search: [{ title: "Маникюр", text: "У метро" }], network: [network()] };
     draft.keywords = { search: ["маникюр"], negative: [] };
-    render(<Wizard initialDraft={draft} initialStep={3} directApiMode="simulator" directOutcome={null} />);
+    render(<Wizard initialDraft={draft} initialStep={3} directApiMode="simulator" mode="simulation" directOutcome={null} />);
     fireEvent.click(screen.getByText(/Сайты-партнёры/));
     expect(await screen.findByText("Рисуем картинку…")).toBeInTheDocument();
     expect(await screen.findByTestId("ad-image", {}, { timeout: 3_000 })).toHaveAttribute("src", "/api/ad-images/img-9");
@@ -282,9 +320,10 @@ describe("partner-site pictures (ad-creatives «Картинки объявле�
     fireEvent.click(screen.getByRole("button", { name: "На сайтах-партнёрах Яндекса, объявление 1: другая картинка" }));
     await waitFor(() => expect(requests.filter((r) => r.url === "/api/onboarding/ad-images").at(-1)?.body).toEqual({ ads: [{ title: "Маникюр рядом", previousImageId: "img-9" }] }));
 
-    fireEvent.click(screen.getByLabelText("Симуляция"));
     fireEvent.click(screen.getByRole("button", { name: /Запустить симуляцию/ }));
     await waitFor(() => expect(requests.some((r) => r.url === "/api/onboarding/launch")).toBe(true));
+    // The server launches in the account's mode: today's page asks for none.
+    expect(requests.find((r) => r.url === "/api/onboarding/launch")?.body).toEqual({});
     const saved = requests.filter((r) => r.url === "/api/onboarding" && r.method === "PUT").at(-1);
     expect(requests.indexOf(saved as (typeof requests)[number])).toBeLessThan(requests.findIndex((r) => r.url === "/api/onboarding/launch"));
     expect((saved?.body as { draft: OnboardingDraft }).draft.ads?.network[0]?.imageId).toBeDefined();

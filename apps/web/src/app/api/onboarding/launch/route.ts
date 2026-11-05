@@ -1,6 +1,7 @@
 import { toLocalDate } from "@impuls/core";
 import { simulationStartDate } from "@impuls/worker/simulation-period";
 import { z } from "zod";
+import { launchModeFor } from "@/lib/account-mode";
 import { buildLaunchPlan, firstIncompleteStep, hasOwnSite, STEP_COUNT, stepProblems } from "@/lib/onboarding";
 import { findBusiness, readDraft } from "@/lib/server/business";
 import { ApiError, handleApi } from "@/lib/server/errors";
@@ -8,15 +9,26 @@ import { enqueueWebJob } from "@/lib/server/jobs";
 import { platformCapabilities } from "@/lib/server/read-context";
 import { parseBody } from "@/lib/server/request";
 import { apiUserId } from "@/lib/server/session";
+import { userKind } from "@/lib/server/users";
 
-/** `simulation`: «Запустить в симуляции» on the training market instead of Direct (simulation-mode spec). */
+/** Today's page sends nothing; a page from before demo-login sent `simulation: true` for its «Симуляция» choice. */
 const Body = z.object({ simulation: z.literal(true).optional() });
 
-/** «Запустить»: the worker creates the campaigns (launch job); web only enqueues the plan. */
+/**
+ * «Запустить»: the worker creates the campaigns (launch job); web only enqueues the plan. The mode is the account's
+ * (simulation-mode spec «Режим бизнеса «Симуляция»»): a demo launches the simulation, other logins Direct, and a stale
+ * page asking for the other mode is refused rather than launched.
+ */
 export async function POST(request: Request) {
   return handleApi("onboarding.launch", async () => {
     const body = await parseBody(request, Body);
-    const business = await findBusiness(await apiUserId());
+    const userId = await apiUserId();
+    const mode = launchModeFor(await userKind(userId), body);
+    if (!mode.ok) {
+      throw new ApiError(409, mode.code, mode.message);
+    }
+    const simulation = mode.mode === "simulation";
+    const business = await findBusiness(userId);
     if (!business) {
       throw new ApiError(404, "NO_BUSINESS", "Сначала расскажите о бизнесе");
     }
@@ -33,12 +45,12 @@ export async function POST(request: Request) {
     }
     const today = toLocalDate(new Date(), business.timeZone);
     // A simulation starts on its own virtual date (the 1st of the next month), so its limits are for that month.
-    const launchDay = body.simulation ? simulationStartDate(today) : today;
-    const plan = buildLaunchPlan(draft, launchDay, platformCapabilities(body.simulation ? "simulation" : "direct").minWeeklyLimit / 100);
+    const launchDay = simulation ? simulationStartDate(today) : today;
+    const plan = buildLaunchPlan(draft, launchDay, platformCapabilities(mode.mode).minWeeklyLimit / 100);
     if (plan.directions.length === 0) {
       throw new ApiError(400, "EMPTY_PLAN", "Оставьте хотя бы одно объявление");
     }
-    const jobId = await enqueueWebJob({ kind: "launch", businessId: business.id, plan, ...(body.simulation && { simulation: true as const }) });
+    const jobId = await enqueueWebJob({ kind: "launch", businessId: business.id, plan, ...(simulation && { simulation: true as const }) });
     return { jobId };
   });
 }

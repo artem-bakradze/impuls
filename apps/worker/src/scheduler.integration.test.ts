@@ -66,7 +66,7 @@ describe("pg-boss scheduler", () => {
     };
     await expect(runCli(["account", "delete", "no-such-business"], store, send, createLogger(() => undefined))).rejects.toThrow();
     expect(sent).toEqual([]);
-    await db.insert(schema.users).values({ id: "user-cli-b1", googleSub: "sub-cli-b1", email: "cli@example.com", name: "Владелец" }).onConflictDoNothing();
+    await db.insert(schema.users).values({ id: "user-cli-b1", googleSub: "sub-cli-b1", kind: "google", email: "cli@example.com", name: "Владелец" }).onConflictDoNothing();
     await store.saveBusiness({
       id: "cli-b1",
       userId: "user-cli-b1",

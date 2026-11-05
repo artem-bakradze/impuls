@@ -60,11 +60,11 @@ test("logout returns to the start page and protected pages ask to sign in again"
   await page.waitForURL((url) => url.pathname === "/");
   await page.goto("/wizard");
   await page.waitForURL((url) => url.pathname === "/");
-  await expect(page.getByRole("button", { name: /Попробовать на своём бизнесе/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Демо-режим" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Посмотреть на примере" })).toHaveCount(0);
 });
 
-test("a cancelled Google login shows the plain message", async ({ page }) => {
+test("a login error shows the plain message", async ({ page }) => {
   await page.goto("/?error=OAuthCallbackError");
-  await expect(page.getByText("Вход отменён. Чтобы продолжить, войдите через Google ещё раз")).toBeVisible();
+  await expect(page.getByText("Не получилось войти. Попробуйте ещё раз через минуту")).toBeVisible();
 });

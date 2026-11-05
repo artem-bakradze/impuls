@@ -39,8 +39,9 @@ describe("job results", () => {
 });
 
 describe("login errors", () => {
-  it("explains a cancelled Google login", () => {
-    expect(loginErrorMessage("OAuthCallbackError")).toBe("Вход отменён. Чтобы продолжить, войдите через Google ещё раз");
+  it("gives one plain message for any login error", () => {
+    // Google is off for now: there is no declined consent, any error gets the one plain message.
+    expect(loginErrorMessage("OAuthCallbackError")).toBe("Не получилось войти. Попробуйте ещё раз через минуту");
     expect(loginErrorMessage(undefined)).toBeNull();
   });
 });

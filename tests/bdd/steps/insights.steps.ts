@@ -9,6 +9,7 @@ import { expect } from "vitest";
 import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
 import { feedDays, QUIET_DAYS } from "../../../apps/web/src/lib/insights-model";
 import type { DayReviewModel, InsightCardModel } from "../../../apps/web/src/lib/insights-model";
+import { currentAction, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
 import { ownerWorld } from "./owner-world";
 import type { OwnerWorld } from "./owner-world";
 import { featurePath, launchedWorld, simulatedBusiness } from "./world";
@@ -305,8 +306,29 @@ describeFeature(feature, ({ Scenario }) => {
       world = await simulatedBusiness(new HeuristicPolicy(), 2);
       expect((await world.store.insights("b1")).some((i) => i.source === "agent")).toBe(true);
     });
-    When("пользователь нажимает «Запустить по-настоящему»", async () => {
-      await controlSimulation(world.ctx, "b1", { action: "go_real" });
+    let insights = 0;
+    let changes = 0;
+    When("страница симуляции, открытая до обновления, отправляет «Запустить по-настоящему»", async () => {
+      insights = (await world.store.insights("b1")).length;
+      changes = (await world.store.changes("b1")).length;
+      // The web route answers it «Пульт симуляции обновился — обновите страницу» and enqueues nothing (demo-login).
+      expect(currentAction(SimulationControlBody.parse({ action: "go_real" }))).toBeNull();
+    });
+    Then("действие не выполняется, а инсайты и история симуляции остаются на месте", async () => {
+      expect((await world.store.insights("b1")).length).toBe(insights);
+      expect((await world.store.changes("b1")).length).toBe(changes);
+      expect(insights).toBeGreaterThan(0);
+    });
+  });
+
+  Scenario("Новая кампания", ({ Given, When, Then }) => {
+    let world: Awaited<ReturnType<typeof simulatedBusiness>>;
+    Given("реклама в симуляции, где агент уже принимал решения", async () => {
+      world = await simulatedBusiness(new HeuristicPolicy(), 2);
+      expect((await world.store.insights("b1")).some((i) => i.source === "agent")).toBe(true);
+    });
+    When("пользователь выбирает в меню плеера «Новая кампания» и подтверждает", async () => {
+      await controlSimulation(world.ctx, "b1", { action: "new_campaign" });
     });
     Then("инсайты симуляции удалены вместе с её историей", async () => {
       expect(await world.store.insights("b1")).toEqual([]);

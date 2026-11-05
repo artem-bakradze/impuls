@@ -3,6 +3,7 @@
 import { ApiOutlined, CheckCircleFilled, ExperimentOutlined, LockOutlined } from "@ant-design/icons";
 import { Button } from "antd";
 import { DIRECT_OAUTH_MESSAGES } from "@/lib/direct-oauth";
+import { STAND_DIRECT_NOTE, STAND_DIRECT_TITLE } from "@/lib/launch-step";
 import type { DirectOAuthOutcome } from "@/lib/direct-oauth";
 import { Note } from "../ui/primitives";
 
@@ -32,8 +33,8 @@ export function DirectStep({ directApiMode, connected, outcome, onConnect }: Pro
             <ExperimentOutlined />
           </span>
           <div className="stack" style={{ "--gap": "4px" } as React.CSSProperties}>
-            <h2 className="t-h3">На этом стенде Яндекс Директ не подключён</h2>
-            <p className="t-body t-muted">Здесь доступна только тестовая копия Директа: настоящая реклама не запускается, деньги не списываются. Для учебного рынка, где месяц проходит по дням, выберите «Симуляция».</p>
+            <h2 className="t-h3">{STAND_DIRECT_TITLE}</h2>
+            <p className="t-body t-muted">{STAND_DIRECT_NOTE}</p>
           </div>
         </div>
         {connected ? null : (

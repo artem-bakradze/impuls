@@ -16,6 +16,11 @@ The hosting provider is not chosen yet (task 0.5). The service needs only standa
 1. `staging` — `DIRECT_API_MODE=simulator` (market simulator, no real impressions; the Direct sandbox was shut down on 2026-07-15).
 2. `production` — `DIRECT_API_MODE=production`, allowlisted users first.
 
+The start page offers «Демо-режим» to anyone, without a login (demo-login): every press creates an account whose
+simulation uses the models within the per-business limits (`AGENT_SIMULATION_RUN_LIMIT_RUB`, `IMAGE_MONTHLY_LIMIT`).
+There is no overall cap on demo accounts or their model spend yet — decide one before a public deployment
+(`production-rollout` task 2.4). The Google login is off for now, so web needs no Google OAuth client.
+
 ## Worker configuration (all required unless marked)
 
 | Variable | Meaning |

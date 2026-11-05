@@ -252,15 +252,4 @@ describe("simulation on the owner's numbers", () => {
     expect(await store.stats("b1", "2026-10-01", "2026-12-31")).toEqual([]);
     expect(await store.getBusiness("b1")).toMatchObject({ mode: "direct", launchedOn: null, monthlyBudgetRub: 0, csoSource: { kind: "auto", reference: 0 }, card: {}, miniSite: null, timeZone: "Europe/Moscow" });
   });
-
-  it("returns to the wizard with «Запустить по-настоящему»", async () => {
-    const { store, ctx } = await world();
-    await launchSimulation(ctx, "b1", plan());
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 2, spendRub: 1_200 } });
-    await controlSimulation(ctx, "b1", { action: "go_real" });
-    expect(await store.getSimulation("b1")).toBeNull();
-    expect(await store.directions("b1")).toEqual([]);
-    expect(await store.changes("b1")).toEqual([]);
-    expect(await store.getBusiness("b1")).toMatchObject({ mode: "direct", launchedOn: null, card: business.card });
-  });
 });

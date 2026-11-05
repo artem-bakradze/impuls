@@ -424,11 +424,6 @@ export interface Store {
    */
   deleteLaunchData(businessId: string): Promise<void>;
   /**
-   * «Запустить по-настоящему»: the business is not launched any more, works with Direct and opens the wizard on
-   * `step` with its draft kept, Direct not connected yet.
-   */
-  reopenWizard(businessId: string, step: number): Promise<void>;
-  /**
    * «Новая кампания»: the business goes back to the wizard's first step with an empty draft — no card, budget, goal,
    * counter or mini-site; the account and its time zone stay.
    */
@@ -698,13 +693,6 @@ export class MemoryStore implements Store {
   }
   deleteSimulation(businessId: string): Promise<void> {
     this.simulationMap.delete(businessId);
-    return Promise.resolve();
-  }
-  reopenWizard(businessId: string): Promise<void> {
-    const business = this.businessMap.get(businessId);
-    if (business) {
-      this.businessMap.set(businessId, { ...business, launchedOn: null, mode: "direct" });
-    }
     return Promise.resolve();
   }
   restartOnboarding(businessId: string): Promise<void> {

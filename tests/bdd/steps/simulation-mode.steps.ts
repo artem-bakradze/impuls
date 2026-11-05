@@ -7,7 +7,8 @@ import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect, vi } from "vitest";
 import { simulationWords } from "../../../apps/web/src/lib/day-words";
 import { noteTitle } from "../../../apps/web/src/lib/review-note";
-import { currentAction, periodReviewText, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
+import { launchModeFor } from "../../../apps/web/src/lib/account-mode";
+import { currentAction, periodReviewText, PLAYER_MENU, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
 import type { JournalEntry } from "../../../apps/web/src/lib/service-work";
 import { BAD, GOOD, HeldAgent, ownerPlan, ownerWorld, PLAIN, REAL_START } from "./owner-world";
 import type { OwnerWorld } from "./owner-world";
@@ -44,10 +45,12 @@ const serviceEntries = (entries: readonly JournalEntry[] | undefined) => (entrie
 describeFeature(feature, ({ Scenario }) => {
   Scenario("Запуск в симуляции без Директа", ({ Given, When, Then, And }) => {
     let w: OwnerWorld;
-    Given("владелец прошёл мастер с бюджетом 15 000 ₽", async () => {
+    Given("владелец демо прошёл мастер с бюджетом 15 000 ₽", async () => {
       w = await ownerWorld(new HeuristicPolicy(), { launch: false });
     });
-    When("он выбирает «Запустить в симуляции»", async () => {
+    When("он нажимает «Запустить симуляцию»", async () => {
+      // The page sends no mode: the demo's own is the simulation (simulation-mode «Режим бизнеса «Симуляция»»).
+      expect(launchModeFor("demo", {})).toEqual({ ok: true, mode: "simulation" });
       expect((await launchSimulation(w.ctx, "b1", ownerPlan)).status).toBe("launched");
     });
     Then("кампании созданы на учебном рынке, а в Директ не ушло ни одного запроса", async () => {
@@ -530,12 +533,12 @@ describeFeature(feature, ({ Scenario }) => {
   Scenario("Прежняя страница", ({ Given, When, Then }) => {
     const answers: unknown[] = [];
     Given("страница симуляции открыта до обновления", () => undefined);
-    When("она отправляет «Прожить неделю», «+1 день» или «Повторить этот прогон»", () => {
-      for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "restart", mode: "repeat" }]) answers.push(currentAction(SimulationControlBody.parse(body)));
+    When("она отправляет «Прожить неделю», «+1 день», «Повторить этот прогон» или «Запустить по-настоящему»", () => {
+      for (const body of [{ action: "step_week" }, { action: "step_day" }, { action: "restart", mode: "repeat" }, { action: "go_real" }]) answers.push(currentAction(SimulationControlBody.parse(body)));
     });
-    Then("сервис не выполняет шаг и просит обновить страницу", () => {
+    Then("сервис не выполняет действие и просит обновить страницу", () => {
       // The web route answers such an action «Пульт симуляции обновился — обновите страницу» and enqueues nothing.
-      expect(answers).toEqual([null, null, null]);
+      expect(answers).toEqual([null, null, null, null]);
     });
   });
 
@@ -557,28 +560,33 @@ describeFeature(feature, ({ Scenario }) => {
       expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
       expect(await w.store.getBusiness("b1")).toMatchObject({ card: {}, monthlyBudgetRub: 0, csoSource: { kind: "auto", reference: 0 }, miniSite: null });
     });
-    And("мастер открыт на первом шаге с пустыми полями, а режим бизнеса снова не выбран", async () => {
-      // The wizard opens on step 1 for a business not launched, with an empty draft for an empty card (web).
-      expect(await w.store.getBusiness("b1")).toMatchObject({ launchedOn: null, mode: "direct" });
+    And("мастер открыт на первом шаге с пустыми полями, а запуск из него у демо снова будет симуляцией", async () => {
+      // The wizard opens on step 1 for a business not launched, with an empty draft for an empty card (web); the next
+      // launch takes the account's mode, not the business's stored one.
+      expect(await w.store.getBusiness("b1")).toMatchObject({ launchedOn: null });
+      expect(launchModeFor("demo", {})).toEqual({ ok: true, mode: "simulation" });
     });
   });
 
-  Scenario("Переход к настоящему запуску", ({ Given, When, Then }) => {
+  Scenario("Без настоящего запуска", ({ Given, When, Then, And }) => {
     let w: OwnerWorld;
-    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+    let menu: { action: string; label: string }[] = [];
+    Given("реклама демо запущена в симуляции, и владелец внёс неделю статистики", async () => {
       w = await ownerWorld();
       await w.week();
     });
-    When("владелец нажимает «Запустить по-настоящему»", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "go_real" });
+    When("владелец открывает меню плеера", () => {
+      menu = [...PLAYER_MENU];
     });
-    Then("данные симуляции удалены, описание бизнеса сохранено, а мастер открыт на шаге «Объявления и запуск»", async () => {
-      expect(await w.store.getSimulation("b1")).toBeNull();
-      expect(await w.store.directions("b1")).toEqual([]);
-      expect(await w.store.changes("b1")).toEqual([]);
-      const business = await w.store.getBusiness("b1");
-      expect(business).toMatchObject({ mode: "direct", launchedOn: null });
-      expect(business.card.services).toEqual([{ name: "Маникюр с покрытием", priceRub: 1_800 }]);
+    Then("в меню два действия — «Начать заново» и «Новая кампания», и оба принимаются сервисом", () => {
+      expect(menu.map((item) => item.label)).toEqual(["Начать заново", "Новая кампания"]);
+      for (const item of menu) expect(currentAction(SimulationControlBody.parse({ action: item.action }))).toEqual({ action: item.action });
+    });
+    And("«Запустить по-настоящему» нет, а данные симуляции остаются на месте", async () => {
+      expect(menu.map((item) => item.label)).not.toContain("Запустить по-настоящему");
+      expect(currentAction(SimulationControlBody.parse({ action: "go_real" }))).toBeNull();
+      expect(await w.store.getSimulation("b1")).not.toBeNull();
+      expect((await w.store.getBusiness("b1")).mode).toBe("simulation");
     });
   });
 });

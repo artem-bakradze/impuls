@@ -23,7 +23,7 @@ describe("simulation period on PostgreSQL", () => {
     await db.execute(sql`DELETE FROM simulations WHERE business_id = 'speed-b1'`);
     await db.execute(sql`DELETE FROM users WHERE id = 'speed-u1'`).catch(() => undefined);
     const store = new PgStore(db);
-    await db.insert(schema.users).values({ id: "speed-u1", googleSub: "speed-sub", email: "speed@example.com", name: null }).onConflictDoNothing();
+    await db.insert(schema.users).values({ id: "speed-u1", googleSub: "speed-sub", kind: "google", email: "speed@example.com", name: null }).onConflictDoNothing();
     await store.saveBusiness({
       id: "speed-b1",
       userId: "speed-u1",
