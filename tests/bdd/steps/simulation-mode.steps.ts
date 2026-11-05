@@ -539,6 +539,30 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario("Новая кампания", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+      w = await ownerWorld();
+      await w.week();
+    });
+    When("владелец выбирает в меню плеера «Новая кампания» и подтверждает", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "new_campaign" });
+    });
+    Then("цифры, история и объявления симуляции удалены вместе с описанием бизнеса и бюджетом", async () => {
+      expect(await w.store.getSimulation("b1")).toBeNull();
+      expect(await w.store.directions("b1")).toEqual([]);
+      expect(await w.store.ads("b1")).toEqual([]);
+      expect(await w.store.changes("b1")).toEqual([]);
+      expect(await w.store.insights("b1")).toEqual([]);
+      expect(await w.store.stats("b1", "2026-10-01", "2027-01-31")).toEqual([]);
+      expect(await w.store.getBusiness("b1")).toMatchObject({ card: {}, monthlyBudgetRub: 0, csoSource: { kind: "auto", reference: 0 }, miniSite: null });
+    });
+    And("мастер открыт на первом шаге с пустыми полями, а режим бизнеса снова не выбран", async () => {
+      // The wizard opens on step 1 for a business not launched, with an empty draft for an empty card (web).
+      expect(await w.store.getBusiness("b1")).toMatchObject({ launchedOn: null, mode: "direct" });
+    });
+  });
+
   Scenario("Переход к настоящему запуску", ({ Given, When, Then }) => {
     let w: OwnerWorld;
     Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {

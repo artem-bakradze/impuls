@@ -62,7 +62,7 @@ export const simulationStatusOf = (input: {
   };
 };
 
-export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[] } | { action: "continue" | "restart" | "go_real" };
+export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[] } | { action: "continue" | "restart" | "go_real" | "new_campaign" };
 
 /** Actions of older players: the time no longer runs by itself or by days and weeks, so an old page is asked to reload. */
 const GONE_ACTIONS = ["pause", "resume", "until_decision", "speed", "step_week", "step_day", "extend"] as const;
@@ -76,7 +76,7 @@ export const SimulationControlBody = z.discriminatedUnion("action", [
     days: z.union(PERIOD_DAYS.map((d) => z.literal(d)) as [z.ZodLiteral<1>, z.ZodLiteral<3>, z.ZodLiteral<7>, z.ZodLiteral<14>]),
     ads: z.array(z.object({ adId: z.string().min(1), impressions: count, clicks: count, leads: count, spendRub: count })).max(500),
   }),
-  z.object({ action: z.enum(["continue", "go_real"]) }),
+  z.object({ action: z.enum(["continue", "go_real", "new_campaign"]) }),
   // «Повторить этот прогон» of the older player is gone; its «Прогнать заново» is today's «Начать заново».
   z.object({ action: z.literal("restart"), mode: z.enum(["repeat", "fresh"]).optional() }),
   z.object({ action: z.enum(GONE_ACTIONS) }).passthrough(),

@@ -15,7 +15,8 @@ export const isStepping = (status: SimulationStatus): boolean => status.status =
  * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
  * wide screen and over the answer on a narrow one: the day, one main button «Добавить статистику» that opens the window
  * of the next period and also says when a period is being reviewed or broke off, and at its foot the training market's
- * note. «Начать заново» and «Запустить по-настоящему» are in its menu. Time moves only by the owner's periods.
+ * note. «Начать заново», «Новая кампания» and «Запустить по-настоящему» are in its menu. Time moves only by the owner's
+ * periods.
  */
 export function SimulationPlayer({
   status,
@@ -42,13 +43,24 @@ export function SimulationPlayer({
       cancelText: "Отмена",
       onOk: () => act({ action: "go_real" }),
     });
+  /** «Новая кампания»: everything of the simulation goes, and the preparation starts from the site again. */
+  const confirmNewCampaign = () =>
+    modal.confirm({
+      title: "Начать новую кампанию?",
+      content: "Цифры, история и объявления симуляции удалятся вместе с описанием бизнеса. Вы заново пройдёте подготовку: сайт, описание бизнеса, бюджет и объявления.",
+      okText: "Начать новую кампанию",
+      cancelText: "Отмена",
+      onOk: () => act({ action: "new_campaign" }),
+    });
   const menu: MenuProps = {
     items: [
       { key: "restart", label: "Начать заново", disabled: stepping },
+      { key: "new_campaign", label: "Новая кампания", disabled: stepping },
       { key: "go_real", label: "Запустить по-настоящему", disabled: stepping },
     ],
     onClick: ({ key }) => {
       if (key === "restart") setRestartOpen(true);
+      if (key === "new_campaign") void confirmNewCampaign();
       if (key === "go_real") void confirmGoReal();
     },
   };
@@ -68,7 +80,7 @@ export function SimulationPlayer({
           </span>
         </div>
         <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново, запустить по-настоящему" className="studio-menu" />
+          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново, новая кампания, запустить по-настоящему" className="studio-menu" />
         </Dropdown>
       </div>
       <div className="sim-player-actions">

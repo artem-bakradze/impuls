@@ -490,6 +490,14 @@ export class PgStore implements Store {
       .where(eq(schema.businesses.id, businessId));
   }
 
+  async restartOnboarding(businessId: string): Promise<void> {
+    // An empty card is an empty wizard draft (card.onboarding): the owner starts from the site again.
+    await this.db
+      .update(schema.businesses)
+      .set({ launchedOn: null, mode: "direct", onboardingStep: 1, monthlyBudgetRub: 0, csoMode: "auto", csoValue: 0, card: {}, miniSite: null, leadGoalId: null })
+      .where(eq(schema.businesses.id, businessId));
+  }
+
   async deleteLaunchData(businessId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       const campaignIds = (await tx.select({ id: schema.campaigns.id }).from(schema.campaigns).where(eq(schema.campaigns.businessId, businessId))).map((r) => r.id);

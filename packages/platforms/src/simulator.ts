@@ -130,6 +130,22 @@ export const periodRoom = (
   });
 };
 
+/** A campaign's day and week caps over the dates, by the same rule as `periodRoom`. */
+export const periodCaps = (
+  weeklyLimit: Kopecks,
+  dates: readonly LocalDate[],
+  spentOn: (date: LocalDate) => Kopecks,
+  spentInWeek: (monday: LocalDate) => Kopecks,
+): PeriodCaps => {
+  const dailyCap = Math.floor((weeklyLimit / 7) * 2);
+  const weeks = new Map<LocalDate, number[]>();
+  dates.forEach((date, i) => weeks.set(weekStart(date), [...(weeks.get(weekStart(date)) ?? []), i]));
+  return {
+    day: dates.map((date) => Math.max(0, dailyCap - spentOn(date))),
+    weeks: [...weeks].map(([monday, days]) => ({ days, cap: Math.max(0, weeklyLimit - spentInWeek(monday)) })),
+  };
+};
+
 /** The room of a campaign of a saved market: zero on every day for a stopped or unknown one. */
 export const campaignRoom = (state: Pick<SimulatorState, "campaigns" | "cells" | "weekSpend">, campaignId: string, dates: readonly LocalDate[]): Kopecks[] => {
   const campaign = state.campaigns.find((c) => c.id === campaignId);
@@ -137,6 +153,56 @@ export const campaignRoom = (state: Pick<SimulatorState, "campaigns" | "cells" |
   const weekSpend = new Map(state.weekSpend);
   const spentOn = (date: LocalDate) => state.cells.filter((c) => c.campaignId === campaignId && c.date === date).reduce((s, c) => s + c.spend, 0);
   return periodRoom(campaign.weeklyLimit, dates, spentOn, (monday) => weekSpend.get(`${campaignId}|${monday}`) ?? 0);
+};
+
+/**
+ * Shares of `total` proportional to `weights`, each at most its `cap` (water filling): the ones with less room get all
+ * of it, the others the same level per weight. The amounts are not rounded.
+ */
+const waterFill = (total: number, caps: readonly number[], weights: readonly number[]): number[] => {
+  const shares = caps.map(() => 0);
+  let left = total;
+  let open = caps.map((_, i) => i).filter((i) => (weights[i] ?? 0) > 0);
+  while (left > 0 && open.length > 0) {
+    const level = left / open.reduce((s, i) => s + (weights[i] ?? 0), 0);
+    const full = open.filter((i) => (caps[i] ?? 0) <= level * (weights[i] ?? 0));
+    if (full.length === 0) {
+      for (const i of open) shares[i] = level * (weights[i] ?? 0);
+      return shares;
+    }
+    for (const i of full) {
+      left -= caps[i] ?? 0;
+      shares[i] = caps[i] ?? 0;
+    }
+    open = open.filter((i) => !full.includes(i));
+  }
+  return shares;
+};
+
+/** A campaign's limits over a period: what each day may still spend, and what each week from Monday may. */
+export interface PeriodCaps {
+  day: Kopecks[];
+  weeks: { days: number[]; cap: Kopecks }[];
+}
+
+/**
+ * Whole kopecks of `total` spread over the days as evenly as the limits allow (simulation-on-owner-numbers decision 3):
+ * first by the weeks, by their number of days and at most their room, then by the days of each week, at most a day's
+ * cap. Neither a day nor a week goes over, and a period does not spend its week's limit by Thursday.
+ */
+export const evenUnderLimits = (total: Kopecks, caps: PeriodCaps): Kopecks[] => {
+  const weekRoom = caps.weeks.map((w) => Math.min(w.cap, w.days.reduce((s, d) => s + (caps.day[d] ?? 0), 0)));
+  const weekly = allocate(total, waterFill(total, weekRoom, caps.weeks.map((w) => w.days.length)));
+  const out = caps.day.map(() => 0);
+  caps.weeks.forEach((week, k) => {
+    const amount = weekly[k] ?? 0;
+    const dayCaps = week.days.map((d) => caps.day[d] ?? 0);
+    const days = allocate(amount, waterFill(amount, dayCaps, dayCaps.map(() => 1)));
+    week.days.forEach((d, j) => {
+      out[d] = days[j] ?? 0;
+    });
+  });
+  return out;
 };
 
 /** Moves single units between the days of the rows until every day adds up to `columns`; the rows keep their sums. */
@@ -530,10 +596,19 @@ export class SimulatedPlatform implements AdPlatform {
     return campaignRoom({ campaigns: [...this.campaigns.values()], cells: this.cells, weekSpend: [...this.weekSpend] }, campaignId, dates);
   }
 
+  /** The day and week caps of a campaign over the dates; none for a stopped one. */
+  private capsOf(campaignId: string, dates: readonly LocalDate[]): PeriodCaps {
+    const campaign = this.campaigns.get(campaignId);
+    if (campaign === undefined || campaign.status !== "active") return { day: dates.map(() => 0), weeks: [] };
+    const spentOn = (date: LocalDate) => this.cells.filter((c) => c.campaignId === campaignId && c.date === date).reduce((s, c) => s + c.spend, 0);
+    return periodCaps(campaign.weeklyLimit, dates, spentOn, (monday) => this.weekSpend.get(`${campaignId}|${monday}`) ?? 0);
+  }
+
   /**
    * The owner's stats of a period (simulation-mode «Статистика периода от владельца»), visible at once. A campaign's
-   * spend goes over the days by their room, so neither a day nor a week goes over the limit; every ad's numbers follow
-   * its spend days, add up to what was entered exactly and keep leads ≤ clicks ≤ impressions on each day.
+   * spend goes over the days evenly, each day at most its room, so neither a day nor a week goes over the limit and the
+   * period does not end early; every ad's numbers follow its spend days, add up to what was entered exactly and keep
+   * leads ≤ clicks ≤ impressions on each day.
    */
   recordPeriod(dates: readonly LocalDate[], totals: readonly PeriodAdTotals[]): void {
     const at = this.options.now().getTime();
@@ -548,8 +623,8 @@ export class SimulatedPlatform implements AdPlatform {
       if (spend > room.reduce((s, r) => s + r, 0)) {
         throw new PlatformError("PERIOD_OVER_LIMIT", `Period spend of ${campaignId} is over its room`, false);
       }
-      const days = allocate(spend, room);
-      const fallback = room.some((r) => r > 0) ? room : dates.map(() => 1);
+      const days = evenUnderLimits(spend, this.capsOf(campaignId, dates));
+      const fallback = dates.map(() => 1);
       const spends = rows.map((r) => allocate(r.spend, days));
       fitColumns(spends, days);
       rows.forEach((row, i) => {

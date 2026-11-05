@@ -236,6 +236,14 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     expect(screen.getByText(/Данные симуляции удалятся без возможности вернуть/)).toBeTruthy();
   });
 
+  it("offers a new campaign in the player's menu, saying what goes and that the preparation starts again", async () => {
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Ещё/ }));
+    fireEvent.click(await screen.findByText("Новая кампания"));
+    expect((await screen.findAllByText("Начать новую кампанию?")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Вы заново пройдёте подготовку: сайт, описание бизнеса, бюджет и объявления/)).toBeTruthy();
+  });
+
   it("starts over in one action, said without the words «модель» and «агент»", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
     fireEvent.click(screen.getByRole("button", { name: /^Ещё/ }));

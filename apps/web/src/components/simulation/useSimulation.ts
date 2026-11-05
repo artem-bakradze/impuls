@@ -85,7 +85,7 @@ export const useSimulation = (initial: SimulationStatus | null) => {
       setError(outcome.message);
       return null;
     }
-    if (control.action === "go_real") {
+    if (control.action === "go_real" || control.action === "new_campaign") {
       window.location.assign("/wizard");
       return null;
     }

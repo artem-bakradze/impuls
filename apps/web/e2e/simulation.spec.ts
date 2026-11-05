@@ -132,6 +132,17 @@ test("an owner enters a period of stats in the simulation and goes on to a real 
   await page.getByRole("dialog").getByRole("button", { name: "Запустить по-настоящему" }).click();
   await page.waitForURL("**/wizard");
   await expectStep(page, 3, "Объявления и запуск");
+
+  // «Новая кампания»: a simulation again, then everything goes and the preparation starts from the site.
+  await page.getByLabel("Симуляция").check();
+  await page.getByRole("button", { name: "Запустить симуляцию" }).click();
+  await page.waitForURL("**/summary", { timeout: 150_000 });
+  await page.getByRole("button", { name: /^Ещё/ }).click();
+  await page.getByRole("menuitem", { name: "Новая кампания" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Начать новую кампанию" }).click();
+  await page.waitForURL("**/wizard");
+  await expectStep(page, 1, "Где вас найти?");
+  await expect(page.getByLabel("Ваш сайт")).toHaveValue("");
 });
 
 /** Waits until the period is reviewed: the player is on `day` and offers the next period, and the review is there. */

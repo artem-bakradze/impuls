@@ -213,9 +213,21 @@ export const leaveSimulation = async (base: JobContext, businessId: string): Pro
 export const savedPeriodForm = (record: SimulationRecord, directions: readonly DirectionRecord[], ads: readonly AdRecord[], timeZone: string): PeriodForm =>
   periodForm({ state: record.state, room: (id, dates) => campaignRoom(record.state, id, dates), directions, ads, start: record.simNow, timeZone, last: lastEntered(record.steps) });
 
+/**
+ * «Новая кампания» (simulation-mode spec «Симуляция как отдельный режим»): the simulation's numbers, history and ads are
+ * deleted with the business's card, budget and goal, and the wizard opens on its first step with an empty draft.
+ */
+export const startNewCampaign = async (base: JobContext, businessId: string): Promise<void> => {
+  await base.locks.withLock(simulationLockKey(businessId), async () => {
+    await base.store.deleteLaunchData(businessId);
+    await base.store.deleteSimulation(businessId);
+    await base.store.restartOnboarding(businessId);
+  });
+};
+
 export type SimulationControl =
   | { action: "period"; days: PeriodDays; ads: PeriodAdInput[] }
-  | { action: "continue" | "restart" | "go_real" };
+  | { action: "continue" | "restart" | "go_real" | "new_campaign" };
 
 /** Freeze the public inputs of the period, never the agent's private session or user data. */
 const capturePeriodReport = async (world: SimulationWorld): Promise<string> => {
@@ -344,6 +356,9 @@ export const controlSimulation = async (base: JobContext, businessId: string, co
       break;
     case "go_real":
       await leaveSimulation(base, businessId);
+      break;
+    case "new_campaign":
+      await startNewCampaign(base, businessId);
       break;
   }
   return { ok: true };

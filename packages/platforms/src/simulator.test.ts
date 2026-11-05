@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { weekStart } from "@impuls/core";
 import { periodRoom, SimulatedPlatform } from "./simulator";
 
 const campaign = {
@@ -140,9 +141,26 @@ describe("Period entered by the owner", () => {
     const room = sim.roomOf(campaignId, days);
     sim.recordPeriod(days, [{ adId: a, impressions: 5_000, clicks: 400, leads: 9, spend: room.reduce((s, r) => s + r, 0) }]);
     const rows = await sim.getStats([campaignId], days[0] ?? "", days[13] ?? "");
-    const byDay = new Map(rows.map((r) => [r.date, r.spend]));
-    days.forEach((date, d) => expect(byDay.get(date) ?? 0).toBeLessThanOrEqual(room[d] ?? 0));
+    const byDay = new Map<string, number>();
+    for (const r of rows) byDay.set(r.date, (byDay.get(r.date) ?? 0) + r.spend);
+    // A day at most twice an average day of the weekly limit (420 000), a week from Monday at most the limit.
+    days.forEach((date) => expect(byDay.get(date) ?? 0).toBeLessThanOrEqual(120_000));
+    const byWeek = new Map<string, number>();
+    for (const [date, spend] of byDay) byWeek.set(weekStart(date), (byWeek.get(weekStart(date)) ?? 0) + spend);
+    for (const spend of byWeek.values()) expect(spend).toBeLessThanOrEqual(420_000);
     expect(sim.roomOf(campaignId, days).every((r) => r === 0)).toBe(true);
+  });
+
+  it("spreads a week's spend over all its days, not only until the weekly limit runs out", async () => {
+    // Monday 9 November: the daily cap would fill the week's limit by Thursday if spend followed the room.
+    const clock = { now: new Date("2026-11-09T06:00:00Z").getTime() };
+    const sim = owned(clock);
+    const { campaignId, a } = await setUp(sim, 162_000);
+    const days = dates("2026-11-09", 7);
+    sim.recordPeriod(days, [{ adId: a, impressions: 1_400, clicks: 70, leads: 3, spend: 140_000 }]);
+    const rows = await sim.getStats([campaignId], days[0] ?? "", days[6] ?? "");
+    const byDay = days.map((date) => rows.filter((r) => r.date === date).reduce((s, r) => s + r.spend, 0));
+    expect(byDay).toEqual([20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000]);
   });
 
   it("refuses spend over the room", async () => {
