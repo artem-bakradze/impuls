@@ -4,7 +4,7 @@ import type { LocalDate, PerformanceStats } from "@impuls/core";
 import { measurementFromCard } from "../measurement";
 import { isStepComplete } from "@impuls/worker/simulation-report";
 import { aggregate, isAdDecision, loadBusinessView, weeklyClientCost } from "@impuls/worker";
-import { budgetForecast, budgetPlan, observedDaily } from "../summary-model";
+import { budgetForecast, budgetPlan, evenPeriods, observedDaily } from "../summary-model";
 import { buildInsightFeed } from "./insights";
 import type { SummaryModel, SummaryPeriod } from "../summary-model";
 import { businessClock, platformCapabilities, readOnlyContext } from "./read-context";
@@ -88,7 +88,15 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
     timeZone: business.timeZone,
     measurement: measurementFromCard(business.card, business.mode === "simulation"),
     dataPeriod: { from: range.from > (business.launchedOn ?? today) ? range.from : (business.launchedOn ?? today), to: range.to, asOf: ctx.clock.now().toISOString(), month: monthKey(today), previousPartial: launchedOn > range.prevFrom },
-    daily: observedDaily(range.from > launchedOn ? range.from : launchedOn, range.to, rows, new Set(changes.filter((c) => c.author === "service" && c.status === "applied" && isAdDecision(c)).map((c) => toLocalDate(c.createdAt, business.timeZone)))),
+    daily: evenPeriods(
+      observedDaily(range.from > launchedOn ? range.from : launchedOn, range.to, rows, new Set(changes.filter((c) => c.author === "service" && c.status === "applied" && isAdDecision(c)).map((c) => toLocalDate(c.createdAt, business.timeZone)))),
+      // The owner's periods of a simulation, from their first day to the day before the morning they end on.
+      simulation === null
+        ? []
+        : simulation.steps
+            .filter((s) => s.kind === "period" && isStepComplete(s, simulation))
+            .map((s) => ({ from: toLocalDate(s.from, business.timeZone), to: addDays(toLocalDate(s.to, business.timeZone), -1) })),
+    ),
     period,
     state: allPaused ? "paused" : allRows.length === 0 ? "first_day" : "running",
     simulation: simulation ? { weeks: simulation.steps.filter((s) => s.kind === "week" && isStepComplete(s, simulation)).length } : null,

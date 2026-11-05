@@ -197,6 +197,27 @@ export const moderationText = (m: SummaryModel["moderation"]): string => {
   return "Объявления прошли проверку Яндекса";
 };
 
+/**
+ * A simulation's periods on the chart (analytics spec «Сводка»): the owner entered each period as a whole, so its spend
+ * and leads are shared evenly by its days, and every day shows the period's price per lead. A period without leads
+ * keeps its days «без обращений»; days without any report stay out.
+ */
+export const evenPeriods = (daily: NonNullable<SummaryModel["daily"]>, periods: readonly { from: LocalDate; to: LocalDate }[]): NonNullable<SummaryModel["daily"]> => {
+  const days = daily.map((day) => ({ ...day }));
+  for (const period of periods) {
+    const inside = days.filter((day) => day.date >= period.from && day.date <= period.to);
+    if (!inside.some((day) => day.leads !== null)) continue;
+    // Shared by the period's days on the screen: a period the month's start cuts keeps the share of its days in view.
+    const leads = inside.reduce((sum, day) => sum + (day.leads ?? 0), 0);
+    const spend = inside.reduce((sum, day) => sum + day.spend, 0);
+    for (const day of inside) {
+      day.leads = leads / inside.length;
+      day.spend = spend / inside.length;
+    }
+  }
+  return days;
+};
+
 /** Keep gaps distinct from reported zero leads; use only the selected observed rows. */
 export const observedDaily = (from: LocalDate, to: LocalDate, rows: readonly { date: LocalDate; leads: number; spend: number }[], decisionDates: ReadonlySet<LocalDate>): NonNullable<SummaryModel["daily"]> => {
   const totals = new Map<LocalDate, { leads: number; spend: number }>();

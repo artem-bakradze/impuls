@@ -43,9 +43,11 @@ export const trendOf = (daily: readonly { date: string; leads: number | null; sp
 export const dayHint = (point: TrendPoint, words: DayWords = calendarWords): string => {
   const date = words.date(point.date);
   if (point.value !== null && point.leads !== null) {
+    // A day of a simulation's period carries its share of the period: the price is the period's, the count is not a day's.
+    if (!Number.isInteger(point.leads)) return `${date} · ${formatRub(point.value)} за обращение в среднем за период`;
     return `${date} · ${formatRub(point.value)} за обращение · ${point.leads} ${plural(point.leads, "обращение", "обращения", "обращений")}`;
   }
-  return `${date} · без обращений · потрачено ${formatRub(point.spend)}`;
+  return `${date} · без обращений · потрачено ${formatRub(Math.round(point.spend))}`;
 };
 
 type Pt = { x: number; y: number };
