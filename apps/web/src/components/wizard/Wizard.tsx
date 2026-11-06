@@ -221,6 +221,9 @@ export function Wizard({ initialDraft, initialStep, directApiMode, mode, directO
   const working = saving || busy !== null;
   const showNext = step < STEP_COUNT;
   const launchWords = launchStepWords(mode);
+  // The day the ads start: a simulation starts on the 1st of the next month, so its budget is a full month and the
+  // owner sees no prorated month and no month names (simulation-mode «Дни симуляции вместо дат»).
+  const launchDay = mode === "simulation" ? simulationStartDate(todayIn(draft.card.timeZone)) : todayIn(draft.card.timeZone);
   /** «изменить» of the summary: the card and the budget are on step 2; the ads are on this very step. */
   const edit = (target: number) => {
     if (target >= STEP_COUNT) {
@@ -256,7 +259,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, mode, directO
               <>
                 <div className="surface surface-pad"><CardStep {...stepProps} /></div>
                 <div className="surface surface-pad" data-testid="budget-step">
-                  <BudgetStep {...stepProps} today={todayIn(draft.card.timeZone)} />
+                  <BudgetStep {...stepProps} today={launchDay} />
                 </div>
               </>
             ) : null}
@@ -269,15 +272,14 @@ export function Wizard({ initialDraft, initialStep, directApiMode, mode, directO
                     {launchWords.connectsDirect ? (
                       <>
                         <DirectStep directApiMode={directApiMode} connected={draft.directConnected} outcome={directOutcome} onConnect={() => void goTo(STEP_COUNT, { ...draft, directConnected: true })} />
-                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={todayIn(draft.card.timeZone)} onEdit={edit} save={() => saveHere(draft)} mode={mode} /> : null}
+                        {draft.directConnected ? <LaunchStep draft={draft} onChange={setDraft} errors={errors} today={launchDay} onEdit={edit} save={() => saveHere(draft)} mode={mode} /> : null}
                       </>
                     ) : (
                       <LaunchStep
                         draft={draft}
                         onChange={setDraft}
                         errors={errors}
-                        // The simulated month starts on its own date, so the budget line is for that month.
-                        today={simulationStartDate(todayIn(draft.card.timeZone))}
+                        today={launchDay}
                         onEdit={edit}
                         save={() => saveHere(draft)}
                         mode={mode}

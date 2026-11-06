@@ -182,6 +182,9 @@ describe("CardStep", () => {
 });
 
 describe("LaunchStep", () => {
+  /** Month names as the budget lines would write them («в ноябре», «1 декабря»); May is left out: «мая» is in ordinary words. */
+  const MONTH_NAMES = /(январ|феврал|марте|марта|апрел|июн[ея]|июл[ея]|август|сентябр|октябр|ноябр|декабр)/i;
+  const plainText = (text: string | null): string => (text ?? "").replace(/[  ]/g, " ");
   const ready = (): OnboardingDraft => {
     const draft = withSite();
     draft.card = { ...draft.card, category: "Маникюр", city: "Москва", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }] };
@@ -230,8 +233,19 @@ describe("LaunchStep", () => {
     expect(document.body.textContent).not.toMatch(/сценари/i);
     expect(screen.getByTestId("after-launch")).toHaveTextContent("Цифры рекламы вы задаёте сами: вносите статистику за выбранный период");
     expect(screen.getByRole("button", { name: /Запустить симуляцию/ })).toBeInTheDocument();
-    // The simulated month starts on the 1st: the budget line is for a full month.
+    // The simulated month starts on the 1st: the budget line is for a full month, with no start date.
+    expect(plainText(document.body.textContent)).toContain("Больше 15 000 ₽ за месяц мы не потратим");
     expect(document.body.textContent).not.toContain("В этом месяце — до");
+    expect(document.body.textContent).not.toContain("Симуляция начнётся");
+    expect(document.body.textContent).not.toMatch(MONTH_NAMES);
+  });
+
+  it("promises a full month on the budget step of a simulation, whatever today's date (simulation-mode «Дни симуляции вместо дат»)", () => {
+    render(<Wizard initialDraft={ready()} initialStep={2} directApiMode="simulator" mode="simulation" directOutcome={null} />);
+    const budget = screen.getByTestId("budget-step");
+    expect(plainText(screen.getByTestId("budget-ceiling").textContent)).toBe("Не больше 15 000 ₽ в месяц");
+    expect(budget.textContent).not.toContain("До конца месяца");
+    expect(budget.textContent).not.toMatch(MONTH_NAMES);
   });
 
   it("offers Direct to an account of the test login, with no «Симуляция» (business-onboarding «Шаг запуска у аккаунта Google»)", () => {

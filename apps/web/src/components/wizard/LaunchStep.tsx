@@ -7,7 +7,6 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { AccountMode } from "@/lib/account-mode";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
-import { formatLocalDate } from "@/lib/format";
 import { launchStepWords } from "@/lib/launch-step";
 import { advertisedText, budgetCeilingText, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
@@ -87,8 +86,8 @@ export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors 
     {
       icon: <WalletOutlined />,
       title: "Бюджет",
-      // The simulated month starts on its own date, not today, so the owner sees why it differs from the budget step.
-      text: simulation ? `Симуляция начнётся ${formatLocalDate(today)}. ${budgetCeilingText(budget, today)}` : budgetCeilingText(budget, today),
+      // `today` is the launch day: in a simulation its own 1st of the month, which the owner never sees as a date.
+      text: budgetCeilingText(budget, today),
       step: 2,
     },
     // Chosen in advance and changed in place: there is no step of its own (business-onboarding «Определение клиента»).
