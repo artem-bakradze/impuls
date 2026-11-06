@@ -1,6 +1,6 @@
 import { isStepComplete } from "@impuls/worker/simulation-report";
 import { PERIOD_DAYS } from "@impuls/worker/simulation-period";
-import type { PeriodAdInput, PeriodDays, PeriodForm } from "@impuls/worker/simulation-period";
+import type { PeriodAdInput, PeriodDays, PeriodForm, PeriodMarket } from "@impuls/worker/simulation-period";
 import type { SimulationRecord } from "@impuls/worker";
 import { z } from "zod";
 
@@ -62,7 +62,8 @@ export const simulationStatusOf = (input: {
   };
 };
 
-export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[] } | { action: "continue" | "restart" | "new_campaign" };
+/** `market` — the period's marks (simulation-breakdowns); a page from before sends none, and the period is even. */
+export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[]; market?: PeriodMarket } | { action: "continue" | "restart" | "new_campaign" };
 
 /** The player's menu (simulation-mode «Симуляция как отдельный режим»); no «Запустить по-настоящему» since demo-login. */
 export const PLAYER_MENU = [
@@ -84,6 +85,7 @@ export const SimulationControlBody = z.discriminatedUnion("action", [
     action: z.literal("period"),
     days: z.union(PERIOD_DAYS.map((d) => z.literal(d)) as [z.ZodLiteral<1>, z.ZodLiteral<3>, z.ZodLiteral<7>, z.ZodLiteral<14>]),
     ads: z.array(z.object({ adId: z.string().min(1), impressions: count, clicks: count, leads: count, spendRub: count })).max(500),
+    market: z.object({ junkQuery: z.boolean(), phonesWorse: z.boolean() }).strict().optional(),
   }),
   z.object({ action: z.enum(["continue", "new_campaign"]) }),
   // «Повторить этот прогон» of the older player is gone; its «Прогнать заново» is today's «Начать заново».

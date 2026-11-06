@@ -11,7 +11,7 @@ import {
 import type { Kopecks, LocalDate, Rng } from "@impuls/core";
 import { NO_DEVICE_ADJUSTMENTS, PlatformError } from "./contract";
 import { allocate, effectiveTraffic, isNeutral, segmentCells, splitTotals } from "./simulator-segments";
-import type { DeviceTruth, QueryTruth } from "./simulator-segments";
+import type { DeviceTruth, PeriodSegments, QueryTruth, SegmentRow } from "./simulator-segments";
 import type {
   AdPatch,
   AdPlatform,
@@ -97,8 +97,10 @@ export interface StatCell extends DailyStatRow {
   availableAt: number;
   /** Index of the campaign settings in force when the cell was made (`settingsLog`). */
   mix?: number;
-  /** Entered by the owner for a period (simulation-mode «Статистика периода от владельца»): no breakdown by segment. */
+  /** Entered by the owner for a period (simulation-mode «Статистика периода от владельца»). */
   entered?: true;
+  /** The day's share of the period's breakdown of an entered cell (simulation-breakdowns); none in older states. */
+  segments?: PeriodSegments;
 }
 
 /** What the owner entered for one ad over a period; money in kopecks. */
@@ -108,6 +110,8 @@ export interface PeriodAdTotals {
   clicks: number;
   leads: number;
   spend: Kopecks;
+  /** The period's breakdown of these totals (simulation-breakdowns); without it the period has no breakdown. */
+  segments?: PeriodSegments;
 }
 
 /**
@@ -154,6 +158,29 @@ export const campaignRoom = (state: Pick<SimulatorState, "campaigns" | "cells" |
   const weekSpend = new Map(state.weekSpend);
   const spentOn = (date: LocalDate) => state.cells.filter((c) => c.campaignId === campaignId && c.date === date).reduce((s, c) => s + c.spend, 0);
   return periodRoom(campaign.weeklyLimit, dates, spentOn, (monday) => weekSpend.get(`${campaignId}|${monday}`) ?? 0);
+};
+
+/**
+ * A campaign's key phrases (search only), negative phrases and bid adjustments now, of a saved market: what
+ * `getTrafficSettings` answers, read without the platform (simulation-breakdowns decision 6).
+ */
+export const campaignTraffic = (
+  state: Pick<SimulatorState, "settings" | "settingsLog">,
+  campaignId: string,
+): TrafficSettings & { keywords: string[]; launchNegativeKeywords: string[] } => {
+  const settings = state.settings.find(([id]) => id === campaignId)?.[1];
+  const keywords = settings?.channel === "search" ? [...settings.targeting.keywords] : [];
+  // The targeting keeps the negative phrases the campaign was created with; later ones go to the settings log.
+  const launchNegativeKeywords = [...(settings?.targeting.negativeKeywords ?? [])];
+  const log = state.settingsLog ?? [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const entry = log[i];
+    if (entry?.campaignId === campaignId) {
+      return { campaignId, keywords, launchNegativeKeywords, negativeKeywords: [...entry.negativeKeywords], deviceAdjustments: { ...entry.deviceAdjustments } };
+    }
+  }
+  // Campaigns of states saved before the settings log: launch negative phrases, no adjustments.
+  return { campaignId, keywords, launchNegativeKeywords, negativeKeywords: [...launchNegativeKeywords], deviceAdjustments: { ...NO_DEVICE_ADJUSTMENTS } };
 };
 
 /**
@@ -230,6 +257,51 @@ const fitUnder = (child: number[], parent: readonly number[]): void => {
       child[e] = (child[e] ?? 0) + 1;
     }
   }
+};
+
+type Metric = "impressions" | "clicks" | "leads" | "spend";
+const METRICS: readonly Metric[] = ["impressions", "clicks", "leads", "spend"];
+
+/**
+ * A period's rows of one dimension spread over its days (simulation-breakdowns decision 3): each day's total is shared by
+ * what every row still has left, so a day adds up to its total and a row's days add up to the row. A row without
+ * anything on a day is left out of that day.
+ */
+const spreadRows = (rows: readonly SegmentRow[], days: Record<Metric, readonly number[]>): SegmentRow[][] => {
+  const left = rows.map((r) => ({ ...r }));
+  const parts = days.impressions.map(() => rows.map((r): SegmentRow => ({ segment: r.segment, impressions: 0, clicks: 0, leads: 0, spend: 0 })));
+  for (const metric of METRICS) {
+    days[metric].forEach((total, d) => {
+      allocate(total, left.map((r) => r[metric])).forEach((share, i) => {
+        const row = left[i];
+        const part = parts[d]?.[i];
+        if (row === undefined || part === undefined) return;
+        row[metric] -= share;
+        part[metric] = share;
+      });
+    });
+  }
+  return parts.map((day) => day.filter((r) => r.impressions + r.clicks + r.leads + r.spend > 0));
+};
+
+/** Two cells' breakdowns as one, row by row of the same segment. */
+const mergeSegments = (a: PeriodSegments | undefined, b: PeriodSegments | undefined): PeriodSegments => {
+  const merge = (x: readonly SegmentRow[], y: readonly SegmentRow[]): SegmentRow[] => {
+    const rows = new Map<string, SegmentRow>();
+    for (const r of [...x, ...y]) {
+      const into = rows.get(r.segment) ?? { segment: r.segment, impressions: 0, clicks: 0, leads: 0, spend: 0 };
+      for (const m of METRICS) into[m] += r[m];
+      rows.set(r.segment, into);
+    }
+    return [...rows.values()];
+  };
+  return { device: merge(a?.device ?? [], b?.device ?? []), query: merge(a?.query ?? [], b?.query ?? []) };
+};
+
+/** Whether each dimension of an ad's breakdown adds up to its entered totals; a network ad has no query rows. */
+const segmentsMatch = (row: PeriodAdTotals, segments: PeriodSegments): boolean => {
+  const adds = (rows: readonly SegmentRow[]) => METRICS.every((m) => rows.reduce((s, r) => s + r[m], 0) === row[m]);
+  return adds(segments.device) && (segments.query.length === 0 || adds(segments.query));
 };
 
 export const SIMULATOR_CAPABILITIES: PlatformCapabilities = {
@@ -530,8 +602,21 @@ export class SimulatedPlatform implements AdPlatform {
       if (cell.availableAt > now || cell.date < from || cell.date > to || !campaignIds.includes(cell.campaignId)) {
         continue;
       }
+      if (cell.entered) {
+        // The owner's numbers carry their own breakdown; older ones have none (simulation-breakdowns decision 2).
+        for (const part of cell.segments?.[dimension] ?? []) {
+          const key = `${cell.campaignId}|${part.segment}`;
+          const row = rows.get(key) ?? { campaignId: cell.campaignId, segment: part.segment, impressions: 0, clicks: 0, leads: 0, spend: 0 };
+          row.impressions += part.impressions;
+          row.clicks += part.clicks;
+          row.leads += part.leads;
+          row.spend += part.spend;
+          rows.set(key, row);
+        }
+        continue;
+      }
       const truth = this.truths.get(cell.adId);
-      if (!truth || cell.entered) continue;
+      if (!truth) continue;
       const settings = this.settingsOf(cell.campaignId, cell.mix);
       const parts = splitTotals(cell, segmentCells(truth, settings.deviceAdjustments, settings.negativeKeywords, this.fallbackQueries(cell.campaignId)), dimension);
       for (const [segment, part] of parts) {
@@ -617,13 +702,17 @@ export class SimulatedPlatform implements AdPlatform {
    * The owner's stats of a period (simulation-mode «Статистика периода от владельца»), visible at once. A campaign's
    * spend goes over the days evenly, each day at most its room, so neither a day nor a week goes over the limit and the
    * period does not end early; every ad's numbers follow its spend days, add up to what was entered exactly and keep
-   * leads ≤ clicks ≤ impressions on each day.
+   * leads ≤ clicks ≤ impressions on each day. An ad's breakdown, when given, is spread over the same days, each day's rows
+   * adding up to the day.
    */
   recordPeriod(dates: readonly LocalDate[], totals: readonly PeriodAdTotals[]): void {
     const at = this.options.now().getTime();
     const byCampaign = new Map<string, PeriodAdTotals[]>();
     for (const row of totals) {
       const ad = this.ad(row.adId);
+      if (row.segments && !segmentsMatch(row, row.segments)) {
+        throw new PlatformError("PERIOD_SEGMENTS_MISMATCH", `Breakdown of ${row.adId} does not add up to its totals`, false);
+      }
       byCampaign.set(ad.campaignId, [...(byCampaign.get(ad.campaignId) ?? []), row]);
     }
     for (const [campaignId, rows] of byCampaign) {
@@ -644,10 +733,15 @@ export class SimulatedPlatform implements AdPlatform {
         const leads = allocate(row.leads, weights);
         fitUnder(clicks, impressions);
         fitUnder(leads, clicks);
+        // The period's breakdown goes over the same days as the ad's numbers (simulation-breakdowns decision 3).
+        const perDay = { impressions, clicks, leads, spend: dates.map((_, d) => own[d] ?? 0) };
+        const devices = row.segments ? spreadRows(row.segments.device, perDay) : null;
+        const queries = row.segments ? spreadRows(row.segments.query, perDay) : null;
         dates.forEach((date, d) => {
           const cell = { impressions: impressions[d] ?? 0, clicks: clicks[d] ?? 0, leads: leads[d] ?? 0, spend: own[d] ?? 0 };
           if (cell.impressions + cell.clicks + cell.leads + cell.spend === 0) return;
-          this.cells.push({ date, campaignId, adId: row.adId, ...cell, availableAt: at, entered: true });
+          const segments = devices && queries ? { segments: { device: devices[d] ?? [], query: queries[d] ?? [] } } : {};
+          this.cells.push({ date, campaignId, adId: row.adId, ...cell, availableAt: at, entered: true, ...segments });
         });
       });
       dates.forEach((date, d) => {
@@ -744,6 +838,7 @@ export class SimulatedPlatform implements AdPlatform {
       into.leads += cell.leads;
       into.spend += cell.spend;
       into.availableAt = Math.max(into.availableAt, cell.availableAt);
+      if (into.segments || cell.segments) into.segments = mergeSegments(into.segments, cell.segments);
     }
     if (merged.size > 0 && merged.size < this.cells.length - kept.length) {
       this.cells = [...merged.values(), ...kept];

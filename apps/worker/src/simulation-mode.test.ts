@@ -12,8 +12,11 @@ import { CommandExecutor } from "./executor";
 import type { LaunchPlan } from "./launch";
 import { MemoryLockManager } from "./locks";
 import { createLogger } from "./logger";
-import { controlSimulation, launchSimulation, SimulationError } from "./simulation-mode";
-import type { PeriodDays } from "./simulation-period";
+import { SimulatedPlatform } from "@impuls/platforms";
+import type { BreakdownDimension } from "@impuls/platforms";
+import { controlSimulation, launchSimulation, savedPeriodForm, SimulationError } from "./simulation-mode";
+import { NO_MARKET } from "./simulation-period";
+import type { PeriodDays, PeriodMarket } from "./simulation-period";
 import { MemoryStore } from "./store";
 import type { BusinessRecord } from "./store";
 import { handleWebJob } from "./web-jobs";
@@ -89,7 +92,7 @@ const world = async (agent: AgentRuntime = new IdlePolicy()) => {
 type Numbers = { impressions: number; clicks: number; leads: number; spendRub: number };
 
 /** One period of the owner's numbers, by ad title; ads not named get zeros. */
-const enter = async (ctx: JobContext, store: MemoryStore, days: PeriodDays, rows: Record<string, Numbers> = {}) => {
+const enter = async (ctx: JobContext, store: MemoryStore, days: PeriodDays, rows: Record<string, Numbers> = {}, market?: PeriodMarket) => {
   const ads = await store.ads("b1");
   // A variant of a check repeats its ad's title: the numbers go to the ad first launched with it.
   const firstByTitle = new Map<string, string>();
@@ -98,7 +101,7 @@ const enter = async (ctx: JobContext, store: MemoryStore, days: PeriodDays, rows
     const row = rows[title];
     return row === undefined ? [] : [{ adId, ...row }];
   });
-  await controlSimulation(ctx, "b1", { action: "period", days, ads: input });
+  await controlSimulation(ctx, "b1", { action: "period", days, ads: input, ...(market !== undefined && { market }) });
 };
 
 const totals = async (store: MemoryStore, title: string) => {
@@ -251,5 +254,112 @@ describe("simulation on the owner's numbers", () => {
     expect(await store.changes("b1")).toEqual([]);
     expect(await store.stats("b1", "2026-10-01", "2026-12-31")).toEqual([]);
     expect(await store.getBusiness("b1")).toMatchObject({ mode: "direct", launchedOn: null, monthlyBudgetRub: 0, csoSource: { kind: "auto", reference: 0 }, card: {}, miniSite: null, timeZone: "Europe/Moscow" });
+  });
+});
+
+describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
+  const junk: PeriodMarket = { junkQuery: true, phonesWorse: false };
+  const phones: PeriodMarket = { junkQuery: false, phonesWorse: true };
+  /** The search direction's breakdown as Direct would report it, read from the saved market. */
+  const breakdown = async (store: MemoryStore, dimension: BreakdownDimension) => {
+    const record = await store.getSimulation("b1");
+    if (record === null) throw new Error("no simulation");
+    const sim = new SimulatedPlatform({ seed: 1, timeZone: "Europe/Moscow", now: () => record.simNow, truthFor: () => null });
+    sim.restore(record.state);
+    const search = (await store.directions("b1")).find((d) => d.channel === "search");
+    return sim.getBreakdown([search?.platformCampaignId ?? ""], "2026-11-01", "2026-11-30", dimension);
+  };
+  const sum = (rows: readonly { impressions: number; clicks: number; leads: number; spend: number }[]) =>
+    rows.reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
+
+  it("records the period's breakdown under its marks and keeps the marks and settings in the step", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan());
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } }, junk);
+    const queries = await breakdown(store, "query");
+    expect(queries.find((r) => r.segment === "маникюр москва фото")).toMatchObject({ leads: 0, spend: 50_000 });
+    expect(sum(queries)).toEqual({ impressions: 1_400, clicks: 70, leads: 7, spend: 200_000 });
+    expect(sum(await breakdown(store, "device"))).toEqual({ impressions: 1_400, clicks: 70, leads: 7, spend: 200_000 });
+    const [search, network] = await store.directions("b1");
+    expect((await store.getSimulation("b1"))?.steps[0]).toMatchObject({
+      market: junk,
+      traffic: {
+        [search?.id ?? ""]: { keywords: ["маникюр москва"], negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } },
+        [network?.id ?? ""]: { keywords: [], negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } },
+      },
+    });
+  });
+
+  it("splits evenly without marks, as a page from before sends", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan());
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } });
+    expect((await breakdown(store, "query")).map((r) => r.segment)).toEqual(["маникюр москва"]);
+    expect((await breakdown(store, "device")).map((r) => r.segment).sort()).toEqual(["desktop", "mobile", "tablet"]);
+    expect((await store.getSimulation("b1"))?.steps[0]?.market).toEqual(NO_MARKET);
+  });
+
+  it("does not record the breakdown twice when a failed look continues", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan());
+    const original = store.saveEvaluation.bind(store);
+    let fail = true;
+    store.saveEvaluation = (evaluation) => {
+      if (fail) {
+        fail = false;
+        return Promise.reject(new Error("store is down"));
+      }
+      return original(evaluation);
+    };
+    await expect(enter(ctx, store, 3, { "Маникюр 1": { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } }, junk)).rejects.toThrow("store is down");
+    await controlSimulation(ctx, "b1", { action: "continue" });
+    expect(sum(await breakdown(store, "query"))).toEqual({ impressions: 300, clicks: 20, leads: 1, spend: 40_000 });
+  });
+
+  /** What the period's agent changed: the test policy's decisions are the service's. */
+  const decided = async (store: MemoryStore) => (await store.changes("b1")).filter((c) => c.author === "service").map((c) => c.action);
+
+  it("lets the period's agent take the junk query away by the breakdown", async () => {
+    const { store, ctx } = await world(new HeuristicPolicy());
+    await launchSimulation(ctx, "b1", plan());
+    const search = (await store.directions("b1")).find((d) => d.channel === "search");
+    // The goal is 500 ₽: 600 ₽ of 2 400 ₽ went on «маникюр москва фото» without a lead.
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 6, spendRub: 2_400 } }, junk);
+    expect(await decided(store)).toContainEqual({ type: "AddNegativeKeywords", directionId: search?.id, phrases: ["фото"] });
+    expect((await store.turns("b1")).at(-1)?.summary).toContain("убрал показы по запросу «маникюр москва фото»");
+  });
+
+  it("lets the period's agent make phones cheaper by the breakdown", async () => {
+    const { store, ctx } = await world(new HeuristicPolicy());
+    await launchSimulation(ctx, "b1", plan());
+    const search = (await store.directions("b1")).find((d) => d.channel === "search");
+    // Two weeks with phones four times worse: 2 700 ₽ and 3 leads from phones, 1 575 ₽ and 7 from computers.
+    await enter(ctx, store, 14, { "Маникюр 1": { impressions: 3_000, clicks: 180, leads: 11, spendRub: 4_500 } }, phones);
+    expect(await decided(store)).toContainEqual({ type: "SetDeviceAdjustment", directionId: search?.id, device: "mobile", percent: -25 });
+  });
+
+  it("changes nothing by an even breakdown", async () => {
+    const { store, ctx } = await world(new HeuristicPolicy());
+    await launchSimulation(ctx, "b1", plan());
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_100 } });
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_000, clicks: 50, leads: 5, spendRub: 1_300 } });
+    const types = (await decided(store)).map((a) => a.type);
+    expect(types).not.toContain("AddNegativeKeywords");
+    expect(types).not.toContain("SetDeviceAdjustment");
+  });
+
+  it("keeps the marks for the next window and takes them off with «Начать заново»", async () => {
+    const { store, ctx } = await world();
+    await launchSimulation(ctx, "b1", plan());
+    await enter(ctx, store, 3, { "Маникюр 1": { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } }, phones);
+    const form = async () => {
+      const record = await store.getSimulation("b1");
+      if (record === null) throw new Error("no simulation");
+      return savedPeriodForm(record, await store.directions("b1"), await store.ads("b1"), "Europe/Moscow");
+    };
+    expect((await form()).market).toEqual(phones);
+    expect((await form()).directions.find((d) => d.channel === "search")).toMatchObject({ keywords: ["маникюр москва"], junkQuery: "маникюр москва фото" });
+    await controlSimulation(ctx, "b1", { action: "restart" });
+    expect((await form()).market).toEqual(NO_MARKET);
   });
 });

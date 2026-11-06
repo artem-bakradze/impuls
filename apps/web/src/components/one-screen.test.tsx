@@ -75,8 +75,13 @@ const form: SimulationStatus["form"] = {
         { id: "a2", title: "Интеграция с агрегаторами" },
       ],
       roomRub: { 1: 600, 3: 1_800, 7: 4_200, 14: 8_400 },
+      keywords: ["автоматизация ресторанов"],
+      negativeKeywords: [],
+      deviceAdjustments: { mobile: 0, desktop: 0 },
+      junkQuery: "автоматизация ресторанов фото",
     },
   ],
+  market: { junkQuery: false, phonesWorse: false },
 };
 
 const status = (overrides: Partial<SimulationStatus> = {}): SimulationStatus => ({
@@ -327,6 +332,7 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
           { adId: "a1", impressions: 1_400, clicks: 70, leads: 0, spendRub: 1_530 },
           { adId: "a2", impressions: 0, clicks: 0, leads: 0, spendRub: 0 },
         ],
+        market: { junkQuery: false, phonesWorse: false },
       },
     ]);
     expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
@@ -369,8 +375,63 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
     expect(screen.getByTestId("period-dialog")).toBeTruthy();
   });
 
+  it("marks a junk query, says what it means for the numbers and sends the marks (simulation-breakdowns)", async () => {
+    const posts: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/simulation" && init?.method === "POST" && typeof init.body === "string") posts.push(JSON.parse(init.body));
+        const body = url === "/api/simulation" && init?.method === "POST" ? { jobId: "j1" } : url.startsWith("/api/jobs/") ? { state: "running" } : status();
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      }),
+    );
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
+    const dialog = await open();
+    const junk = within(dialog).getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" });
+    expect(junk).not.toBeChecked();
+    expect(plain(within(dialog).getByText(/^Например, «автоматизация ресторанов фото»/))).toBe("Например, «автоматизация ресторанов фото»: по нему переходят, но не обращаются");
+    expect(junk).toHaveAccessibleDescription("Например, «автоматизация ресторанов фото»: по нему переходят, но не обращаются");
+    fireEvent.click(junk);
+    // Nothing is entered yet: no line under the direction.
+    expect(screen.queryByTestId("period-market-line")).toBeNull();
+    type("Автоматизация ресторанов доставки", "Показы", "1400");
+    type("Автоматизация ресторанов доставки", "Переходы", "70");
+    type("Автоматизация ресторанов доставки", "Обращения", "7");
+    type("Автоматизация ресторанов доставки", "Расход, ₽", "4200");
+    expect(plain(screen.getByTestId("period-market-line"))).toBe("Около 1 050 ₽ из 4 200 ₽ — на запрос «автоматизация ресторанов фото», без обращений");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" }));
+    expect(screen.getAllByTestId("period-market-line").map(plain)).toEqual([
+      "Около 1 050 ₽ из 4 200 ₽ — на запрос «автоматизация ресторанов фото», без обращений",
+      "С телефонов обращение выйдет примерно вчетверо дороже, чем с компьютера",
+    ]);
+    fireEvent.click(screen.getByTestId("period-send"));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toMatchObject({ action: "period", days: 7, market: { junkQuery: true, phonesWorse: true } });
+  });
+
+  it("keeps the last period's marks, lets them off, and says when the junk query is taken away already", async () => {
+    const marked = status({ form: { ...form, market: { junkQuery: true, phonesWorse: true }, directions: [{ ...form.directions[0]!, negativeKeywords: ["фото"] }] } });
+    render(<SummaryView model={model()} work={work({ sim })} simulation={marked} />);
+    const dialog = await open();
+    const phones = within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" });
+    expect(phones).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeChecked();
+    expect(screen.getAllByTestId("period-market-line").map(plain)).toEqual(["Реклама уже не показывается по запросу «автоматизация ресторанов фото»"]);
+    fireEvent.click(phones);
+    expect(phones).not.toBeChecked();
+  });
+
+  it("offers no junk query to partner sites only", async () => {
+    const network = status({ form: { ...form, directions: [{ ...form.directions[0]!, name: "Автоматизация — Сайты-партнёры", channel: "network", keywords: [], junkQuery: null }] } });
+    render(<SummaryView model={model()} work={work({ sim })} simulation={network} />);
+    const dialog = await open();
+    expect(within(dialog).queryByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeNull();
+    expect(within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" })).toBeTruthy();
+    expect(within(dialog).getByRole("group", { name: "Что ещё было за эти дни" })).toBeTruthy();
+  });
+
   it("says so when no ad is shown, and still lets the period go", async () => {
-    render(<SummaryView model={model()} work={work({ sim })} simulation={status({ form: { from: "2026-11-11", directions: [] } })} />);
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status({ form: { from: "2026-11-11", directions: [], market: { junkQuery: false, phonesWorse: false } } })} />);
     await open();
     expect(screen.getByText("Сейчас ни одно объявление не показывается")).toBeTruthy();
     expect(screen.getByTestId("period-send")).not.toBeDisabled();

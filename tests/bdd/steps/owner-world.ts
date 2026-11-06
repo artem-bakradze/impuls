@@ -1,8 +1,10 @@
 import { HeuristicPolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime, AgentToolbox, TurnResult, TurnSnapshot, TurnTrigger } from "@impuls/agent";
 import { rubles } from "@impuls/core";
+import { SimulatedPlatform } from "../../../packages/platforms/src/simulator";
+import type { BreakdownDimension } from "../../../packages/platforms/src/contract";
 import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, savedPeriodForm } from "@impuls/worker";
-import type { JobContext, LaunchPlan, PeriodAdInput, PeriodDays, PeriodForm } from "@impuls/worker";
+import type { JobContext, LaunchPlan, PeriodAdInput, PeriodDays, PeriodForm, PeriodMarket } from "@impuls/worker";
 import { feedDays } from "../../../apps/web/src/lib/insights-model";
 import type { HistoryItem } from "../../../apps/web/src/lib/history-view";
 import { buildServiceWork } from "../../../apps/web/src/lib/service-work";
@@ -65,14 +67,18 @@ export class HeldAgent implements AgentRuntime {
  * enters periods of stats as the window sends them (simulation-mode spec «Статистика периода от владельца»). Any call
  * to the Direct platform is counted and fails.
  */
-export const ownerWorld = async (agent: AgentRuntime = new HeuristicPolicy(), options: { launch?: boolean; goalRub?: number } = {}) => {
+export const ownerWorld = async (
+  agent: AgentRuntime = new HeuristicPolicy(),
+  /** `searchWeeklyRub` and `monthlyBudgetRub` make room for the spec's weeks of 4 200 ₽ in search (simulation-breakdowns). */
+  options: { launch?: boolean; goalRub?: number; searchWeeklyRub?: number; monthlyBudgetRub?: number } = {},
+) => {
   const store = new MemoryStore();
   store.emails.set("b1", "owner@example.com");
   await store.saveBusiness({
     id: "b1",
     userId: "u1",
     timeZone: "Europe/Moscow",
-    monthlyBudgetRub: 15_000,
+    monthlyBudgetRub: options.monthlyBudgetRub ?? 15_000,
     launchedOn: null,
     csoSource: options.goalRub === undefined ? { kind: "auto", reference: rubles(500) } : { kind: "user", goal: rubles(options.goalRub) },
     miniSite: null,
@@ -88,7 +94,11 @@ export const ownerWorld = async (agent: AgentRuntime = new HeuristicPolicy(), op
     throw new Error("The Direct API must not be called in a simulation");
   };
   const ctx: JobContext = { store, clock, locks, executor: new CommandExecutor({ store, locks, clock, platformFor }), platformFor, agent, creatives: new TemplateCreativeEngine(), images: new TemplateImageEngine() };
-  if (options.launch !== false) await launchSimulation(ctx, "b1", ownerPlan);
+  const plan: LaunchPlan =
+    options.searchWeeklyRub === undefined
+      ? ownerPlan
+      : { ...ownerPlan, directions: ownerPlan.directions.map((d) => (d.channel === "search" ? { ...d, weeklyLimitRub: options.searchWeeklyRub ?? d.weeklyLimitRub } : d)) };
+  if (options.launch !== false) await launchSimulation(ctx, "b1", plan);
 
   const record = async () => {
     const simulation = await store.getSimulation("b1");
@@ -106,7 +116,17 @@ export const ownerWorld = async (agent: AgentRuntime = new HeuristicPolicy(), op
       return { adId: ad.id, ...numbers };
     });
   };
-  const enter = async (days: PeriodDays, rows: Record<string, Numbers> = {}) => controlSimulation(ctx, "b1", { action: "period", days, ads: await rowsOf(rows) });
+  /** One period as the window sends it, with its marks when given (simulation-breakdowns). */
+  const enter = async (days: PeriodDays, rows: Record<string, Numbers> = {}, market?: PeriodMarket) =>
+    controlSimulation(ctx, "b1", { action: "period", days, ads: await rowsOf(rows), ...(market !== undefined && { market }) });
+  /** The search direction's breakdown over the dates, as Direct would report it from the saved market. */
+  const breakdown = async (dimension: BreakdownDimension, from: string, to: string) => {
+    const simulation = await record();
+    const market = new SimulatedPlatform({ seed: 1, timeZone: "Europe/Moscow", now: () => simulation.simNow, truthFor: () => null });
+    market.restore(simulation.state);
+    const search = (await store.directions("b1")).find((d) => d.channel === "search");
+    return market.getBreakdown([search?.platformCampaignId ?? ""], from, to, dimension);
+  };
   /**
    * A typical week of the owner's numbers: one ad spends without leads, two bring them cheaply; every amount is a share
    * of what Direct would let the direction spend now.
@@ -169,7 +189,7 @@ export const ownerWorld = async (agent: AgentRuntime = new HeuristicPolicy(), op
     const rows = (await store.stats("b1", "2026-10-01", "2027-01-31")).filter((r) => r.adId === ad?.platformAdId);
     return rows.reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
   };
-  return { store, clock, ctx, directCalls, record, form, rowsOf, enter, week, player, work, totals };
+  return { store, clock, ctx, directCalls, record, form, rowsOf, enter, breakdown, week, player, work, totals };
 };
 
 export type OwnerWorld = Awaited<ReturnType<typeof ownerWorld>>;

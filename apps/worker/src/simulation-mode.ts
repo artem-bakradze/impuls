@@ -1,14 +1,14 @@
 import { TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import { addDays, daysBetween, toLocalDate } from "@impuls/core";
 import type { LocalDate } from "@impuls/core";
-import { campaignRoom, SimulatedPlatform, YANDEX_DIRECT_CAPABILITIES } from "@impuls/platforms";
+import { campaignRoom, campaignTraffic, SimulatedPlatform, YANDEX_DIRECT_CAPABILITIES } from "@impuls/platforms";
 import type { SimulatorState } from "@impuls/platforms";
 import { checkModerationAndBalance, reconcileStats } from "./analytics";
 import { loadBusinessView } from "./state";
 import { createLogger } from "./logger";
 import type { SimulationWeekReport } from "./simulation-report";
-import { checkPeriod, lastEntered, periodDates, periodForm, simulationStartDate } from "./simulation-period";
-import type { PeriodAdInput, PeriodDays, PeriodForm } from "./simulation-period";
+import { checkPeriod, lastEntered, lastMarket, NO_MARKET, periodDates, periodForm, simulationStartDate, splitPeriod } from "./simulation-period";
+import type { DirectionTraffic, PeriodAdInput, PeriodDays, PeriodForm, PeriodMarket } from "./simulation-period";
 import { ManualClock } from "./clock";
 import type { JobContext } from "./context";
 import { CommandExecutor } from "./executor";
@@ -203,7 +203,17 @@ export const restartSimulation = async (base: JobContext, businessId: string): P
 
 /** The window «Добавить статистику» of a saved run, as the web shows and checks it before the worker checks again. */
 export const savedPeriodForm = (record: SimulationRecord, directions: readonly DirectionRecord[], ads: readonly AdRecord[], timeZone: string): PeriodForm =>
-  periodForm({ state: record.state, room: (id, dates) => campaignRoom(record.state, id, dates), directions, ads, start: record.simNow, timeZone, last: lastEntered(record.steps) });
+  periodForm({
+    state: record.state,
+    room: (id, dates) => campaignRoom(record.state, id, dates),
+    traffic: (id) => campaignTraffic(record.state, id),
+    directions,
+    ads,
+    start: record.simNow,
+    timeZone,
+    last: lastEntered(record.steps),
+    market: lastMarket(record.steps),
+  });
 
 /**
  * «Новая кампания» (simulation-mode spec «Симуляция как отдельный режим»): the simulation's numbers, history and ads are
@@ -218,7 +228,8 @@ export const startNewCampaign = async (base: JobContext, businessId: string): Pr
 };
 
 export type SimulationControl =
-  | { action: "period"; days: PeriodDays; ads: PeriodAdInput[] }
+  /** `market` — the period's marks; a page from before simulation-breakdowns sends none, and the period is even. */
+  | { action: "period"; days: PeriodDays; ads: PeriodAdInput[]; market?: PeriodMarket }
   | { action: "continue" | "restart" | "new_campaign" };
 
 /** Freeze the public inputs of the period, never the agent's private session or user data. */
@@ -307,18 +318,42 @@ const livePeriod = async (base: JobContext, businessId: string, control: Extract
     const from = world.clock.now();
     const tz = world.business.timeZone;
     const [directions, ads] = await Promise.all([world.ctx.store.directions(businessId), world.ctx.store.ads(businessId)]);
-    const form = periodForm({ state: world.platform.snapshot(), room: (id, dates) => world.platform.roomOf(id, dates), directions, ads, start: from, timeZone: tz });
+    const state = world.platform.snapshot();
+    const form = periodForm({
+      state,
+      room: (id, dates) => world.platform.roomOf(id, dates),
+      traffic: (id) => campaignTraffic(state, id),
+      directions,
+      ads,
+      start: from,
+      timeZone: tz,
+    });
     const check = checkPeriod(form, control.days, control.ads);
     if (check.changed || check.errors.length > 0) {
       throw new SimulationError(check.changed ? "ADS_CHANGED" : "PERIOD_INVALID", check.errors[0]?.message ?? "Period refused");
     }
+    // The breakdown follows the marks and the negative phrases and adjustments in force now (simulation-breakdowns).
+    const market = control.market ?? NO_MARKET;
+    const directionOf = new Map(form.directions.flatMap((d) => d.ads.map((a) => [a.id, d] as const)));
     const platformAd = new Map(ads.map((a) => [a.id, a.platformAdId]));
     world.platform.recordPeriod(
       periodDates(from, control.days, tz),
-      control.ads.map((a) => ({ adId: platformAd.get(a.adId) ?? a.adId, impressions: a.impressions, clicks: a.clicks, leads: a.leads, spend: a.spendRub * 100 })),
+      control.ads.map((a) => {
+        const totals = { impressions: a.impressions, clicks: a.clicks, leads: a.leads, spend: a.spendRub * 100 };
+        const direction = directionOf.get(a.adId);
+        const segments = direction === undefined ? undefined : splitPeriod(direction, market, totals, { from: form.from, adId: a.adId });
+        return { adId: platformAd.get(a.adId) ?? a.adId, ...totals, ...(segments !== undefined && { segments }) };
+      }),
+    );
+    const traffic: Record<string, DirectionTraffic> = Object.fromEntries(
+      form.directions.map((d) => [d.id, { keywords: d.keywords, negativeKeywords: d.negativeKeywords, deviceAdjustments: d.deviceAdjustments, junkQuery: d.junkQuery }]),
     );
     const to = new Date(from.getTime() + control.days * DAY_MS);
-    world.record = { ...world.record, status: "stepping", steps: [...world.record.steps, { kind: "period", from, to, days: control.days, input: control.ads, recorded: true, state: "running" }] };
+    world.record = {
+      ...world.record,
+      status: "stepping",
+      steps: [...world.record.steps, { kind: "period", from, to, days: control.days, input: control.ads, market, traffic, recorded: true, state: "running" }],
+    };
     return true;
   });
   if (started) await finishStep(base, businessId);

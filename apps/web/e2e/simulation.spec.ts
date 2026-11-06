@@ -47,10 +47,17 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   const dialog = page.getByTestId("period-dialog");
   await expect(dialog).toBeVisible();
   await expect(page.getByText("Статистика за дни 1–7")).toBeVisible();
-  const room = Number(((await dialog.getByTestId("period-room").first().textContent()) ?? "").replace(/\D+/g, " ").trim().split(" ")[0] ?? "0");
-  expect(room).toBeGreaterThan(0);
+  // «до 2 700 ₽ за 7 дней»: the thousands are split by a no-break space.
+  const room = Number(/до\s([\d\s]+)₽/.exec((await dialog.getByTestId("period-room").first().textContent()) ?? "")?.[1]?.replace(/\D/g, "") ?? "0");
+  expect(room).toBeGreaterThan(100);
   const firstAd = dialog.getByTestId("period-ad").first();
   const field = (label: string) => firstAd.getByLabel(label, { exact: true });
+
+  // «Что ещё было за эти дни»: a quarter of the week went on a junk query (simulation-breakdowns).
+  const junk = dialog.getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" });
+  await expect(junk).not.toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "С телефонов обращаются хуже" })).not.toBeChecked();
+  await junk.check();
 
   // A mistake is said under its field, and nothing is sent.
   await field("Показы").fill("50");
@@ -65,12 +72,14 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   }
   await page.screenshot({ path: testInfo.outputPath("period-dialog.png"), fullPage: true });
 
-  // The owner's week: the dialog closes, the service reviews the period, the day moves to the morning after it.
-  const spend = Math.max(1, Math.floor(room / 2));
+  // The owner's week: the dialog closes, the service reviews the period, the day moves to the morning after it. The
+  // whole room is spent, so the junk query's quarter is above the goal and the service takes it away.
+  const spend = room;
   await field("Показы").fill("1400");
   await field("Переходы").fill("70");
   await field("Обращения").fill("3");
   await field("Расход, ₽").fill(String(spend));
+  await expect(dialog.getByTestId("period-market-line").first()).toHaveText(/^Около [\d\s]+₽ из [\d\s]+₽ — на запрос «.+ фото», без обращений$/);
   await page.getByTestId("period-send").click();
   await expect(dialog).toHaveCount(0);
   await lived(page, "День 8");
@@ -89,6 +98,9 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await expect(journal.getByTestId("journal-week").first()).toHaveText(/^Дни 1–7 · разбор в день 8$/);
   await expect(page.getByTestId("sim-comparison")).toHaveCount(0);
   await expect(journal).not.toContainText(/без него было бы|На самом деле/);
+  // The service took the junk query away by the breakdown, and it can be taken back.
+  const negative = journal.getByTestId("journal-change").filter({ hasText: "Убрал показы по запросам «фото»" }).first();
+  await expect(negative.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
   await page.getByRole("button", { name: "Закрыть" }).click();
 
   // The ads sheet shows what was entered, and the partner-site ads with their pictures.
@@ -120,6 +132,9 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await page.getByRole("button", { name: "Добавить статистику" }).click();
   await dialog.getByText("1 день").click();
   await expect(page.getByText("Статистика за день 8")).toBeVisible();
+  // The mark stays from the last period, and the window says the junk query is not shown any more.
+  await expect(dialog.getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeChecked();
+  await expect(dialog.getByTestId("period-market-line").first()).toHaveText(/^Реклама уже не показывается по запросу «.+ фото»$/);
   await page.getByTestId("period-fill").click();
   await expect(field("Показы")).not.toHaveValue("");
   await expect(field("Расход, ₽")).not.toHaveValue("");

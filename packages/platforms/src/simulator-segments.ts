@@ -25,7 +25,25 @@ export const DEFAULT_DEVICES: Readonly<Record<Device, DeviceTruth>> = {
   tablet: { share: 0.05 },
 };
 
-const DEVICES: readonly Device[] = ["mobile", "desktop", "tablet"];
+export const DEVICES: readonly Device[] = ["mobile", "desktop", "tablet"];
+
+/** One row of a breakdown of entered numbers: a device («mobile») or a search query («маникюр бесплатно»). */
+export interface SegmentRow {
+  segment: string;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  spend: Kopecks;
+}
+
+/**
+ * How an ad's entered numbers split by device and, for search, by query (simulation-breakdowns): each dimension adds
+ * up to the ad's totals on its own, as Direct's separate reports do. A network ad has no query rows.
+ */
+export interface PeriodSegments {
+  device: SegmentRow[];
+  query: SegmentRow[];
+}
 
 /** One device × query part of an ad's traffic for a given hour's settings. */
 export interface SegmentCell {
@@ -45,10 +63,11 @@ export interface SegmentInput {
 }
 
 /** A bid adjustment in percent: impressions follow the bid, the click price half as much (design decision 9). */
-const impressionMultiplier = (percent: number): number => Math.max(0, 1 + percent / 100);
-const priceMultiplier = (percent: number): number => Math.max(0.1, 1 + percent / 200);
+export const impressionMultiplier = (percent: number): number => Math.max(0, 1 + percent / 100);
+export const priceMultiplier = (percent: number): number => Math.max(0.1, 1 + percent / 200);
 
-const adjustmentOf = (device: Device, adjustments: DeviceAdjustments): number => (device === "mobile" ? adjustments.mobile : adjustments.desktop);
+/** The adjustment a device follows: tablets go with computers, as in Direct. */
+export const adjustmentOf = (device: Device, adjustments: DeviceAdjustments): number => (device === "mobile" ? adjustments.mobile : adjustments.desktop);
 
 /**
  * The ad's traffic as device × query cells under the campaign's settings of the hour. Factors are normalized so that

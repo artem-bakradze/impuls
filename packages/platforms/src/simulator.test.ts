@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { weekStart } from "@impuls/core";
-import { periodRoom, SimulatedPlatform } from "./simulator";
+import { campaignTraffic, periodRoom, SimulatedPlatform } from "./simulator";
+import type { SegmentRow } from "./simulator-segments";
 
 const campaign = {
   name: "[Импульс] Маникюр — Поиск",
@@ -188,5 +189,111 @@ describe("Period entered by the owner", () => {
     const sim = owned(clock);
     const { a } = await setUp(sim);
     expect(() => sim.recordPeriod(dates("2026-11-09", 7), [{ adId: a, impressions: 100, clicks: 10, leads: 0, spend: 500_000 }])).toThrow(/over its room/);
+  });
+});
+
+describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
+  const owned = (clock: { now: number }) =>
+    new SimulatedPlatform({ seed: 3, timeZone: "Europe/Moscow", now: () => new Date(clock.now), truthFor: () => null });
+  const dates = (from: string, n: number) =>
+    Array.from({ length: n }, (_, i) => new Date(new Date(`${from}T00:00:00Z`).getTime() + i * 86_400_000).toISOString().slice(0, 10));
+  const row = (segment: string, impressions: number, clicks: number, leads: number, spend: number): SegmentRow => ({ segment, impressions, clicks, leads, spend });
+  // 1 400 showings, 70 clicks, 7 leads and 4 200 ₽: a quarter of it on a junk query, phones three times worse.
+  const entered = (adId: string) => ({
+    adId,
+    impressions: 1_400,
+    clicks: 70,
+    leads: 7,
+    spend: 420_000,
+    segments: {
+      device: [row("mobile", 840, 42, 2, 252_000), row("desktop", 490, 25, 4, 147_000), row("tablet", 70, 3, 1, 21_000)],
+      query: [row("маникюр", 1_050, 52, 7, 315_000), row("маникюр фото", 350, 18, 0, 105_000)],
+    },
+  });
+  const setUp = async (sim: SimulatedPlatform, weeklyLimit = 420_000) => {
+    const created = await sim.createCampaign({ ...campaign, weeklyLimit, targeting: { ...campaign.targeting, negativeKeywords: ["курсы"] } });
+    const a = await sim.createAd({ campaignId: created.id, title: "Маникюр с покрытием", text: "У метро", landingUrl: "https://nogotok.example" });
+    return { campaignId: created.id, a: a.id };
+  };
+  const sum = (rows: readonly { impressions: number; clicks: number; leads: number; spend: number }[]) =>
+    rows.reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
+
+  it("reads a campaign's key phrases, negative phrases and adjustments from a saved market", async () => {
+    const sim = owned({ now: new Date("2026-11-09T06:00:00Z").getTime() });
+    const { campaignId } = await setUp(sim);
+    expect(campaignTraffic(sim.snapshot(), campaignId)).toEqual({ campaignId, keywords: ["маникюр"], launchNegativeKeywords: ["курсы"], negativeKeywords: ["курсы"], deviceAdjustments: { mobile: 0, desktop: 0 } });
+    await sim.updateCampaign(campaignId, { negativeKeywords: ["курсы", "фото"], deviceAdjustments: { mobile: -25, desktop: 0 } });
+    expect(campaignTraffic(sim.snapshot(), campaignId)).toEqual({ campaignId, keywords: ["маникюр"], launchNegativeKeywords: ["курсы"], negativeKeywords: ["курсы", "фото"], deviceAdjustments: { mobile: -25, desktop: 0 } });
+    expect(campaignTraffic(sim.snapshot(), campaignId)).toEqual((await sim.getTrafficSettings([campaignId])).map((t) => ({ ...t, keywords: ["маникюр"], launchNegativeKeywords: ["курсы"] }))[0]);
+    // A state saved before the settings log: the launch negative phrases, no adjustments.
+    const old = { ...sim.snapshot() };
+    delete old.settingsLog;
+    expect(campaignTraffic(old, campaignId)).toEqual({ campaignId, keywords: ["маникюр"], launchNegativeKeywords: ["курсы"], negativeKeywords: ["курсы"], deviceAdjustments: { mobile: 0, desktop: 0 } });
+  });
+
+  it("spreads the breakdown over the days: each day adds up to its stats, each row to its period total", async () => {
+    const sim = owned({ now: new Date("2026-11-09T06:00:00Z").getTime() });
+    const { campaignId, a } = await setUp(sim);
+    const days = dates("2026-11-09", 7);
+    sim.recordPeriod(days, [entered(a)]);
+    for (const day of days) {
+      const stats = sum(await sim.getStats([campaignId], day, day));
+      for (const dimension of ["device", "query"] as const) {
+        expect(sum(await sim.getBreakdown([campaignId], day, day, dimension))).toEqual(stats);
+      }
+    }
+    const devices = await sim.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "device");
+    expect(devices.find((r) => r.segment === "mobile")).toMatchObject({ impressions: 840, clicks: 42, leads: 2, spend: 252_000 });
+    const queries = await sim.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "query");
+    expect(queries.find((r) => r.segment === "маникюр фото")).toMatchObject({ clicks: 18, leads: 0, spend: 105_000 });
+  });
+
+  it("keeps the days right through a Monday with cut limits, and two periods add up in one window", async () => {
+    const sim = owned({ now: new Date("2026-11-02T06:00:00Z").getTime() });
+    const { campaignId, a } = await setUp(sim, 450_000);
+    // Monday–Wednesday spend 3 000 ₽ of the week's 4 500 ₽, so Thursday–Sunday get only what is left of it.
+    sim.recordPeriod(dates("2026-11-02", 3), [{ adId: a, impressions: 500, clicks: 30, leads: 2, spend: 300_000 }]);
+    // Thursday 5 November → Wednesday 11 November, then the next seven days: 14 days in two periods with a breakdown.
+    const first = dates("2026-11-05", 7);
+    sim.recordPeriod(first, [entered(a)]);
+    const second = dates("2026-11-12", 7);
+    sim.recordPeriod(second, [entered(a)]);
+    const firstDays = await Promise.all(first.map(async (day) => sum(await sim.getStats([campaignId], day, day)).spend));
+    expect(firstDays.slice(0, 4).reduce((s, v) => s + v, 0)).toBe(150_000);
+    for (const day of [...first, ...second]) {
+      const stats = sum(await sim.getStats([campaignId], day, day));
+      expect(sum(await sim.getBreakdown([campaignId], day, day, "device"))).toEqual(stats);
+      expect(sum(await sim.getBreakdown([campaignId], day, day, "query"))).toEqual(stats);
+    }
+    const window = await sim.getBreakdown([campaignId], first[0] ?? "", second[6] ?? "", "query");
+    expect(window.find((r) => r.segment === "маникюр фото")).toMatchObject({ impressions: 700, clicks: 36, leads: 0, spend: 210_000 });
+    expect(sum(window)).toEqual({ impressions: 2_800, clicks: 140, leads: 14, spend: 840_000 });
+  });
+
+  it("keeps the breakdown through a snapshot and leaves older entered numbers without one", async () => {
+    const clock = { now: new Date("2026-11-09T06:00:00Z").getTime() };
+    const sim = owned(clock);
+    const { campaignId, a } = await setUp(sim);
+    const days = dates("2026-11-09", 7);
+    sim.recordPeriod(days, [entered(a)]);
+    const restored = owned(clock);
+    restored.restore(JSON.parse(JSON.stringify(sim.snapshot())) as ReturnType<SimulatedPlatform["snapshot"]>);
+    expect(await restored.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "device")).toEqual(await sim.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "device"));
+    const old = sim.snapshot();
+    old.cells = old.cells.map((cell) => {
+      const copy = { ...cell };
+      delete copy.segments;
+      return copy;
+    });
+    restored.restore(old);
+    expect(await restored.getBreakdown([campaignId], days[0] ?? "", days[6] ?? "", "device")).toEqual([]);
+  });
+
+  it("refuses a breakdown that does not add up to the entered numbers", async () => {
+    const sim = owned({ now: new Date("2026-11-09T06:00:00Z").getTime() });
+    const { a } = await setUp(sim);
+    const wrong = entered(a);
+    wrong.segments.device = [row("mobile", 1_400, 70, 6, 420_000)];
+    expect(() => sim.recordPeriod(dates("2026-11-09", 7), [wrong])).toThrow(/does not add up/);
   });
 });

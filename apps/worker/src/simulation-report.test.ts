@@ -10,6 +10,22 @@ describe("simulation step persistence", () => {
     expect(restored).toEqual(steps);
     expect(readWeekReport(restored[0]?.report ?? "").turns[0]?.startedAt).toEqual(report.turns[0]?.startedAt);
   });
+  it("keeps a period's marks and the directions' settings through the database (simulation-breakdowns)", () => {
+    const steps = [
+      {
+        kind: "period",
+        from: new Date("2026-11-01T06:00:00Z"),
+        to: new Date(report.at),
+        days: 7,
+        input: [{ adId: "a1", impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 }],
+        market: { junkQuery: true, phonesWorse: false },
+        traffic: { d1: { keywords: ["маникюр"], negativeKeywords: ["курсы"], deviceAdjustments: { mobile: -25, desktop: 0 } } },
+        recorded: true,
+        state: "running",
+      },
+    ];
+    expect(readSimulationSteps(JSON.parse(JSON.stringify(steps)))).toEqual(steps);
+  });
   it("recognizes completed legacy windows but never a future target or running window", () => {
     const [legacy] = readSimulationSteps([{ kind: "week", from: "2026-11-01T06:00:00Z", to: report.at }]);
     if (!legacy) throw new Error("Missing fixture");

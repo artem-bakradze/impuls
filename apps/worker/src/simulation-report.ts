@@ -57,6 +57,19 @@ export const readSimulationSteps = (value: unknown): SimulationStep[] => {
     kind: z.enum(["week", "day", "period"]), from: z.coerce.date(), to: z.coerce.date(),
     days: z.number().int().positive().optional(),
     input: z.array(z.object({ adId: z.string(), impressions: z.number(), clicks: z.number(), leads: z.number(), spendRub: z.number() })).optional(),
+    // A period's marks and the directions' settings at its start (simulation-breakdowns); absent in older steps.
+    market: z.object({ junkQuery: z.boolean(), phonesWorse: z.boolean() }).optional(),
+    traffic: z
+      .record(
+        z.string(),
+        z.object({
+          keywords: z.array(z.string()),
+          negativeKeywords: z.array(z.string()),
+          deviceAdjustments: z.object({ mobile: z.number(), desktop: z.number() }),
+          junkQuery: z.string().nullable().optional(),
+        }),
+      )
+      .optional(),
     recorded: z.boolean().optional(),
     state: z.enum(["pending", "running", "completed", "failed"]).optional(),
     completedAt: z.coerce.date().optional(), errorCode: z.string().optional(), report: z.string().optional(),

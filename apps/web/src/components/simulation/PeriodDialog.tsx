@@ -1,9 +1,9 @@
 "use client";
 
-import { Alert, Button, InputNumber, Modal, Segmented } from "antd";
+import { Alert, Button, Checkbox, InputNumber, Modal, Segmented } from "antd";
 import { useState } from "react";
-import { checkPeriod, PERIOD_DAYS, suggestPeriod } from "@impuls/worker/simulation-period";
-import type { PeriodAdInput, PeriodDays, PeriodError, PeriodField, PeriodForm } from "@impuls/worker/simulation-period";
+import { checkPeriod, marketLines, PERIOD_DAYS, suggestPeriod } from "@impuls/worker/simulation-period";
+import type { PeriodAdInput, PeriodDays, PeriodError, PeriodField, PeriodForm, PeriodMarket } from "@impuls/worker/simulation-period";
 import { callApi } from "@/lib/client-api";
 import { formatRub, plural } from "@/lib/format";
 import { periodDaysText } from "@/lib/simulation-model";
@@ -44,24 +44,28 @@ export function PeriodDialog({
 }: {
   status: SimulationStatus;
   onClose: () => void;
-  /** Sends the period; resolves with the server's refusal, or null once it is accepted (the window then closes). */
-  onSend: (days: PeriodDays, ads: PeriodAdInput[]) => Promise<{ code: string; message: string } | null>;
+  /** Sends the period with its marks; resolves with the server's refusal, or null once it is accepted (the window then closes). */
+  onSend: (days: PeriodDays, ads: PeriodAdInput[], market: PeriodMarket) => Promise<{ code: string; message: string } | null>;
 }) {
   const [days, setDays] = useState<PeriodDays>(7);
   // The ads and limits the window opened with: the numbers belong to them, even while the player polls.
   const [form, setForm] = useState<PeriodForm>(status.form);
   const [values, setValues] = useState<Values>({});
+  // The last period's marks stay until the owner takes them off (simulation-breakdowns).
+  const [market, setMarket] = useState<PeriodMarket>(status.form.market);
   const [errors, setErrors] = useState<PeriodError[]>([]);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const set = (adId: string, field: PeriodField, value: number | null) => setValues((v) => ({ ...v, [adId]: { ...v[adId], [field]: value } }));
-  /** «Заполнить примерно»: plausible numbers of the chosen period in every field, which the owner may correct. */
+  /** «Заполнить примерно»: plausible numbers of the chosen period and marks in every field, which the owner may correct. */
   const fill = () => {
-    setValues(Object.fromEntries(suggestPeriod(form, days).map(({ adId, ...numbers }) => [adId, numbers])));
+    setValues(Object.fromEntries(suggestPeriod(form, days, market).map(({ adId, ...numbers }) => [adId, numbers])));
     setErrors([]);
     setRefusal(null);
   };
+  const junkExample = form.directions.find((d) => d.junkQuery !== null)?.junkQuery ?? null;
+  const entered = rowsOf(form, values);
   const fieldError = (adId: string, field: PeriodField) => errors.find((e) => e.adId === adId && e.field === field)?.message ?? null;
 
   const send = async () => {
@@ -71,7 +75,7 @@ export function PeriodDialog({
     setRefusal(null);
     if (check.errors.length > 0) return;
     setSending(true);
-    const refused = await onSend(days, ads);
+    const refused = await onSend(days, ads, market);
     setSending(false);
     if (refused === null) return;
     setRefusal(refused.message);
@@ -114,10 +118,34 @@ export function PeriodDialog({
             </Button>
           ) : null}
         </div>
+        {form.directions.length > 0 ? (
+          <fieldset className="period-market" data-testid="period-market">
+            <legend className="period-market-title">Что ещё было за эти дни</legend>
+            {junkExample !== null ? (
+              <div className="period-mark">
+                <Checkbox checked={market.junkQuery} onChange={(e) => setMarket((m) => ({ ...m, junkQuery: e.target.checked }))} aria-describedby="period-mark-junk">
+                  Часть денег ушла на ненужный запрос
+                </Checkbox>
+                <span id="period-mark-junk" className="period-mark-hint">
+                  Например, «{junkExample}»: по нему переходят, но не обращаются
+                </span>
+              </div>
+            ) : null}
+            <div className="period-mark">
+              <Checkbox checked={market.phonesWorse} onChange={(e) => setMarket((m) => ({ ...m, phonesWorse: e.target.checked }))} aria-describedby="period-mark-phones">
+                С телефонов обращаются хуже
+              </Checkbox>
+              <span id="period-mark-phones" className="period-mark-hint">
+                Переходят так же, а обращаются реже
+              </span>
+            </div>
+          </fieldset>
+        ) : null}
         {refusal !== null ? <Alert type="warning" showIcon title={refusal} /> : null}
         {form.directions.length === 0 ? <p className="period-empty">Сейчас ни одно объявление не показывается</p> : null}
         {form.directions.map((direction) => {
           const over = errors.find((e) => e.directionId === direction.id && e.adId === null)?.message ?? null;
+          const lines = marketLines(direction, market, entered, form.from);
           return (
             <section key={direction.id} className="period-dir" aria-label={direction.name}>
               <div className="period-dir-head">
@@ -126,6 +154,11 @@ export function PeriodDialog({
                   до {formatRub(direction.roomRub[days] * 100)} за {days} {plural(days, "день", "дня", "дней")}
                 </span>
               </div>
+              {lines.map((line) => (
+                <p key={line} className="period-market-line" data-testid="period-market-line">
+                  {line}
+                </p>
+              ))}
               {over !== null ? (
                 <p className="period-error" role="alert">
                   {over}

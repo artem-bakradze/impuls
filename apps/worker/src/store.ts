@@ -14,6 +14,7 @@ import type {
 } from "@impuls/core";
 import type { DailyStatRow, DeviceAdjustments, SimulatorState } from "@impuls/platforms";
 import type { LaunchPlan } from "./launch";
+import type { DirectionTraffic, PeriodMarket } from "./simulation-period";
 
 export type BusinessMode = "direct" | "simulation";
 
@@ -40,6 +41,9 @@ export interface SimulationStep {
   /** A period's length, the numbers the owner entered and whether they are in the market already. */
   days?: number | undefined;
   input?: { adId: string; impressions: number; clicks: number; leads: number; spendRub: number }[] | undefined;
+  /** A period's marks and every direction's settings at its start, by direction id (simulation-breakdowns). */
+  market?: PeriodMarket | undefined;
+  traffic?: Record<string, DirectionTraffic> | undefined;
   recorded?: boolean | undefined;
   /** Absent only for runs saved before explicit step completion existed. */
   state?: "pending" | "running" | "completed" | "failed" | undefined;

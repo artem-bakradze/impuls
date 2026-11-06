@@ -1,7 +1,7 @@
 import { HeuristicPolicy, IdlePolicy, TemplateCreativeEngine, TemplateImageEngine } from "@impuls/agent";
 import type { AgentRuntime } from "@impuls/agent";
 import { rubles } from "@impuls/core";
-import { campaignRoom } from "@impuls/platforms";
+import { campaignRoom, campaignTraffic } from "@impuls/platforms";
 import { CommandExecutor, controlSimulation, launchSimulation, ManualClock, MemoryLockManager, MemoryStore, periodForm } from "@impuls/worker";
 import type { JobContext, LaunchPlan, PeriodAdInput } from "@impuls/worker";
 import { render, screen } from "@testing-library/react";
@@ -73,7 +73,7 @@ const run = async (agent: AgentRuntime = new IdlePolicy()) => {
   for (let week = 0; week < 4; week++) {
     const simulation = await store.getSimulation("b1");
     if (!simulation) throw new Error("no simulation");
-    const form = periodForm({ state: simulation.state, room: (id, dates) => campaignRoom(simulation.state, id, dates), directions: await store.directions("b1"), ads: await store.ads("b1"), start: simulation.simNow, timeZone: "Europe/Moscow" });
+    const form = periodForm({ state: simulation.state, room: (id, dates) => campaignRoom(simulation.state, id, dates), traffic: (id) => campaignTraffic(simulation.state, id), directions: await store.directions("b1"), ads: await store.ads("b1"), start: simulation.simNow, timeZone: "Europe/Moscow" });
     await controlSimulation(ctx, "b1", { action: "period", days: 7, ads: weekOf(form) });
   }
   const simulation = await store.getSimulation("b1");
@@ -200,5 +200,14 @@ describe("player actions", () => {
     }
     expect(SimulationControlBody.safeParse({ action: "period", days: 5, ads: [] }).success).toBe(false);
     expect(SimulationControlBody.safeParse({ action: "period", days: 7, ads: [{ adId: "a1", impressions: -1, clicks: 0, leads: 0, spendRub: 0 }] }).success).toBe(false);
+  });
+
+  it("takes a period's marks, and a period without them from an older page (simulation-breakdowns)", () => {
+    const ads = [{ adId: "a1", impressions: 10, clicks: 1, leads: 0, spendRub: 30 }];
+    const marked = { action: "period", days: 7, ads, market: { junkQuery: true, phonesWorse: false } };
+    expect(currentAction(SimulationControlBody.parse(marked))).toEqual(marked);
+    expect(currentAction(SimulationControlBody.parse({ action: "period", days: 7, ads }))).toEqual({ action: "period", days: 7, ads });
+    expect(SimulationControlBody.safeParse({ ...marked, market: { junkQuery: true, phonesWorse: false, nightsEmpty: true } }).success).toBe(false);
+    expect(SimulationControlBody.safeParse({ ...marked, market: { junkQuery: "yes", phonesWorse: false } }).success).toBe(false);
   });
 });
