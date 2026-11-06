@@ -8,6 +8,9 @@ test("the start page is one card with «Демо-режим», Google unavailabl
   await expect(card.getByRole("button")).toHaveText(["Демо-режим", "Войти через Google"]);
   await expect(page.getByRole("link", { name: "Посмотреть на примере" })).toHaveCount(0);
   await expect(page.getByText(/Попробовать на своём бизнесе/)).toHaveCount(0);
+  // e2e runs with the test login on, and still the page has no form for it.
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByText(/Тестовый вход/)).toHaveCount(0);
 
   // Google is unavailable for now and says why on hover (auth spec «Вход через Google пока недоступен»).
   const google = card.getByRole("button", { name: "Войти через Google" });

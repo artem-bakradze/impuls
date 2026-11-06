@@ -36,7 +36,7 @@ const scheduleChange: HistoryItem = {
 
 describe("LoginCard (product-demo «Условия демосервиса», auth «Вход через Google пока недоступен»)", () => {
   const card = (props: Partial<Parameters<typeof LoginCard>[0]> = {}) =>
-    render(<LoginCard errorText={null} testLogin={false} signInAsDemo={() => Promise.resolve()} signInForTests={() => Promise.resolve()} {...props} />);
+    render(<LoginCard errorText={null} signInAsDemo={() => Promise.resolve()} {...props} />);
   /** The card's own words: everything shown except the buttons and the hint that only a screen reader reads. */
   const words = (): string[] => {
     const clone = screen.getByTestId("login-card").cloneNode(true) as HTMLElement;
@@ -51,7 +51,8 @@ describe("LoginCard (product-demo «Условия демосервиса», aut
     expect(screen.getByText("Демосервис без оплаты · деньги не списываются")).toBeTruthy();
     expect(words().length).toBeLessThanOrEqual(30);
     expect(document.body.textContent).not.toMatch(/Попробовать на своём бизнесе|Учебная неделя|Посмотреть на примере|Контроль бюджета/);
-    expect(screen.queryByTestId("test-login")).toBeNull();
+    // No form to fill in: neither a test login nor anything else.
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   it("keeps Google unavailable, says why on hover and on focus, and starts nothing on a press", async () => {
@@ -63,12 +64,6 @@ describe("LoginCard (product-demo «Условия демосервиса», aut
     fireEvent.click(google);
     fireEvent.focus(google);
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Вход через Google пока недоступен — попробуйте демо-режим");
-  });
-
-  it("shows the test login under the card only when it is on", () => {
-    card({ testLogin: true });
-    expect(screen.getByTestId("test-login")).toBeTruthy();
-    expect(screen.getByTestId("login-card").contains(screen.getByTestId("test-login"))).toBe(false);
   });
 });
 

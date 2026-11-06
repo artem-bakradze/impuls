@@ -1,15 +1,13 @@
 "use client";
 
 import { ArrowRightOutlined } from "@ant-design/icons";
-import { Alert, Button, Input, Tooltip } from "antd";
+import { Alert, Button, Tooltip } from "antd";
 import { useId } from "react";
 import { Logo } from "./ui/Logo";
 
 interface Props {
   errorText: string | null;
-  testLogin: boolean;
   signInAsDemo: () => Promise<void>;
-  signInForTests: (formData: FormData) => Promise<void>;
 }
 
 /** Why the Google button does nothing (auth spec «Вход через Google пока недоступен»). */
@@ -29,10 +27,10 @@ function GoogleG() {
 
 /**
  * The start page (product-demo spec «Условия демосервиса»): one card on the calm canvas of «Реклама» — the logo, a
- * title, one line, «Демо-режим», the Google button that is unavailable for now and the demo's terms. The test login of
- * the stands sits under the card.
+ * title, one line, «Демо-режим», the Google button that is unavailable for now and the demo's terms. Nothing else: the
+ * stands' test login has no form here, e2e signs in through the Auth.js endpoint.
  */
-export function LoginCard({ errorText, testLogin, signInAsDemo, signInForTests }: Props) {
+export function LoginCard({ errorText, signInAsDemo }: Props) {
   const hintId = useId();
   return (
     <main className="login">
@@ -65,18 +63,6 @@ export function LoginCard({ errorText, testLogin, signInAsDemo, signInForTests }
         </div>
         <p className="t-small login-terms">Демосервис без оплаты · деньги не списываются</p>
       </section>
-      {testLogin ? (
-        <form action={signInForTests} className="test-login" data-testid="test-login">
-          <div className="t-small" style={{ marginBottom: 10 }}>
-            Тестовый вход — только для проверок, без Google
-          </div>
-          <div className="row" style={{ "--gap": "8px" } as React.CSSProperties}>
-            <Input name="email" type="email" required placeholder="Почта" aria-label="Почта для тестового входа" style={{ flex: "1 1 180px" }} />
-            <Input name="name" required placeholder="Имя" aria-label="Имя для тестового входа" style={{ flex: "1 1 120px" }} />
-            <Button htmlType="submit">Войти для проверки</Button>
-          </div>
-        </form>
-      ) : null}
     </main>
   );
 }

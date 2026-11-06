@@ -3,12 +3,15 @@ import type { Page } from "@playwright/test";
 
 export const uniqueEmail = (prefix: string): string => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@e2e.impuls.test`;
 
-/** Test-only login (AUTH_TEST_LOGIN=enabled); a new account opens the first wizard step. */
+/**
+ * Test-only login (AUTH_TEST_LOGIN=enabled), straight through the Auth.js endpoint: the start page has no form for it.
+ * `page.request` shares the browser's cookies, so the page is signed in; a new account opens the first wizard step.
+ */
 export const login = async (page: Page, email: string): Promise<void> => {
+  const { csrfToken } = (await (await page.request.get("/api/auth/csrf")).json()) as { csrfToken: string };
+  const signedIn = await page.request.post("/api/auth/callback/test-login", { form: { csrfToken, email, name: "Анна", callbackUrl: "/" } });
+  expect(signedIn.ok()).toBe(true);
   await page.goto("/");
-  await page.getByLabel("Почта для тестового входа").fill(email);
-  await page.getByLabel("Имя для тестового входа").fill("Анна");
-  await page.getByRole("button", { name: "Войти для проверки" }).click();
 };
 
 /** «Демо-режим» (auth spec «Демо-вход»): a new demo account at once; it opens the first wizard step. */

@@ -21,7 +21,8 @@ const TestLogin = z.object({ email: z.email(), name: z.string().min(1).max(100) 
  * Sign-in (auth spec): «Демо-режим» creates a new account without email or name; Google is not connected at all while
  * its login is unavailable, so a direct request to it finds no provider. Sessions are signed JWT cookies valid for 30
  * days since the last activity (refreshed daily). Cookies are HttpOnly and SameSite=Lax; Secure in production builds.
- * The email-only test login exists only when AUTH_TEST_LOGIN=enabled (e2e), never by default.
+ * The email-only test login exists only when AUTH_TEST_LOGIN=enabled (e2e), never by default; the start page has no form
+ * for it, e2e posts to /api/auth/callback/test-login.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth((): NextAuthConfig => {
   const config = webConfig();

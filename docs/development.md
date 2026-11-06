@@ -46,7 +46,8 @@ pnpm --filter @impuls/web dev
 Sign in with «Демо-режим»: a new demo account without email, bound to this browser's session, that works only in the
 simulation. The Google login is off for now (the button is shown unavailable, no provider is connected), so there is no
 Google OAuth client to configure. `AUTH_TEST_LOGIN=enabled` adds the email-only login, which works only in Direct mode
-(the simulator's test copy of Direct on a stand).
+(the simulator's test copy of Direct on a stand). It has no form on the start page: e2e posts to
+`/api/auth/callback/test-login` (`login` in `apps/web/e2e/helpers.ts`).
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -58,7 +59,7 @@ Google OAuth client to configure. `AUTH_TEST_LOGIN=enabled` adds the email-only 
 | `TOKEN_ENCRYPTION_KEY` | in `production` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts Direct OAuth tokens, same value in worker and web |
 | `APP_URL` | in `production` | Public URL of the app; the OAuth redirect URI is built from it |
 | `AUTH_URL` / `AUTH_TRUST_HOST` | read by Auth.js | Public URL of the app; or `AUTH_TRUST_HOST=true` behind a trusted proxy |
-| `AUTH_TEST_LOGIN` | no (off by default) | `enabled` adds an email-only login for e2e; its accounts work in Direct mode only. Never set it on a real stand; it is refused with `DIRECT_API_MODE=production` |
+| `AUTH_TEST_LOGIN` | no (off by default) | `enabled` adds an email-only login for e2e (no form on the start page); its accounts work in Direct mode only. Never set it on a real stand; it is refused with `DIRECT_API_MODE=production` |
 
 A missing or invalid required variable stops the server at startup with the list of problems. Sessions are signed
 JWT cookies valid for 30 days since the last visit (HttpOnly, SameSite=Lax, Secure in production builds).

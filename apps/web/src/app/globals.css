@@ -750,14 +750,6 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   color: var(--accent);
   font-size: var(--fs-md);
 }
-.test-login {
-  width: 100%;
-  max-width: 420px;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1px dashed var(--border-strong);
-  background: rgba(255, 255, 255, 0.6);
-}
 
 /* ---------- Wizard ---------- */
 
