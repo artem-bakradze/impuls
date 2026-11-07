@@ -41,19 +41,21 @@ function AdImage({ ad, drawing }: { ad: Partial<NetworkAdDraft>; drawing: boolea
 export function AdPreview<A extends AdDraft & Partial<NetworkAdDraft>>({ ad, channel, domain, label, onChange, onRemove, picture }: Props<A>) {
   const [editing, setEditing] = useState(false);
   const redraw = picture?.onRedraw;
+  // A partner-site card is narrow and has three actions: icons with tooltips and full accessible names fit one row.
+  const words = channel === "search";
   const actions = (
     <div className="ad-actions">
       <Tooltip title={editing ? "Готово" : "Изменить текст"}>
-        <Button size="small" type={editing ? "primary" : "default"} icon={editing ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditing(!editing)} aria-label={editing ? `${label}: готово` : `${label}: изменить`}>{editing ? "Готово" : "Изменить"}</Button>
+        <Button size="small" type={editing ? "primary" : "default"} icon={editing ? <CheckOutlined /> : <EditOutlined />} onClick={() => setEditing(!editing)} aria-label={editing ? `${label}: готово` : `${label}: изменить`}>{words ? (editing ? "Готово" : "Изменить") : null}</Button>
       </Tooltip>
       {channel === "network" && redraw !== undefined ? (
         <Tooltip title="Нарисовать другую картинку, текст останется">
-          <Button size="small" icon={<ReloadOutlined aria-hidden="true" />} onClick={redraw} disabled={picture?.drawing === true} aria-label={`${label}: другая картинка`}>Другая картинка</Button>
+          <Button size="small" icon={<ReloadOutlined aria-hidden="true" />} onClick={redraw} disabled={picture?.drawing === true} aria-label={`${label}: другая картинка`} />
         </Tooltip>
       ) : null}
       {onRemove ? (
         <Tooltip title="Убрать объявление">
-          <Button size="small" icon={<DeleteOutlined aria-hidden="true" />} onClick={onRemove} aria-label={`${label}: убрать`}>Убрать</Button>
+          <Button size="small" icon={<DeleteOutlined aria-hidden="true" />} onClick={onRemove} aria-label={`${label}: убрать`}>{words ? "Убрать" : null}</Button>
         </Tooltip>
       ) : null}
     </div>

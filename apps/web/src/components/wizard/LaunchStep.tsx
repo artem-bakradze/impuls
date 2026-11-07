@@ -1,14 +1,14 @@
 "use client";
 
-import { ClockCircleOutlined, PhoneOutlined, RocketOutlined, SafetyCertificateOutlined, ShopOutlined, WalletOutlined } from "@ant-design/icons";
+import { ClockCircleOutlined, PhoneOutlined, RocketOutlined, SafetyCertificateOutlined, SearchOutlined, ShopOutlined, StopOutlined, WalletOutlined } from "@ant-design/icons";
 import { Alert, Button } from "antd";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { AccountMode } from "@/lib/account-mode";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
-import { launchStepWords } from "@/lib/launch-step";
-import { advertisedText, budgetCeilingText, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords } from "@/lib/onboarding";
+import { launchStepWords, phraseList } from "@/lib/launch-step";
+import { advertisedText, budgetCeilingText, counterOf, GOAL_OPTIONS, hasOwnSite, hoursWords, ownGoalText } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 import { measurementState } from "@/lib/measurement";
 import { MeasurementNotice } from "../MeasurementNotice";
@@ -50,13 +50,18 @@ interface Props {
   save?: () => Promise<boolean>;
 }
 
+/** A line of the summary: changed on a step or in place, or a list of phrases shown in full on «все». */
+type SummaryLine = { icon: ReactNode; title: string; text: string } & ({ edit: number | "goals" } | { all: string; expandable: boolean });
+
 export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors = {} }: Props) {
   const router = useRouter();
   const [goalsOpen, setGoalsOpen] = useState(errors.goals !== undefined);
+  /** Lists of phrases shown in full. */
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (title: string) => setOpened((current) => (current.has(title) ? new Set([...current].filter((t) => t !== title)) : new Set([...current, title])));
   const [state, setState] = useState<{ kind: "idle" | "running" | "pending" | "advertiser_data" } | { kind: "error"; message: string }>({ kind: "idle" });
   const budget = draft.budget.monthlyBudgetRub ?? 0;
   const counter = counterOf(draft);
-  const simulation = mode === "simulation";
   const words = launchStepWords(mode);
 
   const launch = async () => {
@@ -79,19 +84,29 @@ export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors 
     }
   };
 
-  // Four lines, each changed on its own step; technical details stay in the settings (business-onboarding spec).
-  const items: { icon: ReactNode; title: string; text: string; step: number | "goals" }[] = [
-    { icon: <ShopOutlined />, title: "Что рекламируем", text: advertisedText(draft.card), step: 2 },
-    { icon: <ClockCircleOutlined />, title: "Где и когда", text: `Город «${draft.card.city}», ${hoursWords(draft.card)}`, step: 2 },
+  // The card, the budget and the leads are changed on their step or in place; the search phrases written with the ads
+  // are only shown, the whole list on «все». Technical details stay out (business-onboarding spec).
+  const phrases = draft.keywords?.search ?? [];
+  const excluded = draft.keywords?.negative ?? [];
+  const phraseLine = (icon: ReactNode, title: string, list: readonly string[]): SummaryLine[] => {
+    const line = phraseList(list);
+    return line === null ? [] : [{ icon, title, ...line }];
+  };
+  const items: SummaryLine[] = [
+    { icon: <ShopOutlined />, title: "Что рекламируем", text: advertisedText(draft.card), edit: 2 },
+    { icon: <ClockCircleOutlined />, title: "Где и когда", text: `Город «${draft.card.city}», ${hoursWords(draft.card)}`, edit: 2 },
+    ...phraseLine(<SearchOutlined />, "По каким запросам показываем в поиске", phrases),
+    ...phraseLine(<StopOutlined />, "Не показываем по запросам со словами", excluded),
     {
       icon: <WalletOutlined />,
       title: "Бюджет",
-      // `today` is the launch day: in a simulation its own 1st of the month, which the owner never sees as a date.
-      text: budgetCeilingText(budget, today),
-      step: 2,
+      // `today` is the launch day: in a simulation its own 1st of the month, which the owner never sees as a date. The
+      // owner's own goal is named; automatic selection shows no number (business-onboarding «Превью и запуск»).
+      text: [budgetCeilingText(budget, today), ownGoalText(draft.budget)].filter((part) => part !== null).join(". "),
+      edit: 2,
     },
     // Chosen in advance and changed in place: there is no step of its own (business-onboarding «Определение клиента»).
-    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label.toLowerCase()).join(", ") || "ничего не выбрано", step: "goals" },
+    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label.toLowerCase()).join(", ") || "ничего не выбрано", edit: "goals" },
   ];
 
   return (
@@ -102,21 +117,31 @@ export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors 
             <span className="check-icon">{item.icon}</span>
             <div className="stack" style={{ "--gap": "2px" } as React.CSSProperties}>
               <span className="t-small">{item.title}</span>
-              <span className="t-body">{item.text}</span>
+              <span className="t-body">{"all" in item && opened.has(item.title) ? item.all : item.text}</span>
             </div>
-            <button type="button" className="link-button" onClick={() => (item.step === "goals" ? setGoalsOpen(!goalsOpen) : onEdit(item.step))} aria-label={`${item.title}: изменить`} aria-expanded={item.step === "goals" ? goalsOpen : undefined}>
-              изменить
-            </button>
+            {!("all" in item) ? (
+              <button type="button" className="link-button" onClick={() => (item.edit === "goals" ? setGoalsOpen(!goalsOpen) : onEdit(item.edit))} aria-label={`${item.title}: изменить`} aria-expanded={item.edit === "goals" ? goalsOpen : undefined}>
+                изменить
+              </button>
+            ) : item.expandable ? (
+              <button type="button" className="link-button" onClick={() => toggle(item.title)} aria-label={`${item.title}: ${opened.has(item.title) ? "свернуть" : "все"}`} aria-expanded={opened.has(item.title)}>
+                {opened.has(item.title) ? "свернуть" : "все"}
+              </button>
+            ) : (
+              <span />
+            )}
           </li>
         ))}
       </ul>
       {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
-      {/* One notice about counting leads: the check itself for a real launch, the training data's note in a simulation. */}
-      {!simulation && onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, simulation)} />}
+      {/* One notice about counting leads before a real launch; a simulation's leads need no counter and no notice. */}
+      {!words.leadsNotice ? null : onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, false)} />}
       {/* What happens after the button (business-onboarding spec «Что будет после запуска»). */}
-      <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">
-        {words.afterLaunch}
-      </Note>
+      {words.afterLaunch !== null ? (
+        <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">
+          {words.afterLaunch}
+        </Note>
+      ) : null}
       {state.kind === "error" ? <Alert type="error" showIcon title={state.message} /> : null}
       {state.kind === "advertiser_data" ? <AdvertiserDataNotice onDone={() => void launch()} /> : null}
       {state.kind === "pending" ? <Alert type="info" showIcon title={PENDING_TEXT} action={<Button onClick={() => router.push("/summary")}>Открыть рекламу</Button>} /> : null}

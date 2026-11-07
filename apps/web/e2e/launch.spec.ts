@@ -10,7 +10,15 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   await fillFirstSteps(page);
   await fillBudget(page);
 
-  // «Назад» from the ads keeps the card and the budget, and the ads written from them.
+  // The owner's own cost per lead (business-onboarding «Выбор бюджета»): «Укажу сумму» needs the sum before «Дальше».
+  await page.getByRole("radio", { name: "Укажу сумму" }).click();
+  await next(page);
+  await expectStep(page, 2, "Вот как мы вас поняли");
+  await expect(page.getByRole("alert").filter({ hasText: "Укажите сумму или выберите «Подбирайте сами»" })).toBeVisible();
+  await page.getByLabel("Цена одного обращения").fill("500");
+  await expect(page.getByTestId("auto-goal")).toContainText(/дороже 500\s₽/);
+
+  // «Назад» from the ads keeps the card, the budget and the goal, and the ads written from them.
   await next(page);
   await expectStep(page, 3, "Объявления и запуск");
   // Each partner-site ad has its own template picture, drawn after the texts; «Другая картинка» replaces only it.
@@ -24,6 +32,13 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   await expect(picture).not.toHaveAttribute("src", first ?? "");
   await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1024);
   await expect(page.getByTestId("ad-network").first().locator(".ad-title")).toHaveText(title ?? "");
+  // On a 360 px phone the card's three actions are icons in one row, each named for a screen reader.
+  await page.setViewportSize({ width: 360, height: 900 });
+  const actions = ["изменить", "другая картинка", "убрать"].map((action) => page.getByRole("button", { name: `На сайтах-партнёрах Яндекса, объявление 1: ${action}` }));
+  const tops = await Promise.all(actions.map(async (button) => (await button.boundingBox())?.y));
+  expect(tops.every((top) => top !== undefined && top === tops[0])).toBe(true);
+  for (const button of actions) await expect(button).toHaveText("");
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("button", { name: "Назад" }).click();
   await expectStep(page, 2, "Вот как мы вас поняли");
   await expect(page.getByLabel("Бюджет в месяц")).toHaveValue("15 000");
@@ -31,11 +46,16 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   // Progress is saved: a new visit opens the same step with the same data.
   await page.reload();
   await expectStep(page, 2, "Вот как мы вас поняли");
-  await expect(page.getByTestId("auto-goal")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Укажу сумму" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByLabel("Цена одного обращения")).toHaveValue("500");
 
-  await finishWizard(page);
+  await finishWizard(page, { ownGoal: "500 ₽" });
   // The first day is a word and a promise, not a timeline.
   await expect(page.getByTestId("first-day")).toContainText("первые данные завтра");
+  // The goal from the wizard is the owner's own one, as if set in the settings (optimization-engine «Своя цель из мастера»).
+  await page.goto("/settings");
+  await expect(page.locator("#budget")).toContainText(/До 500\s₽/);
+  await page.goto("/summary");
 
   // Two sections only; the history is a sheet of «Реклама», one tap from the brief.
   await expect(page.getByRole("navigation", { name: "Разделы" }).getByRole("link")).toHaveText(["Реклама", "Настройки"]);

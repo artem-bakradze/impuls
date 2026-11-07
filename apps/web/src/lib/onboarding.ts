@@ -1,5 +1,5 @@
 import { allowedWeeklyTotal, daysInMonth, monthBudget } from "@impuls/core";
-import type { LocalDate } from "@impuls/core";
+import type { CsoSource, LocalDate } from "@impuls/core";
 import type { CounterCheck, ExtractCardResult, LaunchPlan, WebJob } from "@impuls/worker";
 import { z } from "zod";
 import { formatRub } from "./format";
@@ -14,6 +14,10 @@ export const WIZARD_STEPS = [
 
 export const STEP_COUNT = WIZARD_STEPS.length;
 export const MIN_BUDGET_RUB = 3_000;
+/** The owner's own cost per lead: the same bounds as in the settings (campaign-settings «Бюджет и цель»). */
+export const GOAL_MIN_RUB = 1;
+export const GOAL_MAX_RUB = 1_000_000;
+export const GOAL_MISSING_MESSAGE = "Укажите сумму или выберите «Подбирайте сами»";
 export const RECOMMENDED_BUDGET_RUB = 10_000;
 export const ABOUT_MAX_LENGTH = 1_000;
 /** Yandex Direct text ad limits. */
@@ -85,8 +89,15 @@ export const OnboardingDraftSchema = z.object({
     timeZone: z.enum(TIME_ZONES.map((t) => t.value) as [string, ...string[]]),
   }),
   goals: z.array(z.enum(GOAL_OPTIONS.map((g) => g.value) as [string, ...string[]])),
-  /** Only the amount: the cost-per-lead goal is always selected automatically at launch (simplify-mvp-scope). */
-  budget: z.object({ monthlyBudgetRub: z.number().int().positive().nullable() }),
+  /**
+   * The amount and the cost-per-lead goal (business-onboarding «Выбор бюджета»): «Подбирайте сами» by default, or the
+   * owner's own sum. The sum is kept while the owner switches back and forth; old drafts have neither field.
+   */
+  budget: z.object({
+    monthlyBudgetRub: z.number().int().positive().nullable(),
+    goalMode: z.enum(["auto", "user"]).default("auto"),
+    goalRub: z.number().int().min(GOAL_MIN_RUB).max(GOAL_MAX_RUB).nullable().default(null),
+  }),
   ads: z.object({ search: z.array(AdDraft).max(5), network: z.array(NetworkAdDraft).max(5) }).nullable(),
   /** Search phrases and negative phrases generated together with the ads; shown only in «Для специалистов». */
   keywords: z.object({ search: z.array(z.string()), negative: z.array(z.string()) }).nullable().default(null),
@@ -118,7 +129,7 @@ export const emptyDraft = (): OnboardingDraft => ({
   },
   // The two most common ways small businesses get clients; the owner can uncheck them.
   goals: ["form", "call"],
-  budget: { monthlyBudgetRub: null },
+  budget: { monthlyBudgetRub: null, goalMode: "auto", goalRub: null },
   ads: null,
   keywords: null,
   directConnected: false,
@@ -262,7 +273,8 @@ export interface StepIssue {
 
 /**
  * What the owner must fix before moving on, per field (step numbers are 1-based). Only what the service cannot work
- * without is required: the site, one service, the city, a goal, the budget, the ads and Direct.
+ * without is required: the site, one service, the city, the budget (and the own goal's sum once it is chosen), the ads and
+ * what counts as a lead.
  */
 export const stepIssues = (step: number, draft: OnboardingDraft): StepIssue[] => {
   const issues: StepIssue[] = [];
@@ -291,6 +303,7 @@ export const stepIssues = (step: number, draft: OnboardingDraft): StepIssue[] =>
       } else if (b.monthlyBudgetRub < MIN_BUDGET_RUB) {
         issues.push({ field: "budget", message: budgetTooLowMessage });
       }
+      if (b.goalMode === "user" && b.goalRub === null) issues.push({ field: "goal", message: GOAL_MISSING_MESSAGE });
       break;
     }
     case 3: {
@@ -381,12 +394,37 @@ export const budgetPlan = (monthlyBudgetRub: number, today: LocalDate): { headli
 };
 
 /**
- * Starting cost per lead: the goal is always selected automatically at launch. The niche reference table (design: Open Questions)
+ * Starting cost per lead of «Подбирайте сами». The niche reference table (design: Open Questions)
  * does not exist yet, so the interim start value aims at ~30 leads a month, rounded to 50 ₽; the optimizer
  * recalculates it after 20 leads. A start at ~10 leads kept every ad «learning» for a month on a 15 000 ₽ budget,
  * as the simulation mode showed (add-simulation-mode, optimization-engine delta).
  */
 export const interimAutoGoalRub = (monthlyBudgetRub: number): number => Math.max(50, Math.round(monthlyBudgetRub / 30 / 50) * 50);
+
+/**
+ * The goal the business gets from the wizard (business-onboarding «Выбор бюджета»): the owner's own sum, or automatic
+ * selection from the interim reference; 0 until there is a budget. Saved with every wizard step, read after launch.
+ */
+export const goalSource = (draft: OnboardingDraft): CsoSource => {
+  const { monthlyBudgetRub, goalMode, goalRub } = draft.budget;
+  if (goalMode === "user" && goalRub !== null) {
+    return { kind: "user", goal: goalRub * 100 };
+  }
+  return { kind: "auto", reference: monthlyBudgetRub === null ? 0 : interimAutoGoalRub(monthlyBudgetRub) * 100 };
+};
+
+/** What the service does with the chosen goal, under the choice; automatic selection names no starting number. */
+export const goalExplanation = (budget: OnboardingDraft["budget"]): string => {
+  if (budget.goalMode === "auto") {
+    return "Сколько будут стоить обращения, станет видно после первой недели работы. Дальше мы сами отключаем рекламу, которая приводит людей дороже, и добавляем денег той, что дешевле.";
+  }
+  const limit = budget.goalRub === null ? "этой суммы" : formatRub(budget.goalRub * 100);
+  return `Будем отключать рекламу, которая приводит обращения дороже ${limit}, и добавлять денег той, что дешевле.`;
+};
+
+/** The summary's word on the owner's own goal; none for automatic selection, which shows no number. */
+export const ownGoalText = (budget: OnboardingDraft["budget"]): string | null =>
+  budget.goalMode === "user" && budget.goalRub !== null ? `Цель — до ${formatRub(budget.goalRub * 100)} за обращение` : null;
 
 export const scheduleText = (card: OnboardingDraft["card"]): string => `${card.days} ${card.openFrom}–${card.openTo}`;
 

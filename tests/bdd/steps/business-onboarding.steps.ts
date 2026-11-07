@@ -1,6 +1,19 @@
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
+import { resolveCso, rubles } from "@impuls/core";
 import { expect } from "vitest";
-import { budgetTooLowMessage, emptyDraft, hoursWords, normalizeLink, STEP_COUNT, stepIssues, wizardStepOf, withNormalizedLinks } from "../../../apps/web/src/lib/onboarding";
+import {
+  budgetTooLowMessage,
+  emptyDraft,
+  goalExplanation,
+  goalSource,
+  hoursWords,
+  normalizeLink,
+  OnboardingDraftSchema,
+  STEP_COUNT,
+  stepIssues,
+  wizardStepOf,
+  withNormalizedLinks,
+} from "../../../apps/web/src/lib/onboarding";
 import type { OnboardingDraft } from "../../../apps/web/src/lib/onboarding";
 import { featurePath } from "./world";
 
@@ -12,9 +25,11 @@ const cardStep = (patch: Partial<OnboardingDraft["card"]> = {}): OnboardingDraft
   return {
     ...draft,
     card: { ...draft.card, services: [{ name: "Маникюр с покрытием", priceRub: null }], city: "Казань", ...patch },
-    budget: { monthlyBudgetRub: 15_000 },
+    budget: { ...draft.budget, monthlyBudgetRub: 15_000 },
   };
 };
+
+const plain = (text: string): string => text.replace(/[  ]/g, " ");
 
 const messages = (step: number, draft: OnboardingDraft): string[] => stepIssues(step, draft).map((issue) => issue.message);
 
@@ -110,20 +125,67 @@ describeFeature(feature, ({ Scenario }) => {
   });
 
   Scenario("Цель подобрана автоматически", ({ When, Then, And }) => {
-    When("владелец салона вводит бюджет 15 000 ₽", () => {
-      draft = { ...cardStep(), budget: { monthlyBudgetRub: 15_000 } };
+    When("владелец салона вводит бюджет 15 000 ₽, не трогая выбор цены обращения", () => {
+      draft = cardStep();
     });
-    Then("шаг 2 не спрашивает цену обращения", () => {
+    Then("выбрано «Подбирайте сами», и шаг 2 пропускает дальше, не показывая стартовую цену обращения", () => {
+      expect(draft.budget.goalMode).toBe("auto");
+      expect(messages(2, draft)).toEqual([]);
+      // The hidden reference (15 000 ₽ / 30 = 500 ₽) is not in the words under the choice.
+      expect(goalExplanation(draft.budget)).not.toMatch(/\d/);
+    });
+    And("после запуска цель подбирается автоматически", () => {
+      expect(goalSource(draft)).toEqual({ kind: "auto", reference: rubles(500) });
+    });
+  });
+
+  Scenario("Своя цель в мастере", ({ When, Then, And }) => {
+    When("владелец вводит бюджет 15 000 ₽, выбирает «Укажу сумму» и указывает 500 ₽", () => {
+      const base = cardStep();
+      draft = { ...base, budget: { ...base.budget, goalMode: "user", goalRub: 500 } };
       expect(messages(2, draft)).toEqual([]);
     });
-    And("в черновике только бюджет месяца", () => {
-      expect(Object.keys(draft.budget)).toEqual(["monthlyBudgetRub"]);
+    Then("пояснение под выбором говорит, что реклама с обращениями дороже 500 ₽ отключается", () => {
+      expect(plain(goalExplanation(draft.budget))).toBe("Будем отключать рекламу, которая приводит обращения дороже 500 ₽, и добавлять денег той, что дешевле.");
+    });
+    And("после запуска цель — своя, 500 ₽, и автоматически не пересчитывается", () => {
+      const source = goalSource(draft);
+      expect(source).toEqual({ kind: "user", goal: rubles(500) });
+      expect(resolveCso(source, { leads: 25, medianCostPerLead: rubles(380) })).toBe(rubles(500));
+    });
+  });
+
+  Scenario("Своя сумма не указана", ({ When, Then }) => {
+    When("владелец выбирает «Укажу сумму», оставляет поле пустым и нажимает «Дальше»", () => {
+      const base = cardStep();
+      draft = { ...base, budget: { ...base.budget, goalMode: "user", goalRub: null } };
+    });
+    Then("шаг 2 не пропускает дальше, а под полем цены обращения написано «Укажите сумму или выберите «Подбирайте сами»»", () => {
+      expect(stepIssues(2, draft)).toEqual([{ field: "goal", message: "Укажите сумму или выберите «Подбирайте сами»" }]);
+    });
+  });
+
+  Scenario("Мастер без выбора цены", ({ Given, When, Then }) => {
+    let stored: unknown;
+    Given("владелец начал мастер до этого изменения и сохранил карточку с бюджетом 15 000 ₽", () => {
+      // A draft saved before the goal: the budget has the amount only.
+      stored = { ...cardStep(), budget: { monthlyBudgetRub: 15_000 } };
+    });
+    When("он возвращается к шагу «Вот как мы вас поняли»", () => {
+      draft = OnboardingDraftSchema.parse(stored);
+    });
+    Then("выбрано «Подбирайте сами», а бюджет и карточка сохранены", () => {
+      expect(draft.budget).toEqual({ monthlyBudgetRub: 15_000, goalMode: "auto", goalRub: null });
+      expect(draft.card.services).toEqual([{ name: "Маникюр с покрытием", priceRub: null }]);
+      expect(wizardStepOf(2, draft)).toBe(2);
+      expect(messages(2, draft)).toEqual([]);
     });
   });
 
   Scenario("Бюджет ниже минимума", ({ When, Then }) => {
     When("владелец на шаге 2 вводит бюджет 2 000 ₽ и нажимает «Дальше»", () => {
-      blocked = messages(2, { ...cardStep(), budget: { monthlyBudgetRub: 2_000 } });
+      const base = cardStep();
+      blocked = messages(2, { ...base, budget: { ...base.budget, monthlyBudgetRub: 2_000 } });
     });
     Then("шаг 2 не пропускает дальше и объясняет, что минимальный бюджет — 3 000 ₽", () => {
       expect(blocked).toEqual([budgetTooLowMessage]);

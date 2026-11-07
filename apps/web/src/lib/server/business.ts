@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { asc, eq, schema } from "@impuls/db";
-import { agentCard, emptyDraft, interimAutoGoalRub, OnboardingDraftSchema, withCity } from "../onboarding";
+import { agentCard, emptyDraft, goalSource, OnboardingDraftSchema, withCity } from "../onboarding";
 import type { OnboardingDraft } from "../onboarding";
 import { db } from "./runtime";
 
@@ -26,10 +26,10 @@ export const readDraft = (row: BusinessRow | null): OnboardingDraft => {
   return withCity(OnboardingDraftSchema.parse(stored));
 };
 
-/** The wizard does not ask for a goal: it starts in automatic selection (business-onboarding spec). */
-const goalKopecks = (draft: OnboardingDraft): { csoMode: "auto"; csoValue: number } => {
-  const budget = draft.budget.monthlyBudgetRub;
-  return { csoMode: "auto", csoValue: budget === null ? 0 : interimAutoGoalRub(budget) * 100 };
+/** The goal chosen next to the budget (business-onboarding «Выбор бюджета»): the owner's own sum or automatic selection. */
+const goalKopecks = (draft: OnboardingDraft): { csoMode: "auto" | "user"; csoValue: number } => {
+  const source = goalSource(draft);
+  return source.kind === "user" ? { csoMode: "user", csoValue: source.goal } : { csoMode: "auto", csoValue: source.reference };
 };
 
 /**

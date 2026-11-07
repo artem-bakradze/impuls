@@ -416,12 +416,13 @@ describeFeature(onboarding, ({ Scenario }) => {
     When("владелец дошёл до шага «Объявления и запуск»", async () => {
       draft = await world.prepare([SECOND]);
     });
-    Then("у каждого объявления на сайтах-партнёрах — его картинка и кнопки «Изменить», «Другая картинка» и «Убрать»", async () => {
+    Then("у каждого объявления на сайтах-партнёрах — его картинка и три значка «Изменить», «Другая картинка» и «Убрать» в один ряд, без подписей", async () => {
       const network = draft.ads?.network ?? [];
       expect(network.length).toBeGreaterThan(1);
       expect(new Set(network.map((ad) => ad.imageId)).size).toBe(network.length);
       for (const ad of network) expect((await world.image(ad.imageId)).businessId).toBe("b1");
-      // Each picture can be replaced on its own: the buttons themselves are checked in the preview's component test.
+      // Each picture can be replaced on its own: the icons without words and their names are checked in the preview's
+      // component test, the one row at 360 px in the e2e.
       const other = await world.redraw(network[1] as NetworkAdDraft);
       expect(other.imageId).not.toBe(network[1]?.imageId);
     });

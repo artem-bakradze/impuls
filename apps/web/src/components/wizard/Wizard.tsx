@@ -221,6 +221,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, mode, directO
   const working = saving || busy !== null;
   const showNext = step < STEP_COUNT;
   const launchWords = launchStepWords(mode);
+  const lead = step === STEP_COUNT ? launchWords.lead : LEADS[step];
   // The day the ads start: a simulation starts on the 1st of the next month, so its budget is a full month and the
   // owner sees no prorated month and no month names (simulation-mode «Дни симуляции вместо дат»).
   const launchDay = mode === "simulation" ? simulationStartDate(todayIn(draft.card.timeZone)) : todayIn(draft.card.timeZone);
@@ -241,7 +242,7 @@ export function Wizard({ initialDraft, initialStep, directApiMode, mode, directO
           Шаг {step} из {STEP_COUNT}
         </span>
         <h1 className="t-h1">{step === STEP_COUNT ? launchWords.title : WIZARD_STEPS[step - 1]}</h1>
-        <p className="t-lead">{step === STEP_COUNT ? launchWords.lead : LEADS[step]}</p>
+        {lead ? <p className="t-lead">{lead}</p> : null}
       </div>
 
       <div className="stack fade-in" key={`body-${step}`}>

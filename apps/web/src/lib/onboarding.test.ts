@@ -9,7 +9,11 @@ import {
   cityOf,
   emptyDraft,
   firstIncompleteStep,
+  GOAL_MISSING_MESSAGE,
+  goalSource,
   hoursWords,
+  OnboardingDraftSchema,
+  ownGoalText,
   mergeExtractedCard,
   normalizeLink,
   startingWeeklyLimits,
@@ -54,7 +58,7 @@ const completeDraft = (): OnboardingDraft => {
     advantages: ["Работаем без выходных"],
   };
   draft.goals = ["call"];
-  draft.budget = { monthlyBudgetRub: 15_000 };
+  draft.budget = { ...draft.budget, monthlyBudgetRub: 15_000 };
   draft.ads = {
     search: [{ title: "Маникюр с покрытием за 1 800 ₽", text: "У м. Профсоюзная, работаем без выходных" }],
     network: [{ title: "Ноготок — маникюр у метро", text: "Маникюр с покрытием и педикюр" }],
@@ -157,9 +161,19 @@ describe("wizard steps", () => {
     expect(stepProblems(2, draft)).toEqual([]);
   });
 
-  it("asks only for the budget: there is no cost-per-lead question", () => {
+  it("needs no cost per lead by default: «Подбирайте сами» is chosen in advance", () => {
     const draft = completeDraft();
-    draft.budget = { monthlyBudgetRub: 10_000 };
+    draft.budget = { ...draft.budget, monthlyBudgetRub: 10_000 };
+    expect(draft.budget.goalMode).toBe("auto");
+    expect(stepProblems(2, draft)).toEqual([]);
+  });
+
+  it("asks for the sum once «Укажу сумму» is chosen, at the goal field", () => {
+    const draft = completeDraft();
+    draft.budget = { ...draft.budget, goalMode: "user", goalRub: null };
+    expect(stepIssues(2, draft)).toEqual([{ field: "goal", message: GOAL_MISSING_MESSAGE }]);
+    expect(firstIncompleteStep(draft)).toBe(2);
+    draft.budget.goalRub = 500;
     expect(stepProblems(2, draft)).toEqual([]);
   });
 
@@ -308,5 +322,36 @@ describe("ad drafts and the launch plan", () => {
 
   it("drops partner sites when their share is below the platform minimum", () => {
     expect(startingWeeklyLimits(3_000, "2026-11-02", 300, { search: true, network: true })).toEqual({ search: 522, network: 0 });
+  });
+});
+
+describe("the goal chosen next to the budget (business-onboarding «Выбор бюджета»)", () => {
+  const withBudget = (budget: Partial<OnboardingDraft["budget"]>): OnboardingDraft => {
+    const draft = emptyDraft();
+    draft.budget = { ...draft.budget, ...budget };
+    return draft;
+  };
+
+  it("reads a draft from before the goal as «Подбирайте сами» and keeps the sum within the settings' bounds", () => {
+    const stored = { ...emptyDraft(), budget: { monthlyBudgetRub: 15_000 } };
+    expect(OnboardingDraftSchema.parse(stored).budget).toEqual({ monthlyBudgetRub: 15_000, goalMode: "auto", goalRub: null });
+    for (const goalRub of [0, 1_000_001, 12.5]) {
+      expect(OnboardingDraftSchema.safeParse({ ...stored, budget: { monthlyBudgetRub: 15_000, goalMode: "user", goalRub } }).success).toBe(false);
+    }
+    expect(OnboardingDraftSchema.parse({ ...stored, budget: { monthlyBudgetRub: 15_000, goalMode: "user", goalRub: 1_000_000 } }).budget.goalRub).toBe(1_000_000);
+  });
+
+  it("gives the owner's own sum as the goal, and automatic selection otherwise", () => {
+    expect(goalSource(withBudget({ monthlyBudgetRub: 15_000, goalMode: "user", goalRub: 500 }))).toEqual({ kind: "user", goal: 50_000 });
+    // 15 000 ₽ / 30 = 500 ₽: the interim reference of automatic selection.
+    expect(goalSource(withBudget({ monthlyBudgetRub: 15_000, goalMode: "auto", goalRub: 500 }))).toEqual({ kind: "auto", reference: 50_000 });
+    expect(goalSource(withBudget({ monthlyBudgetRub: 15_000, goalMode: "user", goalRub: null }))).toEqual({ kind: "auto", reference: 50_000 });
+    expect(goalSource(withBudget({ monthlyBudgetRub: null }))).toEqual({ kind: "auto", reference: 0 });
+  });
+
+  it("names only the owner's own goal in the summary", () => {
+    expect(plain(ownGoalText(withBudget({ goalMode: "user", goalRub: 500 }).budget) ?? "")).toBe("Цель — до 500 ₽ за обращение");
+    expect(ownGoalText(withBudget({ goalMode: "auto", goalRub: 500 }).budget)).toBeNull();
+    expect(ownGoalText(withBudget({ goalMode: "user", goalRub: null }).budget)).toBeNull();
   });
 });

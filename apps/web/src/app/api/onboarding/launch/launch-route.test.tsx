@@ -4,7 +4,11 @@ import type { AccountKind } from "@/lib/account-mode";
 import { emptyDraft, STEP_COUNT } from "@/lib/onboarding";
 import type { OnboardingDraft } from "@/lib/onboarding";
 
-const state = vi.hoisted((): { kind: AccountKind; enqueued: { kind: string; simulation?: true }[] } => ({ kind: "demo", enqueued: [] }));
+const state = vi.hoisted((): { kind: AccountKind; enqueued: { kind: string; simulation?: true }[]; draft: (draft: OnboardingDraft) => OnboardingDraft } => ({
+  kind: "demo",
+  enqueued: [],
+  draft: (draft) => draft,
+}));
 
 const ready = (): OnboardingDraft => {
   const draft = emptyDraft();
@@ -24,7 +28,7 @@ vi.mock("@/lib/server/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), 
 vi.mock("@/lib/server/read-context", () => ({ platformCapabilities: () => SIMULATOR_CAPABILITIES }));
 vi.mock("@/lib/server/business", () => ({
   findBusiness: () => Promise.resolve({ id: "b1", launchedOn: null, onboardingStep: STEP_COUNT, timeZone: "Europe/Moscow" }),
-  readDraft: () => ready(),
+  readDraft: () => state.draft(ready()),
 }));
 vi.mock("@/lib/server/jobs", () => ({
   enqueueWebJob: (job: { kind: string; simulation?: true }) => {
@@ -38,6 +42,7 @@ const launch = (body: unknown) => POST(new Request("http://localhost/api/onboard
 
 beforeEach(() => {
   state.enqueued = [];
+  state.draft = (draft) => draft;
 });
 
 describe("POST /api/onboarding/launch: the mode is the account's (simulation-mode «Режим бизнеса «Симуляция»»)", () => {
@@ -61,5 +66,16 @@ describe("POST /api/onboarding/launch: the mode is the account's (simulation-mod
     state.kind = "demo";
     expect((await launch({ simulation: true })).status).toBe(200);
     expect(state.enqueued).toMatchObject([{ kind: "launch", simulation: true }]);
+  });
+});
+
+describe("POST /api/onboarding/launch: the own goal needs its sum (business-onboarding «Выбор бюджета»)", () => {
+  it("refuses a draft with «Укажу сумму» and no sum, and enqueues nothing", async () => {
+    state.kind = "demo";
+    state.draft = (draft) => ({ ...draft, budget: { ...draft.budget, goalMode: "user", goalRub: null } });
+    const response = await launch({});
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "STEP_INCOMPLETE" });
+    expect(state.enqueued).toEqual([]);
   });
 });

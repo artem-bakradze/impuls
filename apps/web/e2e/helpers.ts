@@ -74,13 +74,17 @@ export const fillFirstSteps = async (page: Page): Promise<void> => {
 export const fillBudget = async (page: Page): Promise<void> => {
   await expectStep(page, 2, "Вот как мы вас поняли");
   await page.getByLabel("Бюджет в месяц").fill("15000");
-  // No cost-per-lead question: the goal is selected automatically.
+  // «Подбирайте сами» is chosen in advance: no sum is asked and no starting number is shown.
+  await expect(page.getByRole("radio", { name: "Подбирайте сами" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByLabel("Цена одного обращения")).toHaveCount(0);
   await expect(page.getByTestId("auto-goal")).toContainText("Сколько будут стоить обращения, станет видно после первой недели работы");
 };
 
-/** Step 3 — the ads and the launch — and «Запустить»; ends on «Реклама». */
-export const finishWizard = async (page: Page): Promise<void> => {
+/**
+ * Step 3 — the ads and the launch — and «Запустить»; ends on «Реклама». `ownGoal`: the owner's own goal chosen on step 2,
+ * which the budget line of the summary names; without it the summary has no cost per lead.
+ */
+export const finishWizard = async (page: Page, { ownGoal }: { ownGoal?: string } = {}): Promise<void> => {
   await next(page);
   await expectStep(page, 3, "Объявления и запуск");
   await expect(page.getByTestId("ad-search").first()).toBeVisible();
@@ -95,6 +99,14 @@ export const finishWizard = async (page: Page): Promise<void> => {
   await expectStep(page, 3, "Объявления и запуск");
   await expect(page.getByText("Город «Москва»")).toBeVisible();
   await expect(page.getByText(/заявка или запись с сайта, нажатие на номер телефона/)).toBeVisible();
+  // The search phrases written with the ads are shown; the full list is one tap away.
+  await expect(page.getByText("По каким запросам показываем в поиске")).toBeVisible();
+  const budgetLine = page.locator(".checklist li").filter({ hasText: "Бюджет" });
+  if (ownGoal === undefined) {
+    await expect(budgetLine).not.toContainText("за обращение");
+  } else {
+    await expect(budgetLine).toContainText(new RegExp(`Цель — до ${ownGoal.replace(" ", "\\s")} за обращение`));
+  }
   // The test site does not exist, so the counter check says so without blocking the launch.
   await expect(page.getByTestId("counter-check")).toContainText("Не получилось открыть сайт, чтобы проверить счётчик");
   await page.getByRole("button", { name: "Запустить", exact: true }).click();

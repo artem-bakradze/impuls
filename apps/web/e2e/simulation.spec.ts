@@ -16,7 +16,7 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await next(page);
 
   // The demo's mode is the simulation: no choice of mode, no Direct to connect.
-  await expectStep(page, 3, "Запустите симуляцию");
+  await expectStep(page, 3, "Проверьте объявления");
   await expect(page.getByLabel("Симуляция")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Продолжить в тестовом режиме" })).toHaveCount(0);
   await expect(page.getByTestId("scenarios")).toHaveCount(0);
@@ -47,10 +47,12 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   const dialog = page.getByTestId("period-dialog");
   await expect(dialog).toBeVisible();
   await expect(page.getByText("Статистика за дни 1–7")).toBeVisible();
-  // «до 2 700 ₽ за 7 дней»: the thousands are split by a no-break space.
-  const room = Number(/до\s([\d\s]+)₽/.exec((await dialog.getByTestId("period-room").first().textContent()) ?? "")?.[1]?.replace(/\D/g, "") ?? "0");
+  // The search direction by its name: directions come in the order of their random ids, and only search has the junk
+  // query. «до 2 700 ₽ за 7 дней»: the thousands are split by a no-break space.
+  const search = dialog.getByRole("region", { name: /— Поиск$/ });
+  const room = Number(/до\s([\d\s]+)₽/.exec((await search.getByTestId("period-room").textContent()) ?? "")?.[1]?.replace(/\D/g, "") ?? "0");
   expect(room).toBeGreaterThan(100);
-  const firstAd = dialog.getByTestId("period-ad").first();
+  const firstAd = search.getByTestId("period-ad").first();
   const field = (label: string) => firstAd.getByLabel(label, { exact: true });
 
   // «Что ещё было за эти дни»: a quarter of the week went on a junk query (simulation-breakdowns).
@@ -79,7 +81,7 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await field("Переходы").fill("70");
   await field("Обращения").fill("3");
   await field("Расход, ₽").fill(String(spend));
-  await expect(dialog.getByTestId("period-market-line").first()).toHaveText(/^Около [\d\s]+₽ из [\d\s]+₽ — на запрос «.+ фото», без обращений$/);
+  await expect(search.getByTestId("period-market-line").first()).toHaveText(/^Около [\d\s]+₽ из [\d\s]+₽ — на запрос «.+ фото», без обращений$/);
   await page.getByTestId("period-send").click();
   await expect(dialog).toHaveCount(0);
   await lived(page, "День 8");
@@ -134,7 +136,7 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await expect(page.getByText("Статистика за день 8")).toBeVisible();
   // The mark stays from the last period, and the window says the junk query is not shown any more.
   await expect(dialog.getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeChecked();
-  await expect(dialog.getByTestId("period-market-line").first()).toHaveText(/^Реклама уже не показывается по запросу «.+ фото»$/);
+  await expect(search.getByTestId("period-market-line").first()).toHaveText(/^Реклама уже не показывается по запросу «.+ фото»$/);
   await page.getByTestId("period-fill").click();
   await expect(field("Показы")).not.toHaveValue("");
   await expect(field("Расход, ₽")).not.toHaveValue("");

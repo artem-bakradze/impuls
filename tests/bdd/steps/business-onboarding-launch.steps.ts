@@ -1,13 +1,13 @@
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
 import { accountMode } from "../../../apps/web/src/lib/account-mode";
-import { launchStepWords, STAND_DIRECT_NOTE, STAND_DIRECT_TITLE } from "../../../apps/web/src/lib/launch-step";
+import { launchStepWords, phraseList, STAND_DIRECT_NOTE, STAND_DIRECT_TITLE } from "../../../apps/web/src/lib/launch-step";
 import type { LaunchStepWords } from "../../../apps/web/src/lib/launch-step";
 import { featurePath } from "./world";
 
 const feature = await loadFeature(featurePath("business-onboarding/launch-step.feature"), { language: "ru" });
 
-const said = (words: LaunchStepWords): string => [words.title, words.lead, words.button, words.afterLaunch].join(" ");
+const said = (words: LaunchStepWords): string => [words.title, words.lead ?? "", words.button, words.afterLaunch ?? ""].join(" ");
 
 describeFeature(feature, ({ Scenario }) => {
   Scenario("Шаг 6 говорит о выбранном способе", ({ When, Then, And }) => {
@@ -57,17 +57,49 @@ describeFeature(feature, ({ Scenario }) => {
   });
 
   Scenario("Запуск симуляции", ({ When, Then, And }) => {
-    let note = "";
+    let words: LaunchStepWords;
     When("владелец демо доходит до кнопки «Запустить симуляцию»", () => {
-      note = launchStepWords(accountMode("demo")).afterLaunch;
+      words = launchStepWords(accountMode("demo"));
     });
-    Then("заметка у кнопки говорит, что цифры рекламы он задаёт сам и откроется «Реклама»", () => {
-      expect(note).toContain("Цифры рекламы вы задаёте сами");
-      expect(note).toContain("откроется «Реклама»");
+    Then("шаг называется «Проверьте объявления», без пояснения под заголовком", () => {
+      expect(words.title).toBe("Проверьте объявления");
+      expect(words.lead).toBeNull();
     });
-    And("после каждой внесённой статистики видно, что сервис заметил и изменил, а изменения видны в истории", () => {
-      expect(note).toContain("сервис сразу разбирает её и показывает, что заметил и изменил");
-      expect(note).toContain("видно в истории");
+    And("у кнопки нет заметки о том, что будет дальше", () => {
+      expect(words.afterLaunch).toBeNull();
+    });
+  });
+
+  Scenario("Демо без заметки об учёте обращений", ({ When, Then, And }) => {
+    let words: LaunchStepWords;
+    When("владелец демо дошёл до итога перед запуском", () => {
+      words = launchStepWords(accountMode("demo"));
+    });
+    Then("под итогом нет заметки об учёте обращений и учебных данных", () => {
+      expect(words.leadsNotice).toBe(false);
+      expect(said(words)).not.toMatch(/учебн|счётчик|Метрик/i);
+    });
+    And("при настоящем запуске предупреждение о счётчике остаётся", () => {
+      expect(launchStepWords(accountMode("test")).leadsNotice).toBe(true);
+    });
+  });
+
+  Scenario("Запросы и слова-исключения в итоге", ({ When, Then, And }) => {
+    const phrases = Array.from({ length: 16 }, (_, i) => `маникюр ${i + 1}`);
+    let search: ReturnType<typeof phraseList>;
+    let excluded: ReturnType<typeof phraseList>;
+    When("к объявлениям написано 16 поисковых фраз и 2 слова-исключения, «бесплатно» и «обучение»", () => {
+      search = phraseList(phrases);
+      excluded = phraseList(["бесплатно", "обучение"]);
+    });
+    Then("строка «По каким запросам показываем в поиске» показывает первые пять фраз и «и ещё 11», а по «все» — все 16", () => {
+      expect(search).toEqual({ text: "маникюр 1, маникюр 2, маникюр 3, маникюр 4, маникюр 5 и ещё 11", all: phrases.join(", "), expandable: true });
+    });
+    And("строка «Не показываем по запросам со словами» — «бесплатно, обучение» без ссылки «все»", () => {
+      expect(excluded).toEqual({ text: "бесплатно, обучение", all: "бесплатно, обучение", expandable: false });
+    });
+    And("без фраз строки нет", () => {
+      expect(phraseList([])).toBeNull();
     });
   });
 });

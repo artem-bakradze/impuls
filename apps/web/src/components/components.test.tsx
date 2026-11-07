@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { emptyDraft } from "@/lib/onboarding";
 import type { NetworkAdDraft, OnboardingDraft } from "@/lib/onboarding";
@@ -89,6 +90,40 @@ describe("BudgetStep", () => {
     render(<BudgetStep draft={withBudget(15_000)} onChange={() => undefined} today="2026-11-01" />);
     expect(screen.getByTestId("auto-goal")).toHaveTextContent(/^Сколько будут стоить обращения, станет видно после первой недели работы\./);
     expect(screen.queryByText(/за обращение/)).toBeNull();
+  });
+
+  it("offers the cost per lead as a choice, «Подбирайте сами» in advance, with no starting number (business-onboarding «Выбор бюджета»)", () => {
+    const { container } = render(<BudgetStep draft={withBudget(15_000)} onChange={() => undefined} today="2026-11-01" />);
+    expect(screen.getByRole("radio", { name: "Подбирайте сами" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Укажу сумму" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByLabelText("Цена одного обращения")).toBeNull();
+    // 15 000 ₽ / 30 = 500 ₽ is the hidden reference of automatic selection: it is never shown.
+    expect(container.textContent?.replace(/[\u00a0\u202f]/g, " ")).not.toContain("500 ₽");
+  });
+
+  it("takes the owner's own sum and says what is turned off above it", () => {
+    function Harness() {
+      const [draft, setDraft] = useState(withBudget(15_000));
+      return <BudgetStep draft={draft} onChange={setDraft} today="2026-11-01" />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("radio", { name: "Укажу сумму" }));
+    expect(screen.getByTestId("auto-goal")).toHaveTextContent("дороже этой суммы");
+    fireEvent.change(screen.getByLabelText("Цена одного обращения"), { target: { value: "500" } });
+    expect(screen.getByTestId("auto-goal").textContent?.replace(/[\u00a0\u202f]/g, " ")).toBe("Будем отключать рекламу, которая приводит обращения дороже 500 ₽, и добавлять денег той, что дешевле.");
+    // Back to «Подбирайте сами»: the sum is kept for a second change of mind, and the text is the automatic one again.
+    fireEvent.click(screen.getByRole("radio", { name: "Подбирайте сами" }));
+    expect(screen.getByTestId("auto-goal")).toHaveTextContent(/^Сколько будут стоить обращения/);
+    fireEvent.click(screen.getByRole("radio", { name: "Укажу сумму" }));
+    expect(screen.getByLabelText("Цена одного обращения")).toHaveValue("500");
+  });
+
+  it("shows under the goal field what to do when «Укажу сумму» has no sum", () => {
+    const draft = withBudget(15_000);
+    draft.budget = { ...draft.budget, goalMode: "user", goalRub: null };
+    render(<BudgetStep draft={draft} onChange={() => undefined} today="2026-11-01" errors={{ goal: "Укажите сумму или выберите «Подбирайте сами»" }} />);
+    expect(document.getElementById("field-goal")).toHaveClass("field-invalid");
+    expect(screen.getByRole("alert")).toHaveTextContent("Укажите сумму или выберите «Подбирайте сами»");
   });
 
   it("explains a smaller sum when the ads start at the end of the month", () => {
@@ -195,7 +230,7 @@ describe("LaunchStep", () => {
     return draft;
   };
 
-  it("sums up in four lines, each with «изменить», and warns about the missing counter", () => {
+  it("sums up the card, the budget and the leads, each with «изменить», and warns about the missing counter", () => {
     const onEdit = vi.fn();
     render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={onEdit} mode="direct" />);
     for (const title of ["Что рекламируем", "Где и когда", "Бюджет", "Что считаем обращением"]) {
@@ -217,6 +252,29 @@ describe("LaunchStep", () => {
     expect(note.textContent).not.toContain("журнал");
   });
 
+  it("shows the search phrases and the excluded words, the whole list on «все»", () => {
+    const phrases = ["маникюр москва", "маникюр с покрытием", "маникюр рядом", "покрытие гель лак", "маникюр цена", "маникюр недорого", "запись на маникюр"];
+    render(<LaunchStep draft={{ ...ready(), keywords: { search: phrases, negative: ["бесплатно", "обучение"] } }} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
+    expect(screen.getByText("По каким запросам показываем в поиске")).toBeInTheDocument();
+    expect(screen.getByText("маникюр москва, маникюр с покрытием, маникюр рядом, покрытие гель лак, маникюр цена и ещё 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "По каким запросам показываем в поиске: все" }));
+    expect(screen.getByText(phrases.join(", "))).toBeInTheDocument();
+    expect(screen.getByText("Не показываем по запросам со словами")).toBeInTheDocument();
+    expect(screen.getByText("бесплатно, обучение")).toBeInTheDocument();
+    // A short list needs no «все».
+    expect(screen.queryByRole("button", { name: "Не показываем по запросам со словами: все" })).toBeNull();
+  });
+
+  it("names the owner's own goal in the budget line, and no cost per lead for automatic selection", () => {
+    const own = ready();
+    own.budget = { ...own.budget, goalMode: "user", goalRub: 500 };
+    const { unmount } = render(<LaunchStep draft={own} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
+    expect(plainText(document.body.textContent)).toContain("Больше 15 000 ₽ за месяц мы не потратим. Цель — до 500 ₽ за обращение");
+    unmount();
+    render(<LaunchStep draft={{ ...own, budget: { ...own.budget, goalMode: "auto" } }} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
+    expect(document.body.textContent).not.toContain("за обращение");
+  });
+
   it("names what is advertised without repeating the category", () => {
     render(<LaunchStep draft={ready()} today="2026-11-01" onEdit={() => undefined} mode="direct" />);
     expect(screen.getByText("Маникюр с покрытием")).toBeInTheDocument();
@@ -226,12 +284,15 @@ describe("LaunchStep", () => {
   it("launches a demo's simulation on the last step, with no choice of mode and no scenario (business-onboarding «Шаг 6 говорит о выбранном способе»)", () => {
     render(<Wizard initialDraft={ready()} initialStep={3} directApiMode="simulator" mode="simulation" directOutcome={null} />);
     expect(screen.getByText("Шаг 3 из 3")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Запустите симуляцию" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Проверьте объявления" })).toBeInTheDocument();
     expect(screen.queryByRole("radiogroup", { name: "Как запускаем" })).toBeNull();
     expect(screen.queryByLabelText("Симуляция")).toBeNull();
     expect(document.body.textContent).not.toMatch(/баланс|Подключить Яндекс Директ|тестовая копия Директа/);
     expect(document.body.textContent).not.toMatch(/сценари/i);
-    expect(screen.getByTestId("after-launch")).toHaveTextContent("Цифры рекламы вы задаёте сами: вносите статистику за выбранный период");
+    // No notes before the button: neither the training leads nor what opens next.
+    expect(screen.queryByTestId("after-launch")).toBeNull();
+    expect(screen.queryByTestId("measurement-status")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/учебн/i);
     expect(screen.getByRole("button", { name: /Запустить симуляцию/ })).toBeInTheDocument();
     // The simulated month starts on the 1st: the budget line is for a full month, with no start date.
     expect(plainText(document.body.textContent)).toContain("Больше 15 000 ₽ за месяц мы не потратим");
@@ -277,6 +338,8 @@ describe("partner-site pictures (ad-creatives «Картинки объявле�
     expect(screen.getByTestId("ad-image")).toHaveAttribute("src", "/api/ad-images/img-1");
     for (const name of ["Объявление 1: изменить", "Объявление 1: другая картинка", "Объявление 1: убрать"]) {
       expect(screen.getByRole("button", { name })).toBeVisible();
+      // Icons only, so the three fit one row of the narrow card.
+      expect(screen.getByRole("button", { name }).textContent).toBe("");
     }
     fireEvent.click(screen.getByRole("button", { name: "Объявление 1: другая картинка" }));
     expect(onRedraw).toHaveBeenCalledTimes(1);

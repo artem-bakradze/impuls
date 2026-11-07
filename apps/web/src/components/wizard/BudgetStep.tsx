@@ -5,6 +5,9 @@ import {
   budgetLowWarning,
   budgetPlan,
   budgetTooLowMessage,
+  GOAL_MAX_RUB,
+  GOAL_MIN_RUB,
+  goalExplanation,
   MIN_BUDGET_RUB,
   RECOMMENDED_BUDGET_RUB,
 } from "@/lib/onboarding";
@@ -17,6 +20,12 @@ const rubFormatter = (value: number | string | undefined): string => (value === 
 const rubParser = (value: string | undefined): number => Number((value ?? "").replace(/\D/g, ""));
 
 const PRESETS = [10_000, 15_000, 30_000, 50_000];
+
+/** The same choice as in the settings (campaign-settings «Бюджет и цель»). */
+const GOAL_MODES = [
+  { value: "auto", label: "Подбирайте сами" },
+  { value: "user", label: "Укажу сумму" },
+] as const;
 
 export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & { today: string }) {
   const budget = draft.budget;
@@ -63,14 +72,37 @@ export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & 
               {plan.headline}
             </div>
             {plan.detail ? <div className="t-small">{plan.detail}</div> : null}
-            <hr className="forecast-divider" />
-            <div className="t-small" data-testid="auto-goal">
-              Сколько будут стоить обращения, станет видно после первой недели работы. Дальше мы сами отключаем рекламу, которая приводит людей
-              дороже, и добавляем денег той, что дешевле.
-            </div>
           </div>
         </div>
       ) : null}
+
+      {/* Optional: «Подбирайте сами» is chosen in advance (business-onboarding «Выбор бюджета»). */}
+      <Field id="goal" label="Сколько готовы платить за одно обращение" error={errors.goal} help={<span data-testid="auto-goal">{goalExplanation(budget)}</span>}>
+        <div className="presets" role="radiogroup" aria-label="Цена обращения">
+          {GOAL_MODES.map((option) => (
+            <button key={option.value} type="button" role="radio" aria-checked={budget.goalMode === option.value} aria-pressed={budget.goalMode === option.value} className="preset" onClick={() => set({ goalMode: option.value })}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {budget.goalMode === "user" ? (
+          <InputNumber<number>
+            className="money-input"
+            style={{ width: "100%", maxWidth: 220 }}
+            size="large"
+            min={GOAL_MIN_RUB}
+            max={GOAL_MAX_RUB}
+            step={50}
+            value={budget.goalRub}
+            onChange={(value) => set({ goalRub: typeof value === "number" && value >= GOAL_MIN_RUB ? Math.min(Math.round(value), GOAL_MAX_RUB) : null })}
+            formatter={rubFormatter}
+            parser={rubParser}
+            prefix="до"
+            suffix="₽"
+            aria-label="Цена одного обращения"
+          />
+        ) : null}
+      </Field>
     </div>
   );
 }
