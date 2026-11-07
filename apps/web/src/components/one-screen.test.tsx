@@ -93,6 +93,7 @@ const status = (overrides: Partial<SimulationStatus> = {}): SimulationStatus => 
   periods: 1,
   changes: 12,
   agentTurn: false,
+  reviewSteps: [],
   form,
   ...overrides,
 });
@@ -270,6 +271,12 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
     fireEvent.click(screen.getByRole("button", { name: "Добавить статистику" }));
     return screen.findByTestId("period-dialog");
   };
+  /** The window opens on one day; these checks enter a week. */
+  const openWeek = async () => {
+    const dialog = await open();
+    fireEvent.click(within(dialog).getByText("Неделя"));
+    return dialog;
+  };
   const field = (title: string, label: string) => {
     const row = [...document.querySelectorAll<HTMLElement>("[data-testid=period-ad]")].find((r) => r.textContent?.startsWith(title));
     const input = [...(row?.querySelectorAll<HTMLElement>(".period-field") ?? [])].find((f) => f.querySelector("label")?.textContent === label)?.querySelector("input");
@@ -278,23 +285,23 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
   };
   const type = (title: string, label: string, value: string) => fireEvent.change(field(title, label), { target: { value } });
 
-  it("opens on a week from the current day, with the ads shown now and what Direct would spend", async () => {
+  it("opens on one day from the current day, with the ads shown now and what Direct would spend", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
     await open();
-    expect(screen.getByText("Статистика за дни 11–17")).toBeTruthy();
-    expect(plain(screen.getByTestId("period-room"))).toBe("до 4 200 ₽ за 7 дней");
-    expect([...document.querySelectorAll("[data-testid=period-ad] .period-ad-title")].map((t) => t.textContent)).toEqual(["Автоматизация ресторанов доставки", "Интеграция с агрегаторами"]);
-    expect([...document.querySelectorAll("[data-testid=period-ad]")][0]?.querySelectorAll("label")).toHaveLength(4);
-    fireEvent.click(screen.getByText("1 день"));
     expect(screen.getByText("Статистика за день 11")).toBeTruthy();
     expect(plain(screen.getByTestId("period-room"))).toBe("до 600 ₽ за 1 день");
+    expect([...document.querySelectorAll("[data-testid=period-ad] .period-ad-title")].map((t) => t.textContent)).toEqual(["Автоматизация ресторанов доставки", "Интеграция с агрегаторами"]);
+    expect([...document.querySelectorAll("[data-testid=period-ad]")][0]?.querySelectorAll("label")).toHaveLength(4);
+    fireEvent.click(screen.getByText("Неделя"));
+    expect(screen.getByText("Статистика за дни 11–17")).toBeTruthy();
+    expect(plain(screen.getByTestId("period-room"))).toBe("до 4 200 ₽ за 7 дней");
   });
 
   it("says a mistake under its field and sends nothing", async () => {
     const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(status()) }));
     vi.stubGlobal("fetch", fetch);
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
-    await open();
+    await openWeek();
     type("Автоматизация ресторанов доставки", "Показы", "50");
     type("Автоматизация ресторанов доставки", "Переходы", "60");
     type("Автоматизация ресторанов доставки", "Расход, ₽", "100");
@@ -318,7 +325,7 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
       }),
     );
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
-    await open();
+    await openWeek();
     type("Автоматизация ресторанов доставки", "Показы", "1400");
     type("Автоматизация ресторанов доставки", "Переходы", "70");
     type("Автоматизация ресторанов доставки", "Расход, ₽", "1530");
@@ -332,7 +339,6 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
           { adId: "a1", impressions: 1_400, clicks: 70, leads: 0, spendRub: 1_530 },
           { adId: "a2", impressions: 0, clicks: 0, leads: 0, spendRub: 0 },
         ],
-        market: { junkQuery: false, phonesWorse: false },
       },
     ]);
     expect(screen.getByRole("button", { name: "Сервис разбирает…" })).toBeDisabled();
@@ -375,59 +381,14 @@ describe("«Добавить статистику» (simulation-mode spec «Ст
     expect(screen.getByTestId("period-dialog")).toBeTruthy();
   });
 
-  it("marks a junk query, says what it means for the numbers and sends the marks (simulation-breakdowns)", async () => {
-    const posts: unknown[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
-        if (url === "/api/simulation" && init?.method === "POST" && typeof init.body === "string") posts.push(JSON.parse(init.body));
-        const body = url === "/api/simulation" && init?.method === "POST" ? { jobId: "j1" } : url.startsWith("/api/jobs/") ? { state: "running" } : status();
-        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
-      }),
-    );
+  it("asks nothing about the market: no marks and no lines under the directions (market-leaks-live-review)", async () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status()} />);
     const dialog = await open();
-    const junk = within(dialog).getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" });
-    expect(junk).not.toBeChecked();
-    expect(plain(within(dialog).getByText(/^Например, «автоматизация ресторанов фото»/))).toBe("Например, «автоматизация ресторанов фото»: по нему переходят, но не обращаются");
-    expect(junk).toHaveAccessibleDescription("Например, «автоматизация ресторанов фото»: по нему переходят, но не обращаются");
-    fireEvent.click(junk);
-    // Nothing is entered yet: no line under the direction.
-    expect(screen.queryByTestId("period-market-line")).toBeNull();
-    type("Автоматизация ресторанов доставки", "Показы", "1400");
-    type("Автоматизация ресторанов доставки", "Переходы", "70");
-    type("Автоматизация ресторанов доставки", "Обращения", "7");
+    expect(within(dialog).queryByRole("group", { name: "Что ещё было за эти дни" })).toBeNull();
+    expect(within(dialog).queryAllByRole("checkbox")).toEqual([]);
     type("Автоматизация ресторанов доставки", "Расход, ₽", "4200");
-    expect(plain(screen.getByTestId("period-market-line"))).toBe("Около 1 050 ₽ из 4 200 ₽ — на запрос «автоматизация ресторанов фото», без обращений");
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" }));
-    expect(screen.getAllByTestId("period-market-line").map(plain)).toEqual([
-      "Около 1 050 ₽ из 4 200 ₽ — на запрос «автоматизация ресторанов фото», без обращений",
-      "С телефонов обращение выйдет примерно вчетверо дороже, чем с компьютера",
-    ]);
-    fireEvent.click(screen.getByTestId("period-send"));
-    await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]).toMatchObject({ action: "period", days: 7, market: { junkQuery: true, phonesWorse: true } });
-  });
-
-  it("keeps the last period's marks, lets them off, and says when the junk query is taken away already", async () => {
-    const marked = status({ form: { ...form, market: { junkQuery: true, phonesWorse: true }, directions: [{ ...form.directions[0]!, negativeKeywords: ["фото"] }] } });
-    render(<SummaryView model={model()} work={work({ sim })} simulation={marked} />);
-    const dialog = await open();
-    const phones = within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" });
-    expect(phones).toBeChecked();
-    expect(within(dialog).getByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeChecked();
-    expect(screen.getAllByTestId("period-market-line").map(plain)).toEqual(["Реклама уже не показывается по запросу «автоматизация ресторанов фото»"]);
-    fireEvent.click(phones);
-    expect(phones).not.toBeChecked();
-  });
-
-  it("offers no junk query to partner sites only", async () => {
-    const network = status({ form: { ...form, directions: [{ ...form.directions[0]!, name: "Автоматизация — Сайты-партнёры", channel: "network", keywords: [], junkQuery: null }] } });
-    render(<SummaryView model={model()} work={work({ sim })} simulation={network} />);
-    const dialog = await open();
-    expect(within(dialog).queryByRole("checkbox", { name: "Часть денег ушла на ненужный запрос" })).toBeNull();
-    expect(within(dialog).getByRole("checkbox", { name: "С телефонов обращаются хуже" })).toBeTruthy();
-    expect(within(dialog).getByRole("group", { name: "Что ещё было за эти дни" })).toBeTruthy();
+    expect(screen.queryByTestId("period-market-line")).toBeNull();
+    expect(dialog.textContent).not.toMatch(/ненужный запрос|С телефонов/);
   });
 
   it("says so when no ad is shown, and still lets the period go", async () => {
@@ -493,6 +454,29 @@ describe("a sent period (simulation-mode spec: a period that is not over is not 
     expect(screen.getByRole("button", { name: "Добавить статистику" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Сервис разбирает…" })).toBeNull();
     expect(screen.getByTestId("studio-day")).toHaveTextContent("День 18");
+  });
+});
+
+describe("the review's steps while it goes (simulation-mode «Ход разбора на глазах владельца»)", () => {
+  const steps = ["Смотрю цифры за дни 11–17", "Сравниваю телефоны и компьютеры", "Предполагаю: с телефонов обращения дороже, чем с компьютеров"];
+
+  it("shows the assistant's steps in order under the dots, the step's line last", () => {
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status({ status: "stepping", step: { from: 11, to: 17 }, agentTurn: true, reviewSteps: steps })} />);
+    const thinking = screen.getByTestId("studio-thinking");
+    expect([...within(thinking).getByTestId("review-steps").querySelectorAll("li")].map((li) => li.textContent)).toEqual(steps);
+    expect(thinking.lastElementChild?.textContent).toContain("Сервис разбирает дни 11–17…");
+  });
+
+  it("has no steps without the assistant's turn: only the step's line", () => {
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status({ status: "stepping", step: { from: 11, to: 17 }, agentTurn: false })} />);
+    expect(screen.getByTestId("studio-thinking")).toHaveTextContent("Сервис разбирает дни 11–17…");
+    expect(screen.queryByTestId("review-steps")).toBeNull();
+  });
+
+  it("gives way to the review once the period is over", () => {
+    render(<SummaryView model={model()} work={work({ sim })} simulation={status({ reviewSteps: steps })} />);
+    expect(screen.queryByTestId("studio-thinking")).toBeNull();
+    expect(screen.queryByTestId("review-steps")).toBeNull();
   });
 });
 

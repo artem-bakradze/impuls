@@ -15,8 +15,11 @@ export type InsightMetric =
   | "budget_pace"
   | "goal";
 
-/** Period of a fact: 14 days, the last 7, the 7 before them, the current month, the current value or an A/B check. */
-export type InsightPeriod = "14d" | "7d" | "prev7d" | "month" | "now" | "check";
+/**
+ * Period of a fact: 14 days, the last 7, the 7 before them, the current month, the current value, an A/B check, or the
+ * days of a simulation's period the turn reviews (ad-agent «Рассказ в разборе периода»).
+ */
+export type InsightPeriod = "14d" | "7d" | "prev7d" | "month" | "now" | "check" | "period";
 
 /** One entry of the snapshot's fact catalog; money in whole rubles, everything else in counts. */
 export interface InsightFact {
@@ -49,6 +52,8 @@ export const factKey = {
   ad: (id: string, metric: InsightMetric, period: InsightPeriod): string => `ad:${id}:${metric}:${period}`,
   direction: (id: string, metric: InsightMetric, period: InsightPeriod): string => `direction:${id}:${metric}:${period}`,
   channel: (channel: "search" | "network", metric: InsightMetric, period: InsightPeriod): string => `channel:${channel}:${metric}:${period}`,
+  /** All the advertising over the reviewed period's days: what «Реклама» shows for them. */
+  total: (metric: "spend" | "leads" | "cost_per_lead"): string => `total:all:${metric}:period`,
   budget: (metric: "budget" | "budget_spent" | "budget_left" | "budget_pace"): string => `budget:${metric}:month`,
   goal: (): string => "goal:goal:now",
   /** A search query or a device of a direction over 14 days, from a breakdown the agent asked for in the turn. */

@@ -15,7 +15,7 @@ import { createLogger } from "./logger";
 import { SimulatedPlatform } from "@impuls/platforms";
 import type { BreakdownDimension } from "@impuls/platforms";
 import { controlSimulation, launchSimulation, savedPeriodForm, SimulationError } from "./simulation-mode";
-import { NO_MARKET } from "./simulation-period";
+import { MARKET } from "./simulation-period";
 import type { PeriodDays, PeriodMarket } from "./simulation-period";
 import { MemoryStore } from "./store";
 import type { BusinessRecord } from "./store";
@@ -257,8 +257,8 @@ describe("simulation on the owner's numbers", () => {
   });
 });
 
-describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
-  const junk: PeriodMarket = { junkQuery: true, phonesWorse: false };
+describe("breakdown of the owner's numbers on the training market (simulation-breakdowns, market-leaks-live-review)", () => {
+  /** A mark a page from before market-leaks-live-review sends: not counted. */
   const phones: PeriodMarket = { junkQuery: false, phonesWorse: true };
   /** The search direction's breakdown as Direct would report it, read from the saved market. */
   const breakdown = async (store: MemoryStore, dimension: BreakdownDimension) => {
@@ -272,17 +272,18 @@ describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
   const sum = (rows: readonly { impressions: number; clicks: number; leads: number; spend: number }[]) =>
     rows.reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
 
-  it("records the period's breakdown under its marks and keeps the marks and settings in the step", async () => {
+  it("records the period's breakdown on the training market and keeps the market and settings in the step", async () => {
     const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan());
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } }, junk);
+    // No marks: the junk query is part of the market.
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } });
     const queries = await breakdown(store, "query");
     expect(queries.find((r) => r.segment === "маникюр москва фото")).toMatchObject({ leads: 0, spend: 50_000 });
     expect(sum(queries)).toEqual({ impressions: 1_400, clicks: 70, leads: 7, spend: 200_000 });
     expect(sum(await breakdown(store, "device"))).toEqual({ impressions: 1_400, clicks: 70, leads: 7, spend: 200_000 });
     const [search, network] = await store.directions("b1");
     expect((await store.getSimulation("b1"))?.steps[0]).toMatchObject({
-      market: junk,
+      market: MARKET,
       traffic: {
         [search?.id ?? ""]: { keywords: ["маникюр москва"], negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } },
         [network?.id ?? ""]: { keywords: [], negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } },
@@ -290,13 +291,13 @@ describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
     });
   });
 
-  it("splits evenly without marks, as a page from before sends", async () => {
+  it("does not count the marks a page from before sends", async () => {
     const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan());
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } });
-    expect((await breakdown(store, "query")).map((r) => r.segment)).toEqual(["маникюр москва"]);
-    expect((await breakdown(store, "device")).map((r) => r.segment).sort()).toEqual(["desktop", "mobile", "tablet"]);
-    expect((await store.getSimulation("b1"))?.steps[0]?.market).toEqual(NO_MARKET);
+    // The old page says «no junk query»; the market has one anyway.
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_000 } }, { junkQuery: false, phonesWorse: false });
+    expect((await store.getSimulation("b1"))?.steps[0]?.market).toEqual(MARKET);
+    expect((await breakdown(store, "query")).find((r) => r.segment === "маникюр москва фото")).toMatchObject({ leads: 0, spend: 50_000 });
   });
 
   it("does not record the breakdown twice when a failed look continues", async () => {
@@ -311,7 +312,7 @@ describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
       }
       return original(evaluation);
     };
-    await expect(enter(ctx, store, 3, { "Маникюр 1": { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } }, junk)).rejects.toThrow("store is down");
+    await expect(enter(ctx, store, 3, { "Маникюр 1": { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } })).rejects.toThrow("store is down");
     await controlSimulation(ctx, "b1", { action: "continue" });
     expect(sum(await breakdown(store, "query"))).toEqual({ impressions: 300, clicks: 20, leads: 1, spend: 40_000 });
   });
@@ -324,31 +325,23 @@ describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
     await launchSimulation(ctx, "b1", plan());
     const search = (await store.directions("b1")).find((d) => d.channel === "search");
     // The goal is 500 ₽: 600 ₽ of 2 400 ₽ went on «маникюр москва фото» without a lead.
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 6, spendRub: 2_400 } }, junk);
+    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 6, spendRub: 2_400 } });
     expect(await decided(store)).toContainEqual({ type: "AddNegativeKeywords", directionId: search?.id, phrases: ["фото"] });
     expect((await store.turns("b1")).at(-1)?.summary).toContain("убрал показы по запросу «маникюр москва фото»");
   });
 
-  it("lets the period's agent make phones cheaper by the breakdown", async () => {
+  it("leaves the phones' price to the agent's judgment: twice dearer is not clearly dearer for the test policy", async () => {
     const { store, ctx } = await world(new HeuristicPolicy());
     await launchSimulation(ctx, "b1", plan());
-    const search = (await store.directions("b1")).find((d) => d.channel === "search");
-    // Two weeks with phones four times worse: 2 700 ₽ and 3 leads from phones, 1 575 ₽ and 7 from computers.
-    await enter(ctx, store, 14, { "Маникюр 1": { impressions: 3_000, clicks: 180, leads: 11, spendRub: 4_500 } }, phones);
-    expect(await decided(store)).toContainEqual({ type: "SetDeviceAdjustment", directionId: search?.id, device: "mobile", percent: -25 });
-  });
-
-  it("changes nothing by an even breakdown", async () => {
-    const { store, ctx } = await world(new HeuristicPolicy());
-    await launchSimulation(ctx, "b1", plan());
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_400, clicks: 70, leads: 7, spendRub: 2_100 } });
-    await enter(ctx, store, 7, { "Маникюр 1": { impressions: 1_000, clicks: 50, leads: 5, spendRub: 1_300 } });
+    // Two weeks of the training market: 60% of the spend on phones, where a lead costs about twice a computer's. The test
+    // policy cuts a device only at three times; the junk query it does take away.
+    await enter(ctx, store, 14, { "Маникюр 1": { impressions: 3_000, clicks: 180, leads: 11, spendRub: 4_500 } });
     const types = (await decided(store)).map((a) => a.type);
-    expect(types).not.toContain("AddNegativeKeywords");
     expect(types).not.toContain("SetDeviceAdjustment");
+    expect(types).toContain("AddNegativeKeywords");
   });
 
-  it("keeps the marks for the next window and takes them off with «Начать заново»", async () => {
+  it("opens every window on the training market, also after «Начать заново»", async () => {
     const { store, ctx } = await world();
     await launchSimulation(ctx, "b1", plan());
     await enter(ctx, store, 3, { "Маникюр 1": { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } }, phones);
@@ -357,9 +350,9 @@ describe("breakdown of the owner's numbers (simulation-breakdowns)", () => {
       if (record === null) throw new Error("no simulation");
       return savedPeriodForm(record, await store.directions("b1"), await store.ads("b1"), "Europe/Moscow");
     };
-    expect((await form()).market).toEqual(phones);
+    expect((await form()).market).toEqual(MARKET);
     expect((await form()).directions.find((d) => d.channel === "search")).toMatchObject({ keywords: ["маникюр москва"], junkQuery: "маникюр москва фото" });
     await controlSimulation(ctx, "b1", { action: "restart" });
-    expect((await form()).market).toEqual(NO_MARKET);
+    expect((await form()).market).toEqual(MARKET);
   });
 });

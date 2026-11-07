@@ -138,6 +138,7 @@ const PERIODS: Record<InsightPeriod, string> = {
   month: "",
   now: "",
   check: "за время проверки",
+  period: "за эти дни",
 };
 
 /** The budget and the goal name themselves; everything else says about what the number is. */

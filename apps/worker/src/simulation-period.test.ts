@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { segmentVerdict } from "@impuls/core";
-import { checkPeriod, junkQueryOf, lastEntered, lastMarket, marketLines, NO_MARKET, PERIOD_DAYS, periodForm, splitPeriod, suggestPeriod } from "./simulation-period";
+import { checkPeriod, DEFAULT_PERIOD_DAYS, junkQueryOf, lastEntered, MARKET, NO_MARKET, PERIOD_DAYS, periodForm, splitPeriod, suggestPeriod } from "./simulation-period";
 import type { CampaignTrafficView, DirectionTraffic, PeriodForm, PeriodMarket } from "./simulation-period";
 
 const even = { negativeKeywords: [], deviceAdjustments: { mobile: 0, desktop: 0 } };
@@ -28,7 +28,7 @@ const form = (last: Partial<Record<string, PeriodForm["directions"][number]["ads
       junkQuery: null,
     },
   ],
-  market: NO_MARKET,
+  market: MARKET,
 });
 
 describe("«Заполнить примерно» (simulation-mode spec «Статистика периода от владельца»)", () => {
@@ -59,8 +59,9 @@ describe("«Заполнить примерно» (simulation-mode spec «Ста
   it("continues an ad's last period: its price per lead stays close, an ad without leads gets none", () => {
     const rows = suggestPeriod(
       form({
-        a1: { days: 7, impressions: 1_000, clicks: 50, leads: 5, spendRub: 1_000 },
-        a2: { days: 7, impressions: 1_000, clicks: 25, leads: 0, spendRub: 500 },
+        // Periods entered on the training market: nothing changed since, so the numbers carry on.
+        a1: { days: 7, impressions: 1_000, clicks: 50, leads: 5, spendRub: 1_000, market: MARKET },
+        a2: { days: 7, impressions: 1_000, clicks: 25, leads: 0, spendRub: 500, market: MARKET },
       }),
       7,
     );
@@ -75,12 +76,8 @@ describe("«Заполнить примерно» (simulation-mode spec «Ста
     expect(a1?.spendRub ?? 0).toBeGreaterThan(a2?.spendRub ?? 0);
   });
 
-  it("takes the marks of the last completed period, not of a failed one", () => {
-    const junk: PeriodMarket = { junkQuery: true, phonesWorse: false };
-    const phones: PeriodMarket = { junkQuery: false, phonesWorse: true };
-    expect(lastMarket([])).toEqual(NO_MARKET);
-    expect(lastMarket([{ kind: "period", state: "completed", market: junk }, { kind: "period", state: "failed", market: phones }])).toEqual(junk);
-    expect(lastMarket([{ kind: "period", state: "completed" }])).toEqual(NO_MARKET);
+  it("opens on one day (market-leaks-live-review)", () => {
+    expect(DEFAULT_PERIOD_DAYS).toBe(1);
   });
 
   it("takes each ad's last non-zero numbers from the completed periods", () => {
@@ -103,7 +100,6 @@ describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
   const key = { from: "2026-11-09", adId: "a1" };
   const sum = (rows: readonly { impressions: number; clicks: number; leads: number; spend: number }[]) =>
     rows.reduce((s, r) => ({ impressions: s.impressions + r.impressions, clicks: s.clicks + r.clicks, leads: s.leads + r.leads, spend: s.spend + r.spend }), { impressions: 0, clicks: 0, leads: 0, spend: 0 });
-  const plain = (text: string) => text.replace(/[  ]/g, " ");
 
   it("makes the junk query of a key phrase with a word the key phrases do not have", () => {
     expect(junkQueryOf(["маникюр"])).toBe("маникюр фото");
@@ -132,14 +128,25 @@ describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
     expect(split.query).toEqual([{ segment: "маникюр", ...totals }]);
   });
 
-  it("makes a lead from a phone four times dearer than one from a computer", () => {
+  it("makes a lead from a phone about twice dearer than one from a computer on the training market", () => {
     const totals = { impressions: 3_000, clicks: 180, leads: 11, spend: 900_000 };
-    const split = splitPeriod(search, phones, totals, key);
+    const split = splitPeriod(search, MARKET, totals, key);
     const device = (segment: string) => split.device.find((r) => r.segment === segment);
-    expect(device("mobile")).toMatchObject({ leads: 3, spend: 540_000 });
-    expect(device("desktop")).toMatchObject({ leads: 7, spend: 315_000 });
-    expect(device("tablet")).toMatchObject({ leads: 1, spend: 45_000 });
+    // Showings, clicks and spend keep the devices' shares; only the leads move.
+    expect(device("mobile")?.spend).toBe(540_000);
+    expect(device("desktop")?.spend).toBe(315_000);
+    expect(device("tablet")?.spend).toBe(45_000);
+    const cpl = (segment: string) => (device(segment)?.spend ?? 0) / Math.max(1, device(segment)?.leads ?? 0);
+    expect(cpl("mobile") / cpl("desktop")).toBeGreaterThanOrEqual(1.5);
+    expect(cpl("mobile") / cpl("desktop")).toBeLessThanOrEqual(3);
     expect(sum(split.device)).toEqual(totals);
+  });
+
+  it("puts the junk query and the phones on the training market without any mark", () => {
+    const totals = { impressions: 1_400, clicks: 70, leads: 7, spend: 420_000 };
+    const split = splitPeriod(search, MARKET, totals, key);
+    expect(split.query.find((r) => r.segment === "маникюр фото")).toMatchObject({ spend: 105_000, leads: 0 });
+    expect(sum(split.query)).toEqual(totals);
   });
 
   it("moves showings and click price with an adjustment as the market does", () => {
@@ -198,7 +205,7 @@ describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
     expect(sum(split.device)).toEqual({ impressions: 900, clicks: 9, leads: 1, spend: 18_000 });
   });
 
-  it("builds the window with each direction's key phrases, settings, junk query and the last marks", () => {
+  it("builds the window with each direction's key phrases, settings and junk query, always on the training market", () => {
     const traffic: Record<string, CampaignTrafficView> = {
       // «фото» was added later: the junk query is still «маникюр фото», now taken away.
       c1: { keywords: ["маникюр"], negativeKeywords: ["бесплатно", "фото"], deviceAdjustments: { mobile: -25, desktop: 0 }, launchNegativeKeywords: ["бесплатно"] },
@@ -232,9 +239,9 @@ describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
       start: new Date("2026-11-09T06:00:00Z"),
       timeZone: "Europe/Moscow",
       last: lastEntered(steps),
-      market: lastMarket(steps),
     });
-    expect(built.market).toEqual(junk);
+    // The marks of earlier periods do not carry over: the market is the same for every period now.
+    expect(built.market).toEqual(MARKET);
     expect(built.directions[0]).toMatchObject({ keywords: ["маникюр"], negativeKeywords: ["бесплатно", "фото"], deviceAdjustments: { mobile: -25, desktop: 0 }, junkQuery: "маникюр фото" });
     expect(built.directions[0]?.ads[0]?.last).toMatchObject({ market: junk, traffic: search });
     expect(built.directions[1]).toMatchObject({ keywords: [], junkQuery: null });
@@ -256,17 +263,4 @@ describe("Breakdown of the owner's numbers (simulation-breakdowns)", () => {
     }
   });
 
-  it("says under a direction what the marks mean for the numbers entered", () => {
-    const window = form();
-    const d1 = window.directions[0];
-    if (d1 === undefined) throw new Error("no direction");
-    const ads = [{ adId: "a1", impressions: 1_400, clicks: 70, leads: 7, spendRub: 4_200 }];
-    expect(marketLines(d1, junk, ads, window.from).map(plain)).toEqual(["Около 1 050 ₽ из 4 200 ₽ — на запрос «маникюр фото», без обращений"]);
-    expect(marketLines(d1, phones, ads, window.from)).toEqual(["С телефонов обращение выйдет примерно вчетверо дороже, чем с компьютера"]);
-    expect(marketLines({ ...d1, negativeKeywords: ["фото"] }, junk, ads, window.from)).toEqual(["Реклама уже не показывается по запросу «маникюр фото»"]);
-    expect(marketLines(d1, { junkQuery: true, phonesWorse: true }, [], window.from)).toEqual([]);
-    expect(marketLines(d1, NO_MARKET, ads, window.from)).toEqual([]);
-    const all = [...marketLines(d1, { junkQuery: true, phonesWorse: true }, ads, window.from), ...marketLines({ ...d1, negativeKeywords: ["фото"] }, junk, ads, window.from)].join(" ");
-    for (const word of ["CTR", "конверсия", "ставка", "РСЯ", "ретаргетинг", "CPA", "CPC", "ключевые фразы"]) expect(all).not.toContain(word);
-  });
 });

@@ -1,14 +1,14 @@
 import { HeuristicPolicy, IdlePolicy } from "@impuls/agent";
 import type { AgentRuntime, AgentToolbox, BreakdownAnswer, TurnResult, TurnSnapshot } from "@impuls/agent";
-import { addDays, monthBudget, rubles, segmentVerdict, toLocalDate } from "@impuls/core";
-import { checkPeriod, controlSimulation, createLogger, deliverNotifications, handleWebJob, launchSimulation, marketLines, NO_MARKET, runAgentTurn, suggestPeriod, withSimulation } from "@impuls/worker";
+import { addDays, monthBudget, rubles, toLocalDate } from "@impuls/core";
+import { checkPeriod, controlSimulation, createLogger, DEFAULT_PERIOD_DAYS, deliverNotifications, handleWebJob, launchSimulation, MARKET, runAgentTurn, suggestPeriod, withSimulation } from "@impuls/worker";
 import type { Mailer, PeriodMarket } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect, vi } from "vitest";
 import { simulationWords } from "../../../apps/web/src/lib/day-words";
 import { noteTitle } from "../../../apps/web/src/lib/review-note";
 import { launchModeFor } from "../../../apps/web/src/lib/account-mode";
-import { currentAction, periodReviewText, PLAYER_MENU, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
+import { currentAction, periodDaysText, periodReviewText, PLAYER_MENU, SimulationControlBody } from "../../../apps/web/src/lib/simulation-model";
 import type { JournalEntry } from "../../../apps/web/src/lib/service-work";
 import { BAD, GOOD, HeldAgent, ownerPlan, ownerWorld, PLAIN, REAL_START } from "./owner-world";
 import type { OwnerWorld } from "./owner-world";
@@ -38,8 +38,7 @@ class BreakdownProbe implements AgentRuntime {
   }
 }
 
-/** The marks of the window «Что ещё было за эти дни» (simulation-breakdowns). */
-const JUNK: PeriodMarket = { junkQuery: true, phonesWorse: false };
+/** A mark a page from before market-leaks-live-review sends: accepted and not counted. */
 const PHONES: PeriodMarket = { junkQuery: false, phonesWorse: true };
 /** The spec's numbers in search need room: a goal of 1 000 ₽, a weekly limit of 4 800 ₽ and a month budget-guard keeps it in. */
 const ROOMY = { goalRub: 1_000, searchWeeklyRub: 4_800, monthlyBudgetRub: 45_000 };
@@ -225,6 +224,26 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
+  Scenario("Окно открывается на одном дне", ({ Given, When, Then, And }) => {
+    let w: OwnerWorld;
+    let day = 0;
+    Given("реклама запущена в симуляции и дошла до 9-го дня", async () => {
+      w = await ownerWorld();
+      await w.enter(7);
+      await w.enter(1);
+      day = (await w.player()).day;
+      expect(day).toBe(9);
+    });
+    When("владелец нажимает «Добавить статистику»", () => undefined);
+    Then("выбран «1 день», а заголовок окна — «Статистика за день 9»", () => {
+      expect(DEFAULT_PERIOD_DAYS).toBe(1);
+      expect(`Статистика за ${periodDaysText({ from: day, to: day + DEFAULT_PERIOD_DAYS - 1 })}`).toBe("Статистика за день 9");
+    });
+    And("окно ничего не спрашивает о рынке: разбивка следующего периода — по обычным утечкам учебного рынка", async () => {
+      expect((await w.form()).market).toEqual(MARKET);
+    });
+  });
+
   Scenario("Один день", ({ Given, When, Then }) => {
     let w: OwnerWorld;
     Given("реклама запущена в симуляции и дошла до 9-го дня", async () => {
@@ -308,25 +327,16 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario("Ненужный запрос в разбивке", ({ Given, When, Then, And }) => {
+  Scenario("Ненужный запрос в разбивке", ({ Given, When, Then }) => {
     let w: OwnerWorld;
-    let lines: string[] = [];
     Given("реклама в поиске с основным запросом «маникюр москва» запущена в симуляции с целью 1 000 ₽", async () => {
       w = await ownerWorld(new IdlePolicy(), ROOMY);
       expect((await w.form()).directions.find((d) => d.channel === "search")).toMatchObject({ keywords: ["маникюр москва"], junkQuery: JUNK_QUERY });
     });
-    When("владелец отмечает «Часть денег ушла на ненужный запрос» и вносит за неделю у объявления в поиске 4 200 ₽ расхода и 7 обращений", async () => {
-      const form = await w.form();
-      const search = form.directions.find((d) => d.channel === "search");
-      if (search === undefined) throw new Error("no search direction");
-      // The window's line under the direction, from the numbers typed in.
-      lines = marketLines(search, JUNK, await w.rowsOf({ [PLAIN]: WEEK_4200 }), form.from);
-      await w.enter(7, { [PLAIN]: WEEK_4200 }, JUNK);
+    When("владелец вносит за неделю у объявления в поиске 4 200 ₽ расхода и 7 обращений, ничего не отмечая", async () => {
+      await w.enter(7, { [PLAIN]: WEEK_4200 });
     });
-    Then("до отправки под направлением написано «Около 1 050 ₽ из 4 200 ₽ — на запрос «маникюр москва фото», без обращений»", () => {
-      expect(lines.map(plain)).toEqual([`Около 1 050 ₽ из 4 200 ₽ — на запрос «${JUNK_QUERY}», без обращений`]);
-    });
-    And("разрез направления по запросам за эти дни показывает «маникюр москва фото» с расходом 1 050 ₽ без обращений, а сумма строк — 4 200 ₽ и 7 обращений", async () => {
+    Then("разрез направления по запросам за эти дни показывает «маникюр москва фото» с расходом 1 050 ₽ без обращений, а сумма строк — 4 200 ₽ и 7 обращений", async () => {
       const queries = await w.breakdown("query", "2026-11-01", "2026-11-07");
       expect(queries.find((r) => r.segment === JUNK_QUERY)).toMatchObject({ leads: 0, spend: rubles(1_050) });
       expect(sumRows(queries)).toMatchObject({ leads: 7, spend: rubles(4_200) });
@@ -341,8 +351,8 @@ describeFeature(feature, ({ Scenario }) => {
     Given("реклама в поиске запущена в симуляции с целью 1 000 ₽ и тестовой политикой агента", async () => {
       w = await ownerWorld(new HeuristicPolicy(), ROOMY);
     });
-    When("владелец вносит неделю с отметкой «Часть денег ушла на ненужный запрос»: 4 200 ₽ расхода и 7 обращений", async () => {
-      await w.enter(7, { [PLAIN]: WEEK_4200 }, JUNK);
+    When("владелец вносит неделю: 4 200 ₽ расхода и 7 обращений", async () => {
+      await w.enter(7, { [PLAIN]: WEEK_4200 });
     });
     Then("агент добавляет минус-фразу «фото», а разбор называет расход по запросу «маникюр москва фото» и ноль обращений", async () => {
       const change = (await decided(w)).find((c) => c.action.type === "AddNegativeKeywords");
@@ -363,83 +373,50 @@ describeFeature(feature, ({ Scenario }) => {
   Scenario("После минус-фразы дешевле", ({ Given, When, Then, And }) => {
     let w: OwnerWorld;
     let rows: ReturnType<typeof suggestPeriod> = [];
-    let lines: string[] = [];
     let plainId = "";
-    Given("сервис добавил минус-фразу «фото» после недели с отметкой «Часть денег ушла на ненужный запрос»", async () => {
+    Given("сервис добавил минус-фразу «фото» после недели", async () => {
       w = await ownerWorld(new HeuristicPolicy(), ROOMY);
       plainId = (await w.rowsOf({ [PLAIN]: WEEK_4200 }))[0]?.adId ?? "";
-      await w.enter(7, { [PLAIN]: WEEK_4200 }, JUNK);
+      await w.enter(7, { [PLAIN]: WEEK_4200 });
       expect((await decided(w)).some((c) => c.action.type === "AddNegativeKeywords")).toBe(true);
     });
-    When("владелец оставляет отметку и нажимает «Заполнить примерно»", async () => {
-      const form = await w.form();
-      expect(form.market).toEqual(JUNK);
-      rows = suggestPeriod(form, 7, form.market);
-      const search = form.directions.find((d) => d.channel === "search");
-      if (search === undefined) throw new Error("no search direction");
-      lines = marketLines(search, form.market, rows, form.from);
+    When("владелец нажимает «Заполнить примерно»", async () => {
+      rows = suggestPeriod(await w.form(), 7);
     });
-    Then("под направлением написано «Реклама уже не показывается по запросу «маникюр москва фото»»", () => {
-      expect(lines).toContain(`Реклама уже не показывается по запросу «${JUNK_QUERY}»`);
-    });
-    And("подставленная цена обращения у объявления в поиске ниже, чем в прошлом периоде", () => {
+    Then("подставленная цена обращения у объявления в поиске ниже, чем в прошлом периоде", () => {
       const row = rows.find((r) => r.adId === plainId);
       expect(row?.leads ?? 0).toBeGreaterThan(0);
       expect((row?.spendRub ?? 0) / (row?.leads ?? 1)).toBeLessThan(WEEK_4200.spendRub / WEEK_4200.leads);
     });
-    And("в разбивке следующего периода этого запроса нет", async () => {
-      await controlSimulation(w.ctx, "b1", { action: "period", days: 7, ads: rows, market: JUNK });
+    And("в разбивке следующего периода запроса «маникюр москва фото» нет", async () => {
+      await controlSimulation(w.ctx, "b1", { action: "period", days: 7, ads: rows });
       const queries = await w.breakdown("query", "2026-11-08", "2026-11-14");
       expect(queries.length).toBeGreaterThan(0);
       expect(queries.find((r) => r.segment === JUNK_QUERY)).toBeUndefined();
     });
   });
 
-  Scenario("С телефонов обращаются хуже", ({ Given, When, Then, And }) => {
+  Scenario("С телефонов обращения дороже", ({ Given, When, Then, And }) => {
     let w: OwnerWorld;
-    Given("реклама в поиске запущена в симуляции с целью 1 000 ₽ и тестовой политикой агента", async () => {
-      w = await ownerWorld(new HeuristicPolicy(), ROOMY);
+    Given("реклама в поиске запущена в симуляции с целью 1 000 ₽", async () => {
+      w = await ownerWorld(new IdlePolicy(), ROOMY);
     });
-    When("владелец отмечает «С телефонов обращаются хуже», выбирает «2 недели» и вносит у объявления в поиске 9 000 ₽ и 11 обращений", async () => {
-      await w.enter(14, { [PLAIN]: { impressions: 3_000, clicks: 180, leads: 11, spendRub: 9_000 } }, PHONES);
+    When("владелец выбирает «2 недели» и вносит у объявления в поиске без корректировок 9 000 ₽ и 11 обращений", async () => {
+      await w.enter(14, { [PLAIN]: { impressions: 3_000, clicks: 180, leads: 11, spendRub: 9_000 } });
     });
-    Then("разрез по устройствам за эти дни: с телефонов 5 400 ₽ и 3 обращения, с компьютеров — 3 150 ₽ и 7 обращений, с планшетов — 450 ₽ и 1 обращение", async () => {
+    Then("разрез по устройствам за эти дни показывает с телефонов 5 400 ₽ — 60% расхода", async () => {
       const devices = await w.breakdown("device", "2026-11-01", "2026-11-14");
-      const device = (segment: string) => devices.find((r) => r.segment === segment);
-      expect(device("mobile")).toMatchObject({ spend: rubles(5_400), leads: 3 });
-      expect(device("desktop")).toMatchObject({ spend: rubles(3_150), leads: 7 });
-      expect(device("tablet")).toMatchObject({ spend: rubles(450), leads: 1 });
+      expect(devices.find((r) => r.segment === "mobile")?.spend).toBe(rubles(5_400));
+      expect(sumRows(devices)).toMatchObject({ leads: 11, spend: rubles(9_000) });
     });
-    And("агент снижает цену перехода с телефонов, а разбор и история называют это изменение", async () => {
-      const change = (await decided(w)).find((c) => c.action.type === "SetDeviceAdjustment");
-      expect(change?.action).toMatchObject({ type: "SetDeviceAdjustment", device: "mobile", percent: -25 });
-      expect(change?.explanation).toContain("с телефонов");
-      expect((await w.store.turns("b1")).at(-1)?.summary).toContain("снизил цену перехода с телефонов");
-      const entry = (await w.work()).journal.flatMap((s) => s.entries).flatMap((e) => e.changes).find((c) => c.historyId === change?.id);
-      expect(entry?.item?.rollback.kind).toBe("available");
-    });
-  });
-
-  Scenario("Без отметок разбивка ровная", ({ Given, When, Then, And }) => {
-    let w: OwnerWorld;
-    Given("реклама в поиске запущена в симуляции с целью 1 000 ₽ и тестовой политикой агента", async () => {
-      w = await ownerWorld(new HeuristicPolicy(), ROOMY);
-    });
-    When("владелец две недели подряд вносит у объявления в поиске по 4 200 ₽ и 7 обращений за неделю без отметок", async () => {
-      await w.enter(7, { [PLAIN]: WEEK_4200 });
-      await w.enter(7, { [PLAIN]: WEEK_4200 });
-    });
-    Then("цена обращения с телефонов и с компьютеров в разрезе — в пределах цели", async () => {
+    And("цена обращения с телефонов в разрезе — в 1,5–3 раза выше, чем с компьютеров", async () => {
       const devices = await w.breakdown("device", "2026-11-01", "2026-11-14");
-      for (const segment of ["mobile", "desktop"]) {
+      const cpl = (segment: string) => {
         const row = devices.find((r) => r.segment === segment);
-        expect(row && segmentVerdict(row, rubles(1_000))).toBe("within");
-      }
-    });
-    And("сервис не добавляет минус-фраз и не меняет корректировки", async () => {
-      const types = (await decided(w)).map((c) => c.action.type);
-      expect(types).not.toContain("AddNegativeKeywords");
-      expect(types).not.toContain("SetDeviceAdjustment");
+        return (row?.spend ?? 0) / Math.max(1, row?.leads ?? 0);
+      };
+      expect(cpl("mobile") / cpl("desktop")).toBeGreaterThanOrEqual(1.5);
+      expect(cpl("mobile") / cpl("desktop")).toBeLessThanOrEqual(3);
     });
   });
 
@@ -448,8 +425,8 @@ describeFeature(feature, ({ Scenario }) => {
     Given("реклама в поиске запущена в симуляции с целью 1 000 ₽", async () => {
       w = await ownerWorld(new IdlePolicy(), ROOMY);
     });
-    When("владелец вносит неделю с обеими отметками", async () => {
-      await w.enter(7, { [PLAIN]: WEEK_4200, [GOOD]: { impressions: 600, clicks: 31, leads: 3, spendRub: 555 } }, { junkQuery: true, phonesWorse: true });
+    When("владелец вносит неделю", async () => {
+      await w.enter(7, { [PLAIN]: WEEK_4200, [GOOD]: { impressions: 600, clicks: 31, leads: 3, spendRub: 555 } });
     });
     Then("за каждый день периода сумма строк разреза по устройствам и по запросам равна статистике этого дня", async () => {
       const search = (await w.store.directions("b1")).find((d) => d.channel === "search");
@@ -463,18 +440,20 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario("Отметки остаются до следующего окна", ({ Given, When, Then }) => {
+  Scenario("Отметки от прежней страницы", ({ Given, When, Then }) => {
     let w: OwnerWorld;
-    Given("реклама запущена в симуляции", async () => {
-      w = await ownerWorld();
+    Given("реклама в поиске запущена в симуляции с целью 1 000 ₽", async () => {
+      w = await ownerWorld(new IdlePolicy(), ROOMY);
     });
-    When("владелец отправил период с отметкой «С телефонов обращаются хуже» и снова открывает «Добавить статистику»", async () => {
-      await w.enter(3, { [PLAIN]: { impressions: 300, clicks: 20, leads: 1, spendRub: 400 } }, PHONES);
+    When("страница, открытая до обновления, отправляет неделю с отметкой «С телефонов обращаются хуже»", async () => {
+      await w.enter(7, { [PLAIN]: WEEK_4200 }, PHONES);
     });
-    Then("отметка стоит, а после «Начать заново» окно открывается без отметок", async () => {
-      expect((await w.form()).market).toEqual(PHONES);
-      await controlSimulation(w.ctx, "b1", { action: "restart" });
-      expect((await w.form()).market).toEqual(NO_MARKET);
+    Then("период проходит, а разбивка такая же, как у периода без отметки", async () => {
+      expect((await w.player()).day).toBe(8);
+      // The step is split on the training market, as a period sent without marks: the junk query is there.
+      expect((await w.store.getSimulation("b1"))?.steps.at(-1)?.market).toEqual(MARKET);
+      const queries = await w.breakdown("query", "2026-11-01", "2026-11-07");
+      expect(queries.find((r) => r.segment === JUNK_QUERY)).toMatchObject({ leads: 0, spend: rubles(1_050) });
     });
   });
 

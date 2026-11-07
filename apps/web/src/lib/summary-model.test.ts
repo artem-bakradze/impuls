@@ -59,6 +59,9 @@ describe("the answer's state, goal and budget pace (analytics spec «Сводк�
     expect(budgetPlan(3_000_000, "2026-11-01", "2026-11-30", "2026-11-09")).toBe(900_000);
     // The month of the launch counts from the launch day, like its prorated budget.
     expect(budgetPlan(96_700, "2026-10-30", "2026-10-31", "2026-10-30")).toBe(48_350);
+    // A simulation's plan stops at the day before its morning: nothing is planned before the first day with numbers.
+    expect(budgetPlan(3_100_000, "2026-12-01", "2026-12-31", "2026-11-30")).toBe(0);
+    expect(budgetPlan(3_100_000, "2026-12-01", "2026-12-31", "2026-12-01")).toBe(100_000);
     expect(budgetPlan(3_000_000, "2026-11-01", "2026-11-30", "2026-12-02")).toBe(3_000_000);
   });
 

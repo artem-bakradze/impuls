@@ -15,6 +15,8 @@ import type {
 import type { DailyStatRow, DeviceAdjustments, SimulatorState } from "@impuls/platforms";
 import type { LaunchPlan } from "./launch";
 import type { DirectionTraffic, PeriodMarket } from "./simulation-period";
+import { turnSteps } from "./turn-steps";
+import type { TurnStep } from "./turn-steps";
 
 export type BusinessMode = "direct" | "simulation";
 
@@ -311,6 +313,13 @@ export interface AgentTurnRecord {
   costKopecks: number;
 }
 
+/** A running turn as the pult sees it: when it started, what for and the steps done so far (market-leaks-live-review). */
+export interface RunningTurn {
+  startedAt: Date;
+  trigger: string;
+  steps: TurnStep[];
+}
+
 /** What the insight feed needs of a turn: when, how it ended and its day review (insights spec «Разбор дня»). */
 export type TurnDigest = Pick<AgentTurnRecord, "id" | "trigger" | "status" | "startedAt" | "summary" | "summaryValid" | "usageSource">;
 
@@ -391,8 +400,8 @@ export interface Store {
   turns(businessId: string): Promise<AgentTurnRecord[]>;
   /** The turns without their context and calls, oldest first. */
   turnDigests(businessId: string): Promise<TurnDigest[]>;
-  /** The business's running agent turn — when it started and what for — for the pult; null when no turn runs. */
-  runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null>;
+  /** The business's running agent turn — when it started, what for and its steps so far — for the pult; null when none runs. */
+  runningTurn(businessId: string): Promise<RunningTurn | null>;
   /** Agent journal retention: deletes turns started before `before`; returns how many. */
   purgeTurns(before: Date): Promise<number>;
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void>;
@@ -614,9 +623,9 @@ export class MemoryStore implements Store {
         .map((t) => ({ id: t.id, trigger: t.trigger, status: t.status, startedAt: new Date(t.startedAt.getTime()), summary: t.summary, summaryValid: t.summaryValid, usageSource: t.usageSource })),
     );
   }
-  runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null> {
+  runningTurn(businessId: string): Promise<RunningTurn | null> {
     const running = this.turnList.filter((t) => t.businessId === businessId && t.status === "running").at(-1);
-    return Promise.resolve(running ? { startedAt: new Date(running.startedAt.getTime()), trigger: running.trigger } : null);
+    return Promise.resolve(running ? { startedAt: new Date(running.startedAt.getTime()), trigger: running.trigger, steps: structuredClone(turnSteps(running.context)) } : null);
   }
   addInboxEvent(event: Omit<InboxEvent, "id" | "consumedByTurnId">): Promise<void> {
     this.inbox.push({ ...structuredClone(event), id: `inbox-${this.seq++}`, consumedByTurnId: null });

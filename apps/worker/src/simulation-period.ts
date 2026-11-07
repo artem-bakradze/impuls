@@ -13,6 +13,8 @@ import type { PeriodSegments, SegmentRow } from "@impuls/platforms/segments";
 
 export const PERIOD_DAYS = [1, 3, 7, 14] as const;
 export type PeriodDays = (typeof PERIOD_DAYS)[number];
+/** The window opens on one day: the owner enters a day and sees the review at once (market-leaks-live-review). */
+export const DEFAULT_PERIOD_DAYS: PeriodDays = 1;
 
 /** What the owner entered for one ad; money in whole rubles. */
 export interface PeriodAdInput {
@@ -24,17 +26,24 @@ export interface PeriodAdInput {
 }
 
 /**
- * What else happened in a period (simulation-breakdowns): how the entered numbers split inside, never the numbers
- * themselves. Without marks the split is even.
+ * How the entered numbers split inside a period, never the numbers themselves. Periods entered before
+ * market-leaks-live-review kept the owner's marks (simulation-breakdowns); without marks their split was even.
  */
 export interface PeriodMarket {
-  /** «Часть денег ушла на ненужный запрос»: a quarter of every search ad's traffic, no leads. */
+  /** A quarter of every search ad's traffic goes to the junk query, with no leads, until a negative phrase cuts it. */
   junkQuery: boolean;
-  /** «С телефонов обращаются хуже»: a lead from a phone costs four times what one from a computer does. */
+  /** A lead from a phone costs more than one from a computer at the same click price. */
   phonesWorse: boolean;
 }
 
+/** The split of a period entered before simulation-breakdowns, or with no marks: even. */
 export const NO_MARKET: PeriodMarket = { junkQuery: false, phonesWorse: false };
+
+/**
+ * The training market as a usual Direct market, with no marks of the owner (simulation-mode «Статистика периода от
+ * владельца»): search has a junk query until the service cuts it, and phones bring leads less often.
+ */
+export const MARKET: PeriodMarket = { junkQuery: true, phonesWorse: true };
 
 /**
  * A direction's key phrases (search only), negative phrases and bid adjustments, and its junk query: what the split
@@ -87,15 +96,9 @@ export interface PeriodForm {
   /** The current day's date: every period starts on it. */
   from: LocalDate;
   directions: PeriodFormDirection[];
-  /** The marks of the last completed period: they stay until the owner takes them off. */
+  /** How the next period splits: always the training market's usual leaks. */
   market: PeriodMarket;
 }
-
-/** The marks of the last completed period, or none (simulation-mode «Статистика периода от владельца»). */
-export const lastMarket = (steps: readonly { kind: string; state?: string | undefined; market?: PeriodMarket | undefined }[]): PeriodMarket => {
-  const last = [...steps].reverse().find((s) => s.kind === "period" && s.state === "completed");
-  return last?.market ?? NO_MARKET;
-};
 
 export type PeriodField = "impressions" | "clicks" | "leads" | "spendRub";
 
@@ -137,8 +140,6 @@ export const periodForm = (input: {
   timeZone: string;
   /** The ads' last entered numbers, for «Заполнить примерно». */
   last?: ReadonlyMap<string, EnteredLast>;
-  /** The marks of the last completed period. */
-  market?: PeriodMarket;
 }): PeriodForm => {
   const shownOnPlatform = new Set(
     input.state.ads.filter((a) => a.status === "active" && a.moderation === "accepted" && a.monitoringStopped !== true).map((a) => a.id),
@@ -173,7 +174,7 @@ export const periodForm = (input: {
       junkQuery: junkQueryOf(keywords, traffic.launchNegativeKeywords),
     });
   }
-  return { from: toLocalDate(input.start, input.timeZone), directions, market: input.market ?? NO_MARKET };
+  return { from: toLocalDate(input.start, input.timeZone), directions, market: MARKET };
 };
 
 const daysWord = (n: number): string => {
@@ -255,8 +256,11 @@ export const lastEntered = (steps: readonly EnteredStep[]): Map<string, EnteredL
 const JUNK_WORDS = ["фото", "идеи", "отзывы", "что это"] as const;
 /** Share of a search ad's showings, clicks and spend that goes to the junk query. */
 export const JUNK_SHARE = 0.25;
-/** A lead from a phone, against one from a computer or a tablet, when phones are worse. */
-const PHONE_LEAD_FACTOR = 1 / 4;
+/**
+ * A lead from a phone, against one from a computer or a tablet: about twice the price at the same click price. Four
+ * times suited a mark the owner set on purpose; as a lasting trait of the market twice is believable and still shows.
+ */
+const PHONE_LEAD_FACTOR = 1 / 2;
 
 /**
  * «маникюр фото»: the shortest key phrase with the first junk word that none of the key phrases has and none of the
@@ -381,28 +385,6 @@ export const marketFactors = (market: PeriodMarket, traffic: DirectionTraffic): 
   return { lead: mean(devices, (r) => r.f) * mean(queries, (r) => r.f), price: mean(devices, (r) => r.price) };
 };
 
-/** The lines under a direction: what the marks mean for the numbers entered now (design decision 8). */
-export const marketLines = (direction: PeriodFormDirection, market: PeriodMarket, ads: readonly PeriodAdInput[], from: LocalDate): string[] => {
-  const own = new Set(direction.ads.map((a) => a.id));
-  const rows = ads.filter((a) => own.has(a.adId));
-  const spendRub = rows.reduce((s, a) => s + a.spendRub, 0);
-  const lines: string[] = [];
-  const junk = direction.junkQuery;
-  if (market.junkQuery && junk !== null) {
-    if (direction.negativeKeywords.some((phrase) => phraseMatches(phrase, junk))) {
-      lines.push(`Реклама уже не показывается по запросу «${junk}»`);
-    } else if (spendRub > 0) {
-      const kopecks = rows.reduce((s, a) => {
-        const split = splitPeriod(direction, market, { impressions: a.impressions, clicks: a.clicks, leads: a.leads, spend: a.spendRub * 100 }, { from, adId: a.adId });
-        return s + (split.query.find((r) => r.segment === junk)?.spend ?? 0);
-      }, 0);
-      lines.push(`Около ${rub(Math.round(kopecks / 1_000) * 10)} из ${rub(spendRub)} — на запрос «${junk}», без обращений`);
-    }
-  }
-  if (market.phonesWorse && spendRub > 0) lines.push("С телефонов обращение выйдет примерно вчетверо дороже, чем с компьютера");
-  return lines;
-};
-
 /** A stable number in [0, 1) for a key: the same window gives the same numbers, different ads different ones. */
 const unit = (key: string): number => {
   let h = 2166136261;
@@ -425,8 +407,8 @@ const TYPICAL: Record<Channel, { cpc: [number, number]; ctr: [number, number] }>
  * window. A direction spends about 70% of its room, shared by the ads' spend a day in their last period (or evenly);
  * an ad keeps its last price per click, click rate and lead rate, and an ad without a last period gets the channel's
  * usual ones with a lead rate of its own. Lead rate and click price follow what changed since the last period in the
- * marks, negative phrases and adjustments (simulation-breakdowns decision 5): a junk query taken away makes leads more
- * frequent. Deterministic for the same window, period and marks, and always within its checks.
+ * market, negative phrases and adjustments (simulation-breakdowns decision 5): a junk query taken away makes leads more
+ * frequent. Deterministic for the same window, period and settings, and always within its checks.
  */
 export const suggestPeriod = (form: PeriodForm, days: PeriodDays, market: PeriodMarket = form.market): PeriodAdInput[] =>
   form.directions.flatMap((direction) => {
@@ -436,6 +418,9 @@ export const suggestPeriod = (form: PeriodForm, days: PeriodDays, market: Period
     // A period saved before simulation-breakdowns counts as even: no marks, no negative phrases, no adjustments.
     const before = (last: PeriodAdLast) =>
       marketFactors(last.market ?? NO_MARKET, last.traffic ?? { keywords: direction.keywords, negativeKeywords: [], deviceAdjustments: NEUTRAL_ADJUSTMENTS });
+    // The usual numbers of an ad without a last period are of the usual market, leaks included; only what the service
+    // changed since the launch (negative phrases, adjustments) moves them.
+    const usual = marketFactors(MARKET, { keywords: direction.keywords, negativeKeywords: [], deviceAdjustments: NEUTRAL_ADJUSTMENTS, junkQuery: direction.junkQuery });
     const weights = direction.ads.map((ad) => {
       const base = ad.last !== undefined && ad.last.spendRub > 0 ? ad.last.spendRub / ad.last.days : 1;
       return base * between(`${ad.id}|${form.from}|${days}|share`, 0.8, 1.2);
@@ -444,7 +429,7 @@ export const suggestPeriod = (form: PeriodForm, days: PeriodDays, market: Period
     return direction.ads.map((ad, i): PeriodAdInput => {
       const share = total > 0 ? Math.floor((budget * (weights[i] ?? 0)) / total) : 0;
       const last = ad.last !== undefined && ad.last.clicks > 0 && ad.last.impressions > 0 ? ad.last : undefined;
-      const was = last ? before(last) : { lead: 1, price: 1 };
+      const was = last ? before(last) : usual;
       const cpc = Math.max(1, (last ? last.spendRub / last.clicks : between(`${ad.id}|cpc`, ...typical.cpc)) * (now.price / was.price));
       const ctr = last ? last.clicks / last.impressions : between(`${ad.id}|ctr`, ...typical.ctr);
       const cr = Math.min(

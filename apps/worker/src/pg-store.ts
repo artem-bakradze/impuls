@@ -4,7 +4,8 @@ import type { Db } from "@impuls/db";
 import type { CsoSource, EffectivenessClass, LocalDate, UserDecision } from "@impuls/core";
 import type { DailyStatRow } from "@impuls/platforms";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from "@impuls/db";
-import type { AdImageRecord, AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, SimulationRecord, SimulationReplay, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import type { AdImageRecord, AdRecord, AgentTurnRecord, BusinessRecord, ChangeEntry, ClientConfirmation, DirectionRecord, Evaluation, Experiment, FlagName, HypothesisRecord, InboxEvent, Incident, InsightRecord, Notification, RunningTurn, SimulationRecord, SimulationReplay, Snapshot, Store, StoredNotification, TurnDigest } from "./store";
+import { turnSteps } from "./turn-steps";
 import { readSimulationSteps } from "./simulation-report";
 
 const GLOBAL = "*";
@@ -353,14 +354,15 @@ export class PgStore implements Store {
       .orderBy(asc(t.startedAt));
   }
 
-  async runningTurn(businessId: string): Promise<{ startedAt: Date; trigger: string } | null> {
+  async runningTurn(businessId: string): Promise<RunningTurn | null> {
+    // Only the steps of the context: the snapshot in it is large, and the pult asks every second.
     const [row] = await this.db
-      .select({ startedAt: schema.agentTurns.startedAt, trigger: schema.agentTurns.trigger })
+      .select({ startedAt: schema.agentTurns.startedAt, trigger: schema.agentTurns.trigger, steps: sql<unknown>`${schema.agentTurns.context}->'steps'` })
       .from(schema.agentTurns)
       .where(and(eq(schema.agentTurns.businessId, businessId), eq(schema.agentTurns.status, "running")))
       .orderBy(desc(schema.agentTurns.startedAt))
       .limit(1);
-    return row ?? null;
+    return row ? { startedAt: row.startedAt, trigger: row.trigger, steps: turnSteps({ steps: row.steps }) } : null;
   }
 
   async purgeTurns(before: Date): Promise<number> {

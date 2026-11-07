@@ -4,7 +4,7 @@ import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
-import type { PeriodAdInput, PeriodDays, PeriodMarket } from "@impuls/worker/simulation-period";
+import type { PeriodAdInput, PeriodDays } from "@impuls/worker/simulation-period";
 import { PLAYER_MENU } from "@/lib/simulation-model";
 import type { SimulationAction, SimulationStatus } from "@/lib/simulation-model";
 import { PeriodDialog } from "./PeriodDialog";
@@ -53,7 +53,7 @@ export function SimulationPlayer({
     },
   };
   // The window closes once the server took the period; a refusal stays in it.
-  const sendPeriod = (days: PeriodDays, ads: PeriodAdInput[], market: PeriodMarket) => act({ action: "period", days, ads, market }, () => setPeriodOpen(false));
+  const sendPeriod = (days: PeriodDays, ads: PeriodAdInput[]) => act({ action: "period", days, ads }, () => setPeriodOpen(false));
 
   const primaryLabel = status.failed ? "Продолжить расчёт" : stepping ? "Сервис разбирает…" : "Добавить статистику";
   const primary = () => (status.failed ? run({ action: "continue" }) : setPeriodOpen(true));

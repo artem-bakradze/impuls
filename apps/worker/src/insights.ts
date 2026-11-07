@@ -91,13 +91,41 @@ export const factCatalog = (view: BusinessView, rows14: readonly DailyStatRow[])
   return facts;
 };
 
-/** The month budget, spent, left and the even pace by today (what an even spend would be by now). */
+/**
+ * The whole advertising and each channel with spend over the days of a simulation's period (ad-agent «Рассказ в разборе
+ * периода»): spend, leads and, with leads, the cost per lead — the same numbers «Реклама» shows for these days.
+ */
+export const periodTotalFacts = (view: BusinessView, rows: readonly DailyStatRow[]): InsightFact[] => {
+  const facts: InsightFact[] = [];
+  const add = (key: string, object: string, metric: InsightFact["metric"], value: number, unit: InsightFact["unit"]) => facts.push({ key, object, metric, period: "period", value, unit });
+  const total = aggregate(rows, () => "all").get("all") ?? emptyStats();
+  add(factKey.total("spend"), "вся реклама", "spend", rub(total.spend), "rub");
+  add(factKey.total("leads"), "вся реклама", "leads", total.leads, "count");
+  const cpl = costPerLead(total);
+  if (cpl !== null) add(factKey.total("cost_per_lead"), "вся реклама", "cost_per_lead", rub(cpl), "rub");
+  const channelOf = new Map(view.directions.map((d) => [d.platformCampaignId, d.channel]));
+  for (const channel of ["search", "network"] as const) {
+    const stats = aggregate(rows.filter((r) => channelOf.get(r.campaignId) === channel), () => channel).get(channel) ?? emptyStats();
+    if (stats.spend <= 0) continue;
+    const object = channel === "search" ? "поиск Яндекса" : "сайты-партнёры Яндекса";
+    add(factKey.channel(channel, "spend", "period"), object, "spend", rub(stats.spend), "rub");
+    add(factKey.channel(channel, "leads", "period"), object, "leads", stats.leads, "count");
+    const channelCpl = costPerLead(stats);
+    if (channelCpl !== null) add(factKey.channel(channel, "cost_per_lead", "period"), object, "cost_per_lead", rub(channelCpl), "rub");
+  }
+  return facts;
+};
+
+/**
+ * The month budget, spent, left and the even pace by today (what an even spend would be by now). A simulation's today is
+ * the morning after the owner's period, with no numbers yet, so its pace stops at the day before.
+ */
 export const budgetFigures = (view: BusinessView): { monthRub: number; spentRub: number; leftRub: number; evenPaceRub: number } => {
   const monthStart = `${monthKey(view.today)}-01`;
   const launched = view.business.launchedOn ?? view.today;
   const from = launched > monthStart ? launched : monthStart;
   const total = daysInMonth(view.today) - Number(from.slice(8, 10)) + 1;
-  const elapsed = daysBetween(from, view.today) + 1;
+  const elapsed = daysBetween(from, view.today) + (view.business.mode === "simulation" ? 0 : 1);
   const monthRub = rub(view.monthBudget);
   const spentRub = rub(view.spentMonth);
   return {

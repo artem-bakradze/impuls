@@ -60,7 +60,8 @@ describe("PgStore with the full worker loop", () => {
     const last = turns.at(-1);
     if (!last) throw new Error("no turns");
     await store.saveTurn({ ...last, id: "turn-running", status: "running", startedAt: new Date("2026-10-08T03:00:00Z") });
-    expect(await store.runningTurn("b1")).toEqual({ startedAt: new Date("2026-10-08T03:00:00Z"), trigger: last.trigger });
+    await store.saveTurn({ ...last, id: "turn-running", status: "running", startedAt: new Date("2026-10-08T03:00:00Z"), context: { steps: [{ kind: "numbers" }, { kind: "memory" }] } });
+    expect(await store.runningTurn("b1")).toEqual({ startedAt: new Date("2026-10-08T03:00:00Z"), trigger: last.trigger, steps: [{ kind: "numbers" }, { kind: "memory" }] });
     expect(await store.lastBeat("budget_guard")).not.toBeNull();
     const ids = (await store.directions("b1")).map((d) => d.platformCampaignId);
     expect(sim.platform.trueSpend(ids, "2026-10-01", "2026-10-31")).toBeLessThanOrEqual(rubles(9_000));

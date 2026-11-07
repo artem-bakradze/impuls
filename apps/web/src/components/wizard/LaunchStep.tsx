@@ -106,7 +106,10 @@ export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors 
       edit: 2,
     },
     // Chosen in advance and changed in place: there is no step of its own (business-onboarding «Определение клиента»).
-    { icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label.toLowerCase()).join(", ") || "ничего не выбрано", edit: "goals" },
+    // A demo's leads are the owner's own numbers, so it has no such line.
+    ...(words.measuresLeads
+      ? [{ icon: <PhoneOutlined />, title: "Что считаем обращением", text: GOAL_OPTIONS.filter((g) => draft.goals.includes(g.value)).map((g) => g.label.toLowerCase()).join(", ") || "ничего не выбрано", edit: "goals" as const }]
+      : []),
   ];
 
   return (
@@ -135,7 +138,7 @@ export function LaunchStep({ draft, today, onEdit, mode, onChange, save, errors 
       </ul>
       {goalsOpen && onChange ? <GoalsStep draft={draft} onChange={onChange} errors={errors} counter={false} /> : null}
       {/* One notice about counting leads before a real launch; a simulation's leads need no counter and no notice. */}
-      {!words.leadsNotice ? null : onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, false)} />}
+      {!words.measuresLeads ? null : onChange && hasOwnSite(draft) ? <CounterCheckBlock draft={draft} onChange={onChange} check={checkOnServer} /> : <MeasurementNotice model={measurementState(counter, false)} />}
       {/* What happens after the button (business-onboarding spec «Что будет после запуска»). */}
       {words.afterLaunch !== null ? (
         <Note icon={<SafetyCertificateOutlined aria-hidden="true" />} data-testid="after-launch">

@@ -11,8 +11,11 @@ export interface LaunchStepWords {
   button: string;
   /** The one note before the button (business-onboarding spec «Что будет после запуска»); a demo has none. */
   afterLaunch: string | null;
-  /** A real launch warns about counting leads; a demo's training data needs no counter and no note about it. */
-  leadsNotice: boolean;
+  /**
+   * Leads come from the owner's site: the summary says what counts as a lead and warns about the counter. A demo's leads
+   * are the numbers the owner enters, so it has neither the line nor the note.
+   */
+  measuresLeads: boolean;
 }
 
 const HISTORY_PROMISE = "Всё, что он меняет, видно в истории, и почти любое изменение можно вернуть одной кнопкой.";
@@ -29,7 +32,7 @@ export const launchStepWords = (mode: AccountMode): LaunchStepWords =>
         connectsDirect: false,
         button: "Запустить симуляцию",
         afterLaunch: null,
-        leadsNotice: false,
+        measuresLeads: false,
       }
     : {
         title: WIZARD_STEPS[2],
@@ -37,7 +40,7 @@ export const launchStepWords = (mode: AccountMode): LaunchStepWords =>
         connectsDirect: true,
         button: "Запустить",
         afterLaunch: `Дальше Яндекс проверит объявления — обычно в течение дня. Первые цифры появятся на следующий день, а потом сервис каждое утро смотрит рекламу. ${HISTORY_PROMISE}`,
-        leadsNotice: true,
+        measuresLeads: true,
       };
 
 /** How many phrases a summary line shows before «все». */

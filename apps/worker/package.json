@@ -7,7 +7,8 @@
     "./scenarios": "./src/scenarios.ts",
     "./change-kinds": "./src/change-kinds.ts",
     "./simulation-report": "./src/simulation-report.ts",
-    "./simulation-period": "./src/simulation-period.ts"
+    "./simulation-period": "./src/simulation-period.ts",
+    "./turn-steps": "./src/turn-steps.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json",

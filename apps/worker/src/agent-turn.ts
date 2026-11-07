@@ -20,12 +20,16 @@ import type { Command, Fact, InsightDraft, InsightFact, LocalDate } from "@impul
 import { breakdownForAgent, breakdownPeriod } from "./analyst";
 import type { AgentCosts, JobContext } from "./context";
 import { QUIET_DAY_CODE, RULES_DAY_CODE } from "./change-kinds";
-import { budgetFigures, directionLabel, factCatalog, saveAgentInsight } from "./insights";
+import { budgetFigures, directionLabel, factCatalog, periodTotalFacts, saveAgentInsight } from "./insights";
 import { turnLockKey } from "./locks";
 import { loadBusinessView } from "./state";
 import type { BusinessView } from "./state";
 import { prepareExperiment } from "./experiments";
 import type { AgentTurnRecord, HypothesisRecord, InboxEvent } from "./store";
+import type { TurnStep } from "./turn-steps";
+
+export type { TurnStep } from "./turn-steps";
+export { turnSteps } from "./turn-steps";
 
 export const MAX_ACTIONS_PER_DAY = 20;
 export const MAX_CALLS_PER_TURN = 30;
@@ -37,6 +41,9 @@ const RECENT_INSIGHT_DAYS = 14;
 /** Open hypotheses a business may have at once, and how long closed ones are read back (ad-agent spec «Журнал гипотез»). */
 export const MAX_OPEN_HYPOTHESES = 10;
 const RECENT_HYPOTHESIS_DAYS = 14;
+/** New hypotheses one period review may write: the agent picks the explanation worth checking (ad-agent «Рассказ в разборе периода»). */
+export const MAX_NEW_HYPOTHESES_PER_PERIOD = 2;
+
 
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const PHONE = /(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}/g;
@@ -48,12 +55,14 @@ export const redactPersonalData = (text: string): string => text.replace(EMAIL, 
 const activeTurns = new Map<string, AbortController>();
 
 /** Builds the agent snapshot strictly from allowlisted fields (ad-agent spec, data minimization). */
-export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promise<TurnSnapshot> => {
+export const buildSnapshot = async (ctx: JobContext, view: BusinessView, trigger?: TurnTrigger): Promise<TurnSnapshot> => {
   const card = view.business.card;
-  const [decisions, experiments, rows14] = await Promise.all([
+  const [decisions, experiments, rows14, periodRows] = await Promise.all([
     ctx.store.userDecisions(view.business.id),
     ctx.store.experiments(view.business.id),
     ctx.store.stats(view.business.id, addDays(view.today, -13), view.today),
+    // The reviewed period's days, for the totals the review names first (ad-agent «Рассказ в разборе периода»).
+    trigger?.kind === "period_review" ? ctx.store.stats(view.business.id, trigger.from, trigger.to) : Promise.resolve(null),
   ]);
   const running = experiments.find((e) => e.status === "running");
   const budget = budgetFigures(view);
@@ -98,7 +107,7 @@ export const buildSnapshot = async (ctx: JobContext, view: BusinessView): Promis
     }),
     experiment: running ? { adId: running.adId, variantAdId: running.variantAdId, hypothesis: running.hypothesis, startedOn: running.startedOn } : null,
     userDecisions: decisions.map((d) => ({ objectId: d.objectId, action: d.commandType, on: d.on })),
-    facts: factCatalog(view, rows14),
+    facts: [...factCatalog(view, rows14), ...(periodRows === null ? [] : periodTotalFacts(view, periodRows))],
   };
 };
 
@@ -170,7 +179,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
   const outcome = await ctx.locks.tryWithLock(turnLockKey(businessId), async (): Promise<TurnOutcome> => {
     const platform = ctx.platformFor(businessId);
     const view = await loadBusinessView(ctx.store, businessId, ctx.clock, platform.capabilities());
-    const snapshot = await buildSnapshot(ctx, view);
+    const snapshot = await buildSnapshot(ctx, view, trigger);
     const facts = snapshotFacts(snapshot);
     // The turn's fact catalog grows with the breakdowns the agent asks for (add-agent-analyst-stage1 decision 2).
     const catalog: InsightFact[] = [...snapshot.facts];
@@ -180,6 +189,21 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
     activeTurns.set(businessId, controller);
     const calls: ToolCallRecord[] = [];
     let callsThisTurn = 0;
+    // The turn's steps, saved one by one in order: a later save never overwrites a fuller list with a shorter one.
+    const steps: TurnStep[] = [{ kind: "numbers" }];
+    const stepped = new Set<string>();
+    let savedSteps: Promise<void> = Promise.resolve();
+    let saveSteps: () => Promise<void> = () => Promise.resolve();
+    const step = (next: TurnStep, once?: string): Promise<void> => {
+      if (once !== undefined) {
+        if (stepped.has(once)) return savedSteps;
+        stepped.add(once);
+      }
+      steps.push(next);
+      savedSteps = savedSteps.then(() => saveSteps());
+      return savedSteps;
+    };
+    let newHypotheses = 0;
 
     const actionsToday = async (): Promise<number> => {
       const dayAgo = ctx.clock.now().getTime() - 24 * 3_600_000;
@@ -237,6 +261,9 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
         if (journal.filter((h) => h.status === "checking").length >= MAX_OPEN_HYPOTHESES) {
           return rejected("HYPOTHESIS_LIMIT", "сначала закройте одну из открытых гипотез");
         }
+        if (trigger.kind === "period_review" && newHypotheses >= MAX_NEW_HYPOTHESES_PER_PERIOD) {
+          return rejected("PERIOD_HYPOTHESIS_LIMIT", "за этот разбор уже записаны две гипотезы — выбери главную");
+        }
         const id = `h-${randomUUID().slice(0, 12)}`;
         await ctx.store.saveHypothesis({
           id,
@@ -253,6 +280,8 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
           openedAt: now,
           closedAt: null,
         });
+        newHypotheses++;
+        await step({ kind: "hypothesis_saved", statement: draft.statement });
         return { status: "applied", message: "гипотеза записана", id };
       }
       const existing = journal.find((h) => h.id === draft.id);
@@ -263,6 +292,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
           ? { ...existing, status: draft.status, result: draft.result ?? null, resultFacts: resolved, closedTurnId: turnId, closedAt: now }
           : { ...existing, statement: draft.statement, facts: resolved, check: draft.check, checkOn: draft.checkOn },
       );
+      if (closing && draft.status !== "checking") await step({ kind: "hypothesis_closed", statement: existing.statement, status: draft.status });
       return { status: "applied", message: closing ? "гипотеза закрыта" : "гипотеза обновлена", id: existing.id };
     };
     /** Every attempt with its answer, for the turn journal and the eval's share of checks passed at once. */
@@ -281,6 +311,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
             await saveAgentInsight(ctx, { view, catalog, turnId, draft: insight, command: prepared.command, result: execution });
             result =
               execution.status === "applied" || execution.status === "clamped" ? toolResult(execution.status, execution.message) : toolResult("rejected", execution.message, execution.code);
+            if (execution.status === "applied" || execution.status === "clamped") await step({ kind: "change", changeId: execution.entryId });
           }
         }
         calls.push({ command, insight, result });
@@ -290,11 +321,13 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
         const result = (await precheck(false)) ?? insightIssues(insight) ?? toolResult("applied", "инсайт сохранён");
         if (result.status === "applied") {
           await saveAgentInsight(ctx, { view, catalog, turnId, draft: insight, command: null, result: null });
+          await step({ kind: "observation", text: insight.observation });
         }
         calls.push({ command: null, insight, result });
         return result;
       },
       recentInsights: async () => {
+        await step({ kind: "memory" }, "memory");
         const since = ctx.clock.now().getTime() - RECENT_INSIGHT_DAYS * 86_400_000;
         return (await ctx.store.insights(businessId))
           .filter((i) => i.createdAt.getTime() >= since && i.reasonCode !== RULES_DAY_CODE && i.reasonCode !== QUIET_DAY_CODE)
@@ -319,9 +352,11 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
         catalog.push(...built.facts);
         facts.push(...catalogFacts(built.facts), ...built.numbers);
         breakdowns.set(key, built.answer);
+        await step({ kind: "breakdown", dimension }, `breakdown|${dimension}`);
         return built.answer;
       },
       hypotheses: async () => {
+        await step({ kind: "memory" }, "memory");
         const since = ctx.clock.now().getTime() - RECENT_HYPOTHESIS_DAYS * 86_400_000;
         return (await ctx.store.hypotheses(businessId)).filter((h) => h.status === "checking" || (h.closedAt?.getTime() ?? 0) >= since).map(hypothesisView);
       },
@@ -342,7 +377,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       finishedAt: null,
       status: "running",
       // The findings of the morning evaluation this turn saw: a finding it saw gives no reason again (ad-agent spec).
-      context: { trigger, snapshot, findings: (await ctx.store.lastEvaluation(businessId))?.findings ?? [] },
+      context: { trigger, snapshot, findings: (await ctx.store.lastEvaluation(businessId))?.findings ?? [], steps: [...steps] },
       calls: [],
       summary: null,
       summaryValid: false,
@@ -352,9 +387,12 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       costKopecks: 0,
     };
     await ctx.store.saveTurn(record);
+    saveSteps = () => ctx.store.saveTurn({ ...record, context: { ...(record.context as object), steps: [...steps] }, calls: [...calls] });
     const timer = setTimeout(() => controller.abort("timeout"), TURN_TIMEOUT_MS);
     try {
       const result = await agent.runTurn({ trigger, snapshot, tools, signal: controller.signal });
+      // The last step's save lands before the final record, which carries the steps too.
+      await savedSteps;
       const status = controller.signal.aborted ? "cancelled" : "completed";
       // «Разбор дня» is shown only when it is plain and every number in it is in the data (insights spec).
       const summaryValid = result.summary.trim() !== "" && validateExplanation(result.summary, facts).length === 0;
@@ -363,6 +401,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
         // The tools the agent used, reads included, and the breakdowns it read, for «Для специалистов» in the turn journal.
         context: {
           ...(record.context as object),
+          steps: [...steps],
           ...(result.toolUse !== undefined && { toolUse: result.toolUse }),
           ...(breakdowns.size > 0 && { breakdowns: [...breakdowns.values()] }),
           ...(hypothesisCalls.length > 0 && { hypotheses: hypothesisCalls }),
@@ -380,6 +419,7 @@ export const runAgentTurn = async (ctx: JobContext, businessId: string, trigger:
       return { status, turnId };
     } catch (error) {
       const status = controller.signal.aborted ? "cancelled" : "failed";
+      await savedSteps.catch(() => undefined);
       await ctx.store.saveTurn({ ...record, status, finishedAt: ctx.clock.now(), calls, summary: error instanceof Error ? error.message : String(error) });
       if (status === "failed") {
         await reportUnavailability(ctx, businessId);

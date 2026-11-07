@@ -108,7 +108,9 @@ export const buildSummary = async (businessId: string, period: SummaryPeriod): P
     moderation,
     monthBudget: view.monthBudget,
     spentMonth: view.spentMonth,
-    budgetPlan: budgetPlan(view.monthBudget, monthKey(launchedOn) === monthKey(today) ? launchedOn : `${monthKey(today)}-01`, endOfMonth(today), today),
+    // The plan up to the last day with numbers: a simulation's today is the morning after the owner's period and has none
+    // yet, so counting it said «тратим на 45% меньше плана» after one even day; Direct brings today's spend during the day.
+    budgetPlan: budgetPlan(view.monthBudget, monthKey(launchedOn) === monthKey(today) ? launchedOn : `${monthKey(today)}-01`, endOfMonth(today), business.mode === "simulation" ? addDays(today, -1) : today),
     budgetForecast: budgetForecast(view.monthBudget, view.spentMonth, [...view.spendLast7.values()].reduce((sum, v) => sum + v, 0), today),
     spend: { value: current.spend, previous: previous.spend },
     leads: { value: current.leads, previous: previous.leads },

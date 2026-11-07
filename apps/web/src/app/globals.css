@@ -3353,6 +3353,27 @@ button.log-link {
   font-size: var(--fs-xs);
   color: var(--text-2);
 }
+/* The assistant's steps while it reviews: one short line each, the newest last, as a quiet list under the dots. */
+.studio-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 2px;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.studio-steps li {
+  animation: studioStepIn 0.3s ease-out both;
+}
+@keyframes studioStepIn {
+  from { opacity: 0; transform: translateY(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-steps li { animation: none; }
+}
 .studio-modal {
   display: flex;
   flex-direction: column;
@@ -3531,40 +3552,6 @@ button.log-link {
   margin: 0;
   font-size: var(--fs-xs);
   color: var(--danger);
-}
-/* «Что ещё было за эти дни»: two marks of the period, each with its hint under it; a column, so a phone fits them. */
-.period-market {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  border: 0;
-}
-.period-market-title {
-  padding: 0;
-  margin-bottom: 2px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-}
-.period-mark {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.period-mark-hint {
-  padding-left: 24px;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  overflow-wrap: anywhere;
-}
-.period-market-line {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  overflow-wrap: anywhere;
 }
 @media (max-width: 560px) {
   .period-fields {

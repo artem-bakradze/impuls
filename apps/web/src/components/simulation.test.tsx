@@ -171,6 +171,8 @@ describe("ads and history of «Реклама» on the owner's numbers (simulati
   it("speaks plainly: no «инсайт», and «пункты» are percents", async () => {
     const { speech } = await import("@/lib/service-work");
     expect(speech("**Разбор дня:** сохранил инсайт. Повышаю цену перехода на 10 пунктов.")).toEqual(["Сохранил наблюдение. Повышаю цену перехода на 10%."]);
+    // The period review's label too, as the model wrote it before the instructions asked for a story without one.
+    expect(speech("Разбор периода: ничего не менял — реклама пока собирает данные.")).toEqual(["Ничего не менял — реклама пока собирает данные."]);
   });
 
   it("says hypotheses once, when they are opened", () => {

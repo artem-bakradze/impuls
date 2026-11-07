@@ -2,7 +2,9 @@ import { isStepComplete } from "@impuls/worker/simulation-report";
 import { PERIOD_DAYS } from "@impuls/worker/simulation-period";
 import type { PeriodAdInput, PeriodDays, PeriodForm, PeriodMarket } from "@impuls/worker/simulation-period";
 import type { SimulationRecord } from "@impuls/worker";
+import type { TurnStep } from "@impuls/worker/turn-steps";
 import { z } from "zod";
+import { reviewStepLines } from "./review-steps";
 
 /** What the simulation's player shows (simulation-mode spec «Симуляция как отдельный режим»). */
 export interface SimulationStatus {
@@ -22,6 +24,11 @@ export interface SimulationStatus {
   changes: number;
   /** The service is reviewing the period; the player counts the time meanwhile. */
   agentTurn: boolean;
+  /**
+   * The assistant's steps so far while it reviews the period, in the owner's words (simulation-mode «Ход разбора на
+   * глазах владельца»); empty without a running turn of the assistant.
+   */
+  reviewSteps: string[];
   /** «Добавить статистику»: the ads shown now and what Direct would spend on each direction. */
   form: PeriodForm;
 }
@@ -42,27 +49,34 @@ export const simulationStatusOf = (input: {
   simulation: SimulationRecord;
   timeZone: string;
   changes: number;
-  runningTurn: { startedAt: Date; trigger: string } | null;
+  runningTurn: { startedAt: Date; trigger: string; steps: TurnStep[] } | null;
   form: PeriodForm;
+  /** The history's words of the running turn's changes, by change id. */
+  headlines?: ReadonlyMap<string, string>;
 }): SimulationStatus => {
   const { simulation } = input;
   const dayOf = (at: Date) => Math.floor((at.getTime() - simulation.startedAt.getTime()) / DAY_MS) + 1;
   const current = simulation.status === "stepping" ? simulation.steps.at(-1) : undefined;
+  const step = current ? { from: dayOf(current.from), to: Math.max(dayOf(current.from), dayOf(current.to) - 1) } : null;
   return {
     day: dayOf(simulation.simNow),
     at: simulation.simNow.toISOString(),
     timeZone: input.timeZone,
     status: simulation.status,
-    step: current ? { from: dayOf(current.from), to: Math.max(dayOf(current.from), dayOf(current.to) - 1) } : null,
+    step,
     periods: simulation.steps.filter((step) => isStepComplete(step, simulation)).length,
     failed: simulation.steps.at(-1)?.state === "failed",
     changes: input.changes,
     agentTurn: input.runningTurn !== null,
+    reviewSteps:
+      simulation.status === "stepping" && input.runningTurn !== null
+        ? reviewStepLines(input.runningTurn.steps, step === null ? null : periodDaysText(step), input.headlines ?? new Map())
+        : [],
     form: input.form,
   };
 };
 
-/** `market` — the period's marks (simulation-breakdowns); a page from before sends none, and the period is even. */
+/** `market` — marks a page from before market-leaks-live-review sends: accepted and not counted. */
 export type SimulationAction = { action: "period"; days: PeriodDays; ads: PeriodAdInput[]; market?: PeriodMarket } | { action: "continue" | "restart" | "new_campaign" };
 
 /** The player's menu (simulation-mode «Симуляция как отдельный режим»); no «Запустить по-настоящему» since demo-login. */

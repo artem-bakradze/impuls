@@ -7,7 +7,7 @@ import { checkModerationAndBalance, reconcileStats } from "./analytics";
 import { loadBusinessView } from "./state";
 import { createLogger } from "./logger";
 import type { SimulationWeekReport } from "./simulation-report";
-import { checkPeriod, lastEntered, lastMarket, NO_MARKET, periodDates, periodForm, simulationStartDate, splitPeriod } from "./simulation-period";
+import { checkPeriod, lastEntered, MARKET, periodDates, periodForm, simulationStartDate, splitPeriod } from "./simulation-period";
 import type { DirectionTraffic, PeriodAdInput, PeriodDays, PeriodForm, PeriodMarket } from "./simulation-period";
 import { ManualClock } from "./clock";
 import type { JobContext } from "./context";
@@ -212,7 +212,6 @@ export const savedPeriodForm = (record: SimulationRecord, directions: readonly D
     start: record.simNow,
     timeZone,
     last: lastEntered(record.steps),
-    market: lastMarket(record.steps),
   });
 
 /**
@@ -228,7 +227,7 @@ export const startNewCampaign = async (base: JobContext, businessId: string): Pr
 };
 
 export type SimulationControl =
-  /** `market` — the period's marks; a page from before simulation-breakdowns sends none, and the period is even. */
+  /** `market` — marks a page from before market-leaks-live-review sends; they are not counted. */
   | { action: "period"; days: PeriodDays; ads: PeriodAdInput[]; market?: PeriodMarket }
   | { action: "continue" | "restart" | "new_campaign" };
 
@@ -332,8 +331,9 @@ const livePeriod = async (base: JobContext, businessId: string, control: Extract
     if (check.changed || check.errors.length > 0) {
       throw new SimulationError(check.changed ? "ADS_CHANGED" : "PERIOD_INVALID", check.errors[0]?.message ?? "Period refused");
     }
-    // The breakdown follows the marks and the negative phrases and adjustments in force now (simulation-breakdowns).
-    const market = control.market ?? NO_MARKET;
+    // The breakdown follows the training market's usual leaks and the negative phrases and adjustments in force now; marks
+    // a page from before market-leaks-live-review sends are not counted.
+    const market = MARKET;
     const directionOf = new Map(form.directions.flatMap((d) => d.ads.map((a) => [a.id, d] as const)));
     const platformAd = new Map(ads.map((a) => [a.id, a.platformAdId]));
     world.platform.recordPeriod(

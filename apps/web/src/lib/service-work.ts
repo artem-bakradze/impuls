@@ -195,7 +195,7 @@ const PLAIN: [RegExp, string][] = [
 export const speech = (summary: string): string[] =>
   summary
     .replace(/\*\*/g, "")
-    .replace(/^\s*Разбор (дня|недели)\s*[:.—-]\s*/i, "")
+    .replace(/^\s*Разбор (дня|недели|периода)\s*[:.—-]\s*/i, "")
     .split(/\n\s*\n/)
     .map((p) => plain(p.replace(/\s+/g, " ").trim()))
     .filter((p) => p.length > 0)

@@ -70,17 +70,17 @@ describeFeature(feature, ({ Scenario }) => {
     });
   });
 
-  Scenario("Демо без заметки об учёте обращений", ({ When, Then, And }) => {
+  Scenario("Демо без строки и заметки об обращениях", ({ When, Then, And }) => {
     let words: LaunchStepWords;
     When("владелец демо дошёл до итога перед запуском", () => {
       words = launchStepWords(accountMode("demo"));
     });
-    Then("под итогом нет заметки об учёте обращений и учебных данных", () => {
-      expect(words.leadsNotice).toBe(false);
+    Then("в итоге нет строки «Что считаем обращением» и заметки об учёте обращений: обращения он вносит сам", () => {
+      expect(words.measuresLeads).toBe(false);
       expect(said(words)).not.toMatch(/учебн|счётчик|Метрик/i);
     });
-    And("при настоящем запуске предупреждение о счётчике остаётся", () => {
-      expect(launchStepWords(accountMode("test")).leadsNotice).toBe(true);
+    And("при настоящем запуске строка и предупреждение о счётчике остаются", () => {
+      expect(launchStepWords(accountMode("test")).measuresLeads).toBe(true);
     });
   });
 

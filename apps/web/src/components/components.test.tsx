@@ -289,7 +289,8 @@ describe("LaunchStep", () => {
     expect(screen.queryByLabelText("Симуляция")).toBeNull();
     expect(document.body.textContent).not.toMatch(/баланс|Подключить Яндекс Директ|тестовая копия Директа/);
     expect(document.body.textContent).not.toMatch(/сценари/i);
-    // No notes before the button: neither the training leads nor what opens next.
+    // The owner enters the leads: no line of what counts as a lead and no notes about counting them.
+    expect(screen.queryByText("Что считаем обращением")).toBeNull();
     expect(screen.queryByTestId("after-launch")).toBeNull();
     expect(screen.queryByTestId("measurement-status")).toBeNull();
     expect(document.body.textContent).not.toMatch(/учебн/i);

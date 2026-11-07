@@ -32,8 +32,11 @@ function MessageHead({ title }: { title: string }) {
   );
 }
 
-/** While the day goes, the assistant is typing: running dots in its bubble and the step's line under it. */
-function Thinking({ line }: { line: string }) {
+/**
+ * While the period goes, the assistant is typing: running dots in its bubble, under them the steps it has done so far
+ * (simulation-mode «Ход разбора на глазах владельца»), and the step's line with the time last.
+ */
+function Thinking({ line, steps }: { line: string; steps: readonly string[] }) {
   return (
     <div className="studio-thinking" data-testid="studio-thinking">
       <div className="studio-bubble studio-typing" role="status" aria-label="Сервис пишет разбор">
@@ -41,6 +44,13 @@ function Thinking({ line }: { line: string }) {
         <i />
         <i />
       </div>
+      {steps.length > 0 ? (
+        <ol className="studio-steps" aria-label="Что делает помощник" aria-live="polite" data-testid="review-steps">
+          {steps.map((step, i) => (
+            <li key={`${i}-${step}`}>{step}</li>
+          ))}
+        </ol>
+      ) : null}
       <p className="studio-thinking-line">{line}</p>
     </div>
   );
@@ -108,6 +118,7 @@ function Review({ review, reveal, onRollback, onMore }: { review: JournalEntry; 
 export function ReviewRail({
   review,
   thinking,
+  steps = [],
   reveal,
   onRollback,
   onMore,
@@ -115,6 +126,8 @@ export function ReviewRail({
   review: JournalEntry | null;
   /** The step's line while a simulated day goes; null otherwise. */
   thinking: string | null;
+  /** The assistant's steps so far while it reviews a period, in the owner's words. */
+  steps?: readonly string[];
   /** The review arrived after a step: it is written part by part. */
   reveal: boolean;
   onRollback: (item: HistoryItem) => void;
@@ -139,7 +152,7 @@ export function ReviewRail({
     <aside ref={rail} className="brief-side panel review-rail" aria-label="Разбор" data-state={state} data-testid="review-rail">
       <MessageHead title={thinking !== null ? "Разбирает статистику" : review === null ? (words.simulation ? "Разбор" : "Разбор дня") : noteTitle(review, words)} />
       {thinking !== null ? (
-        <Thinking line={thinking} />
+        <Thinking line={thinking} steps={steps} />
       ) : review !== null ? (
         <Review key={review.id} review={review} reveal={reveal} onRollback={onRollback} onMore={onMore} />
       ) : (

@@ -129,6 +129,8 @@ describe("facts of an insight (insights spec «Инсайт»)", () => {
     expect(plain(factValue(goal))).toBe("500 ₽ за обращение");
     expect(factLabel({ object: "бюджет месяца", metric: "budget_left", period: "month" })).toBe("Осталось в этом месяце");
     expect(factLabel({ object: "реклама в поиске", metric: "spend", period: "prev7d" })).toBe("Реклама в поиске: расход за 7 дней до этого");
+    // The totals of a simulation's period the review names first (ad-agent «Рассказ в разборе периода»).
+    expect(factLabel({ object: "вся реклама", metric: "spend", period: "period" })).toBe("Вся реклама: расход за эти дни");
     expect(plain(factValue({ metric: "weekly_limit", unit: "rub", value: 2_000 }))).toBe("2 000 ₽ в неделю");
   });
 });
