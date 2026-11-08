@@ -16,8 +16,11 @@ import { Note } from "../ui/primitives";
 import { Field } from "./Field";
 import type { StepProps } from "./Wizard";
 
+/**
+ * «15 000». The field's own parser drops the spaces back; an empty field stays empty — a parser of ours that read it as
+ * 0 made the field put in its minimum, «1», when the owner only passed through it.
+ */
 const rubFormatter = (value: number | string | undefined): string => (value === undefined || value === "" ? "" : `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, " "));
-const rubParser = (value: string | undefined): number => Number((value ?? "").replace(/\D/g, ""));
 
 const PRESETS = [10_000, 15_000, 30_000, 50_000];
 
@@ -46,7 +49,6 @@ export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & 
           value={amount}
           onChange={(value) => set({ monthlyBudgetRub: typeof value === "number" && value > 0 ? Math.round(value) : null })}
           formatter={rubFormatter}
-          parser={rubParser}
           suffix="₽"
           aria-label="Бюджет в месяц"
         />
@@ -96,7 +98,6 @@ export function BudgetStep({ draft, onChange, today, errors = {} }: StepProps & 
             value={budget.goalRub}
             onChange={(value) => set({ goalRub: typeof value === "number" && value >= GOAL_MIN_RUB ? Math.min(Math.round(value), GOAL_MAX_RUB) : null })}
             formatter={rubFormatter}
-            parser={rubParser}
             prefix="до"
             suffix="₽"
             aria-label="Цена одного обращения"

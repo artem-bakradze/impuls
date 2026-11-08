@@ -72,5 +72,3 @@ export const webConfig = (): WebConfig => {
   cached ??= parseWebConfig(process.env);
   return cached;
 };
-
-export const isTestMode = (config: WebConfig): boolean => config.DIRECT_API_MODE === "simulator";

@@ -53,7 +53,7 @@ Google OAuth client to configure. `AUTH_TEST_LOGIN=enabled` adds the email-only 
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL |
 | `AUTH_SECRET` | yes, ≥ 32 chars | Signs session cookies (Auth.js) |
-| `DIRECT_API_MODE` | yes | `simulator` or `production`; `simulator` shows the «Тестовый стенд — Яндекс Директ не подключён» banner (the simulation pult replaces it on a simulated business's screens) |
+| `DIRECT_API_MODE` | yes | `simulator` or `production`. There is no stand banner: a simulated business's pult says the money is not real, and in `simulator` the wizard's launch step says Direct is a test copy |
 | `SUPPORT_EMAIL` | yes | Support address shown in the settings; owners write there to delete the account (see `docs/deployment.md`) |
 | `YANDEX_CLIENT_ID`, `YANDEX_CLIENT_SECRET` | in `production` | Yandex OAuth app «для авторизации пользователей» (not the debug app); redirect URI `<APP_URL>/api/direct/oauth/callback` |
 | `TOKEN_ENCRYPTION_KEY` | in `production` | base64 of 32 random bytes (`openssl rand -base64 32`); encrypts Direct OAuth tokens, same value in worker and web |

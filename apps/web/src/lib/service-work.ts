@@ -41,8 +41,9 @@ export interface ShownAd {
   change: ChangeMark | null;
 }
 
-/** A change on the main screen: a two- or three-word label, its day, why in one line and the history behind an undo. */
+/** A change on the main screen: the history's words of it, its day, why in one line and the history behind an undo. */
 export interface LastChange {
+  /** «Убрал показы по запросам со словом «фото»», as the history and the review say it. */
   text: string;
   date: LocalDate;
   /** The decision's observation with its numbers, or the first sentence of the history's explanation. */
@@ -201,8 +202,53 @@ export const speech = (summary: string): string[] =>
     .filter((p) => p.length > 0)
     .map((p) => `${p[0]?.toUpperCase() ?? ""}${p.slice(1)}`);
 
+/**
+ * Direct's words for the queries the ads skip and for a breakdown, and the owner's words in the same case. The owner's
+ * word keeps the gender of Direct's («минус-фраза» → «фраза-исключение»), so the words around it still agree. A
+ * nominative «разрез» could be an accusative «разбивку» as well, so it is left as written.
+ */
+const OWNER_WORDS = new Map<string, string>([
+  ["минус-фраза", "фраза-исключение"],
+  ["минус-фразу", "фразу-исключение"],
+  ["минус-фразы", "фразы-исключения"],
+  ["минус-фраз", "фраз-исключений"],
+  ["минус-фразе", "фразе-исключении"],
+  ["минус-фразой", "фразой-исключением"],
+  ["минус-фразам", "фразам-исключениям"],
+  ["минус-фразами", "фразами-исключениями"],
+  ["минус-фразах", "фразах-исключениях"],
+  ["минус-слово", "слово-исключение"],
+  ["минус-слова", "слова-исключения"],
+  ["минус-слов", "слов-исключений"],
+  ["минус-слову", "слову-исключению"],
+  ["минус-словом", "словом-исключением"],
+  ["минус-слове", "слове-исключении"],
+  ["минус-словам", "словам-исключениям"],
+  ["минус-словами", "словами-исключениями"],
+  ["минус-словах", "словах-исключениях"],
+  ["разрезы", "разбивки"],
+  ["разрезов", "разбивок"],
+  ["разрезам", "разбивкам"],
+  ["разрезами", "разбивками"],
+  ["разрезах", "разбивках"],
+  ["разреза", "разбивки"],
+  ["разрезу", "разбивке"],
+  ["разрезом", "разбивкой"],
+  ["разрезе", "разбивке"],
+]);
+const DIRECT_WORD = new RegExp(`(^|[^а-яё-])(${[...OWNER_WORDS.keys()].sort((a, b) => b.length - a.length).join("|")})(?![а-яё-])`, "gi");
+
+/** «Добавляю «фото» в минус-фразы» → «Добавляю «фото» в исключения»; other forms word by word, a capital kept. */
+const ownerWords = (text: string): string =>
+  text
+    .replace(/(^|[^а-яё-])([вВ]) минус-(?:фразы|слова)(?![а-яё-])/g, "$1$2 исключения")
+    .replace(DIRECT_WORD, (_match: string, lead: string, word: string) => {
+      const owner = OWNER_WORDS.get(word.toLowerCase()) ?? word;
+      return `${lead}${/^[А-ЯЁ]/.test(word) ? `${owner[0]?.toUpperCase() ?? ""}${owner.slice(1)}` : owner}`;
+    });
+
 /** The agent's text in the owner's words and with grouped rubles, as everywhere the service speaks. */
-export const plain = (text: string): string => groupRub(PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text));
+export const plain = (text: string): string => groupRub(ownerWords(PLAIN.reduce((t, [pattern, word]) => t.replace(pattern, word), text)));
 
 /** An insight's observation as a sentence of the journal, in the same plain words. */
 const sentenceCase = (text: string): string => `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
@@ -217,6 +263,16 @@ const firstSentence = (text: string): [string, string] => {
 };
 
 const quoted = (phrases: readonly string[]): string => `${phrases.slice(0, 2).map((p) => `«${p}»`).join(", ")}${phrases.length > 2 ? ` и ещё ${phrases.length - 2}` : ""}`;
+
+/**
+ * The queries a negative phrase cuts off, in the owner's words: «со словом «фото»», «со словами «своими руками»», «со
+ * словами «фото» или «бесплатно»». A bare quote («по запросам «фото»») reads as one whole query.
+ */
+const withWords = (phrases: readonly string[]): string => {
+  const single = phrases.length === 1 && !/\s/.test(phrases[0]?.trim() ?? "");
+  const list = phrases.length === 2 ? `«${phrases[0] ?? ""}» или «${phrases[1] ?? ""}»` : quoted(phrases);
+  return `${single ? "со словом" : "со словами"} ${list}`;
+};
 
 /** A change in the owner's words, first person like the agent's text: «Поднял цену перехода с компьютеров на 10%». */
 export const changeHeadline = (c: ChangeEntry, directions: ReadonlyMap<string, DirectionRecord>, adTitles: ReadonlyMap<string, string>): string | null => {
@@ -250,9 +306,9 @@ export const changeHeadline = (c: ChangeEntry, directions: ReadonlyMap<string, D
     case "FinishExperiment":
       return `Закончил проверку и оставил ${ad(action.keepAdId)}`;
     case "AddNegativeKeywords":
-      return `Убрал показы по запросам ${quoted(action.phrases)}`;
+      return `Убрал показы по запросам ${withWords(action.phrases)}`;
     case "RemoveNegativeKeywords":
-      return `Вернул показы по запросам ${quoted(action.phrases)}`;
+      return `Вернул показы по запросам ${withWords(action.phrases)}`;
     case "UpdateAdText":
       return `Переписал ${ad(action.adId)}`;
     default:
@@ -440,17 +496,18 @@ export const buildServiceWork = (input: ServiceWorkInput): ServiceWorkModel => {
   };
   const newest = [...decisions].filter((c) => c.revertedById === null).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const adOf = (c: ChangeEntry): string | null => ("adId" in c.action ? c.action.adId : c.action.type === "FinishExperiment" ? c.action.keepAdId : null);
-  // Why, in one line: the decision's own observation, or the first sentence of its explanation.
+  // Why, in one line: the first sentence of the decision's observation, or of its explanation. The observation's next
+  // sentence says the action again, and the line above already says it.
   const observations = new Map<string, string>();
   for (const review of input.reviews) for (const card of [...review.insights, ...(review.weekly?.insights ?? [])]) observations.set(card.id, card.observation);
   const reasonOf = (c: ChangeEntry): string | null => {
     const observation = c.insightId ? observations.get(c.insightId) : undefined;
-    if (observation) return withStop(sentenceCase(observation));
+    if (observation) return withStop(sentenceCase(firstSentence(observation.replace(/\s+/g, " ").trim())[0]));
     const explanation = c.explanation.replace(/\s+/g, " ").trim();
     return explanation === "" ? null : withStop(firstSentence(explanation)[0]);
   };
   const recentChanges: LastChange[] = newest.slice(0, 3).map((c) => ({
-    text: briefChange(c),
+    text: changeHeadline(c, directions, adTitles) ?? briefChange(c),
     date: toLocalDate(c.createdAt, input.timeZone),
     reason: reasonOf(c),
     entryId: entryOf.get(c.id) ?? null,

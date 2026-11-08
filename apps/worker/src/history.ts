@@ -39,7 +39,7 @@ export const ACTION_META: Record<LoggedAction["type"], ActionMeta> = {
   UpdateMiniSite: { reversible: true, rollbackConsequences: ["на мини-сайте снова появятся прежние тексты и цены"] },
   PublishMiniSite: { reversible: false, rollbackConsequences: [], irreversibleReason: "публикация лишь обновляет сайт по текущим данным" },
   ExternalChange: { reversible: true, rollbackConsequences: ["вернётся состояние, которое было до изменения в кабинете", KEEPS_STATS] },
-  AddNegativeKeywords: { reversible: true, rollbackConsequences: ["реклама снова будет показываться по этим запросам", "минус-фразы других изменений останутся", KEEPS_STATS] },
+  AddNegativeKeywords: { reversible: true, rollbackConsequences: ["реклама снова будет показываться по этим запросам", "фразы-исключения из других изменений останутся", KEEPS_STATS] },
   RemoveNegativeKeywords: { reversible: true, rollbackConsequences: ["реклама снова перестанет показываться по этим запросам", KEEPS_STATS] },
   SetDeviceAdjustment: { reversible: true, rollbackConsequences: ["вернётся прежняя цена перехода с этого устройства", KEEPS_STATS] },
 };

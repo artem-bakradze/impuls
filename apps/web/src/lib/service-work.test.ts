@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { groupRub } from "./format";
 import type { HistoryItem } from "./history-view";
 import type { DayReviewModel, InsightCardModel } from "./insights-model";
-import { briefChange, buildServiceWork } from "./service-work";
+import { briefChange, buildServiceWork, changeHeadline, plain } from "./service-work";
 
 const item = (overrides: Partial<HistoryItem>): HistoryItem => ({
   id: "c1",
@@ -164,6 +164,39 @@ describe("the latest changes on the main screen (change-history spec «Посл�
     expect(work.recentChanges[1]?.reason).toBe("Отключил объявление: за 10 дней 2\u00a0400\u00a0₽ без обращений.");
     expect(work.lastChange?.historyId).toBe("d1");
     expect(work.changesLast7).toBe(5);
+  });
+
+  it("names the last change in the history's words and gives one sentence of why, not the action again", () => {
+    const observation = "С начала рекламы по запросу «доставка еды фото» потрачено 501 ₽ и не было обращений. Добавляю «фото» в минус-фразы, чтобы реклама не показывалась по таким запросам.";
+    const reviews: DayReviewModel[] = [{ ...review, date: "2026-11-08", summary: null, insights: [card({ observation })] }];
+    const work = build([], reviews, [change({ id: "n1", insightId: "i1", action: { type: "AddNegativeKeywords", directionId: "dir1", phrases: ["фото"] } })]);
+    expect(work.lastChange?.text).toBe("Убрал показы по запросам со словом «фото»");
+    expect(work.lastChange?.reason).toBe("С начала рекламы по запросу «доставка еды фото» потрачено 501 ₽ и не было обращений.");
+  });
+});
+
+describe("the queries a negative phrase cuts off, in the owner's words", () => {
+  const negative = (phrases: string[], type: "AddNegativeKeywords" | "RemoveNegativeKeywords" = "AddNegativeKeywords") =>
+    changeHeadline(change({ action: { type, directionId: "dir1", phrases } }), new Map(), new Map());
+
+  it("names the words of the queries, not a quote that reads as a whole query", () => {
+    expect(negative(["фото"])).toBe("Убрал показы по запросам со словом «фото»");
+    expect(negative(["своими руками"])).toBe("Убрал показы по запросам со словами «своими руками»");
+    expect(negative(["фото", "бесплатно"])).toBe("Убрал показы по запросам со словами «фото» или «бесплатно»");
+    expect(negative(["фото", "бесплатно", "вакансии"])).toBe("Убрал показы по запросам со словами «фото», «бесплатно» и ещё 1");
+    expect(negative(["фото"], "RemoveNegativeKeywords")).toBe("Вернул показы по запросам со словом «фото»");
+  });
+});
+
+describe("Direct's words in the agent's text (change-history stop-list)", () => {
+  it("says «исключения» for negative phrases in the same case, and «разбивка» for a breakdown", () => {
+    expect(plain("Добавляю «фото» в минус-фразы, чтобы реклама не показывалась по таким запросам.")).toBe("Добавляю «фото» в исключения, чтобы реклама не показывалась по таким запросам.");
+    expect(plain("Добавил минус-фразу «фото». Минус-фраза уже работает, других минус-фраз нет.")).toBe("Добавил фразу-исключение «фото». Фраза-исключение уже работает, других фраз-исключений нет.");
+    expect(plain("Посмотрел разрезы по запросам; по разрезу телефонов данных мало.")).toBe("Посмотрел разбивки по запросам; по разбивке телефонов данных мало.");
+  });
+
+  it("leaves words that only start the same alone", () => {
+    expect(plain("минус-фразовый словарь, разрезание")).toBe("минус-фразовый словарь, разрезание");
   });
 });
 

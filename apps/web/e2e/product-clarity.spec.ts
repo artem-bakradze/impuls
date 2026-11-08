@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test("the start page is one card with «Демо-режим», Google unavailable, and the demo's terms", async ({ page }, testInfo) => {
+test("the start page is one card with «Демо-режим» and Google unavailable, without a banner or a terms line", async ({ page }, testInfo) => {
   await page.goto("/");
-  // One card (product-demo spec «Условия демосервиса»): the terms, «Демо-режим» first, Google second.
+  // One card (product-demo spec «Условия демосервиса»): «Демо-режим» first, Google second; no terms line, no stand banner.
   const card = page.getByTestId("login-card");
-  await expect(card.getByText("Демосервис без оплаты · деньги не списываются")).toBeVisible();
+  await expect(page.getByText(/деньги не списываются/)).toHaveCount(0);
+  await expect(page.getByText(/Тестовый стенд/)).toHaveCount(0);
   await expect(card.getByRole("button")).toHaveText(["Демо-режим", "Войти через Google"]);
   await expect(page.getByRole("link", { name: "Посмотреть на примере" })).toHaveCount(0);
   await expect(page.getByText(/Попробовать на своём бизнесе/)).toHaveCount(0);

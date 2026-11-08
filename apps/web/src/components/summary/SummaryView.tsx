@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarOutlined, HistoryOutlined, NotificationOutlined, RightOutlined } from "@ant-design/icons";
-import { addDays } from "@impuls/core";
+import { addDays, endOfMonth } from "@impuls/core";
 import { Alert, Popover } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,8 +15,9 @@ import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
 import type { LastChange } from "@/lib/service-work";
 import { elapsedText, periodReviewText } from "@/lib/simulation-model";
+import { spendCurve } from "@/lib/spend-curve";
 import type { SimulationStatus } from "@/lib/simulation-model";
-import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, nextStepText } from "@/lib/summary-model";
+import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, moreChecksText, nextStepText } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { isStepping, SimulationPlayer } from "../simulation/SimulationPlayer";
@@ -27,6 +28,7 @@ import { AdsSheet } from "./AdsSheet";
 import { HistorySheet } from "./HistorySheet";
 import { QuestionSheet } from "./QuestionSheet";
 import { latestReview, ReviewRail } from "./ReviewRail";
+import { SpendChart } from "./SpendChart";
 import { Sparkline, trendOf } from "./Sparkline";
 
 type Sheet = "ads" | "history" | "question" | null;
@@ -43,11 +45,14 @@ const relativeDay = (date: string, today: string, words: DayWords): string => (d
 
 const undoable = (change: LastChange): change is LastChange & { item: HistoryItem } => change.item !== null && !change.item.reverted && change.item.rollback.kind === "available";
 
-/** A service change as a label, its day and why in one line, with «Вернуть» for a reversible one (change-history spec). */
+/**
+ * The service's last change, named as such with its day, in the history's words, why in one line, and «Вернуть» for a
+ * reversible one (change-history spec «Последнее изменение на главном экране»).
+ */
 function ChangeItem({ change, today, words, onRollback, testId }: { change: LastChange; today: string; words: DayWords; onRollback: (item: HistoryItem) => void; testId: string }) {
   return (
     <div className="brief-change" data-testid={testId}>
-      <span className="brief-when">{relativeDay(change.date, today, words)}</span>
+      <span className="brief-when">Последнее изменение · {relativeDay(change.date, today, words)}</span>
       <div className="brief-change-line">
         <span className="brief-what">{change.text}</span>
         {undoable(change) ? (
@@ -115,7 +120,6 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
   const goalText = `${comparable ? "цель" : "ориентир"} ${formatRub(model.goal.cso)}`;
   const over = comparable && model.goal.status === "above";
   const number = model.goal.current === null ? "—" : formatRub(model.goal.current);
-  const share = model.monthBudget > 0 ? Math.min(100, (model.spentMonth / model.monthBudget) * 100) : 0;
   const budgetTone = model.spentMonth >= model.monthBudget ? "danger" : model.budgetForecast !== null ? "warning" : undefined;
 
   let exception: Exception | null = null;
@@ -146,8 +150,11 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
         : "первые данные завтра"
     : null;
   const period = model.dataPeriod ? words.range(model.dataPeriod.from, today) : today === "" ? "" : words.date(today);
+  // The month's money by day against the even plan, from the period's first day to the month's end (analytics spec «Сводка»).
+  const curve = firstDay || model.dataPeriod === undefined ? null : spendCurve(model.daily ?? [], model.dataPeriod.from, endOfMonth(model.dataPeriod.from), model.monthBudget);
   // What the service does next, while the ads run and there is data (analytics spec «Сводка»).
   const next = firstDay || state.kind === "paused" ? null : nextStepText(work.nextCheck, today, words);
+  const moreChecks = work.nextCheck === null ? null : moreChecksText(work.nextCheck.more);
 
   const status = sim.status;
   const stepping = status !== null && isStepping(status);
@@ -206,9 +213,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
                   <span className="brief-label">из {formatRub(model.monthBudget)}</span>
                 </div>
               </div>
-              <div className="brief-bar" data-tone={budgetTone} data-testid="budget-bar">
-                <i style={{ width: `${share}%` }} aria-hidden="true" />
-              </div>
+              {curve !== null ? <SpendChart curve={curve} tone={budgetTone} /> : null}
               {/* The pace of the money against the even plan in words, under the sum it is about (analytics spec «Сводка»). */}
               <div className="brief-pace">
                 <BudgetPaceChip model={model} firstDay={firstDay} />
@@ -238,7 +243,10 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
                 <p className="brief-next" data-testid="next-step" title={next}>
                   <CalendarOutlined className="brief-next-icon" aria-hidden="true" />
                   <span className="brief-next-label">Дальше</span>
-                  <span className="brief-next-text">{next}</span>
+                  <span className="brief-next-body">
+                    <span className="brief-next-text">{next}</span>
+                    {moreChecks !== null ? <span className="brief-next-more">{moreChecks}</span> : null}
+                  </span>
                 </p>
               ) : null}
 

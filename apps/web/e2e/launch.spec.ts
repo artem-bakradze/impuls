@@ -5,7 +5,8 @@ test("new owner signs in, goes through the three wizard steps and launches ads o
   const email = uniqueEmail("launch");
   await login(page, email);
   await page.waitForURL("**/wizard");
-  await expect(page.getByTestId("test-mode-banner")).toHaveText("Тестовый стенд — Яндекс Директ не подключён, реклама не показывается");
+  // No banner of the stand (platform-integration «Режимы симулятора и боевого API»).
+  await expect(page.getByText(/Тестовый стенд/)).toHaveCount(0);
 
   await fillFirstSteps(page);
   await fillBudget(page);

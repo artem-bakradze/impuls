@@ -1,6 +1,6 @@
 "use client";
 
-import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import { Button, Segmented } from "antd";
 import { useState } from "react";
 import { hasOwnSite, pictureKey } from "@/lib/onboarding";
@@ -32,7 +32,6 @@ export function PreviewStep({ draft, onChange, onRegenerate, busy, drawing = new
   const total = ads.search.length + ads.network.length;
   const updateSearch = (list: AdDraft[]) => onChange({ ...draft, ads: { ...ads, search: list } });
   const updateNetwork = (list: NetworkAdDraft[]) => onChange({ ...draft, ads: { ...ads, network: list } });
-  const query = [draft.card.services.find((s) => s.name.trim() !== "")?.name ?? draft.card.category, draft.card.city].filter(Boolean).join(" ").toLowerCase();
 
   return (
     <div id="field-ads" className={errors.ads ? "stack field-invalid" : "stack"} style={{ "--gap": "18px" } as React.CSSProperties}>
@@ -58,12 +57,6 @@ export function PreviewStep({ draft, onChange, onRegenerate, busy, drawing = new
 
       {channel === "search" ? (
         <div className="serp">
-          <div className="serp-bar">
-            <SearchOutlined style={{ color: "var(--text-3)" }} />
-            <div className="serp-query" aria-label="Пример запроса">
-              {query || "ваша услуга"}
-            </div>
-          </div>
           {ads.search.length === 0 ? <div className="empty t-small">Здесь объявлений не будет.</div> : null}
           {ads.search.map((ad, index) => (
             <AdPreview

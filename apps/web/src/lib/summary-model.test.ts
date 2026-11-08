@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapJobState } from "./job-state";
 import { loginErrorMessage } from "./login-error";
-import { adsState, adsStateText, budgetPlan, compareText, goalBadge, goalExplanation, nextStepText, observedDaily, goalLine, moderationText } from "./summary-model";
+import { adsState, adsStateText, budgetPlan, compareText, goalBadge, goalExplanation, moreChecksText, nextStepText, observedDaily, goalLine, moderationText } from "./summary-model";
 import { formatRange, formatRub } from "./format";
 
 const plain = (text: string) => text.replace(/ /g, " ");
@@ -91,11 +91,17 @@ describe("what the numbers cover and what comes next (analytics spec «Свод�
     expect(formatRange("2026-11-09", "2026-11-09")).toBe("9 ноября");
   });
 
-  it("says the nearest check in the service's words, with how many more there are", () => {
-    const check = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16", more: 1 };
-    expect(nextStepText(check, "2026-11-09")).toBe("16 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели · ещё 1 проверка");
-    expect(nextStepText({ ...check, checkOn: "2026-11-10", more: 0 }, "2026-11-09")).toBe("завтра сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
-    expect(nextStepText({ statement: "Новый заголовок приведёт больше обращений", checkOn: "2026-11-16", more: 3 }, "2026-11-09")).toBe("16 ноября — итог проверки: новый заголовок приведёт больше обращений · ещё 3 проверки");
+  it("says the nearest check in the service's words, and how many more there are on a line of their own", () => {
+    const check = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16" };
+    expect(nextStepText(check, "2026-11-09")).toBe("16 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
+    expect(nextStepText({ ...check, checkOn: "2026-11-10" }, "2026-11-09")).toBe("завтра сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
+    // A guess is said as a question the check answers, not as a verdict that is not there yet.
+    expect(nextStepText({ statement: "Высокая стоимость обращений в поиске связана с запросом «фото».", checkOn: "2026-11-16" }, "2026-11-09")).toBe(
+      "16 ноября сервис проверит, верно ли, что высокая стоимость обращений в поиске связана с запросом «фото»",
+    );
+    expect(moreChecksText(1)).toBe("Ещё 1 проверка впереди");
+    expect(moreChecksText(3)).toBe("Ещё 3 проверки впереди");
+    expect(moreChecksText(0)).toBeNull();
   });
 
   it("falls back to the next morning's look without open checks", () => {

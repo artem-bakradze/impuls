@@ -117,7 +117,7 @@ const LABELS: Record<string, string> = {
   category: "Чем занимаетесь",
   services: "Услуги",
   advantages: "Преимущества",
-  negativeKeywords: "Минус-фразы",
+  negativeKeywords: "Фразы-исключения",
   mobileAdjustment: "Настройка цены для телефонов",
   desktopAdjustment: "Настройка цены для компьютеров и планшетов",
 };

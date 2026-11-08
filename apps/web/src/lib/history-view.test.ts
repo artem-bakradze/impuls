@@ -55,7 +55,7 @@ describe("history view", () => {
   it("shows negative phrases and device adjustments in plain words (add-agent-analyst-stage1)", () => {
     const base = { status: "active", weeklyLimit: 150_000, strategyId: "WB_MAXIMUM_CLICKS", mobileAdjustment: 0, desktopAdjustment: 0 };
     expect(describeDiff({ ...base, negativeKeywords: "[]" }, { ...base, negativeKeywords: '["бесплатно"]' }, names)).toEqual([
-      { label: "Минус-фразы", before: "нет", after: "«бесплатно»" },
+      { label: "Фразы-исключения", before: "нет", after: "«бесплатно»" },
     ]);
     expect(describeDiff({ ...base, negativeKeywords: '["вакансии"]' }, { ...base, negativeKeywords: '["бесплатно","вакансии"]' }, names)[0]).toMatchObject({
       before: "«вакансии»",

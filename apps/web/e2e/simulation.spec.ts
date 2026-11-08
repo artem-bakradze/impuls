@@ -101,7 +101,7 @@ test("a demo's owner enters a period of stats in the simulation and starts a new
   await expect(page.getByTestId("sim-comparison")).toHaveCount(0);
   await expect(journal).not.toContainText(/без него было бы|На самом деле/);
   // The service took the junk query away by the breakdown, and it can be taken back.
-  const negative = journal.getByTestId("journal-change").filter({ hasText: "Убрал показы по запросам «фото»" }).first();
+  const negative = journal.getByTestId("journal-change").filter({ hasText: "Убрал показы по запросам со словом «фото»" }).first();
   await expect(negative.getByRole("button", { name: "Вернуть как было" })).toBeVisible();
   await page.getByRole("button", { name: "Закрыть" }).click();
 

@@ -411,7 +411,7 @@ describe("«Реклама» in Direct keeps the calendar and has no player (sim
     const quiet: JournalEntry = { ...review, kind: "quiet", headline: null, paragraphs: ["Посмотрели рекламу — менять ничего не нужно."], changes: [] };
     const lastChange = { text: "Лимит 1 077 ₽", date: "2026-11-10", reason: "Реклама приводит клиентов дешевле цели.", entryId: "2026-11-10:day", historyId: "c9", item: { ...item, id: "c9" } };
     render(<SummaryView model={model({ simulation: null })} work={work({ lastChange, journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [quiet] }] })} />);
-    expect(plain(screen.getByTestId("last-change"))).toContain("вчераЛимит 1 077 ₽");
+    expect(plain(screen.getByTestId("last-change"))).toContain("Последнее изменение · вчераЛимит 1 077 ₽");
     expect(screen.getByTestId("studio-review").querySelector(".studio-msg-action")).toBeNull();
   });
 });
@@ -458,7 +458,7 @@ describe("a sent period (simulation-mode spec: a period that is not over is not 
 });
 
 describe("the review's steps while it goes (simulation-mode «Ход разбора на глазах владельца»)", () => {
-  const steps = ["Смотрю цифры за дни 11–17", "Сравниваю телефоны и компьютеры", "Предполагаю: с телефонов обращения дороже, чем с компьютеров"];
+  const steps = ["Смотрю цифры за дни 11–17", "Смотрю, откуда обращения дешевле — с телефонов или с компьютеров", "Предполагаю: с телефонов обращения дороже, чем с компьютеров"];
 
   it("shows the assistant's steps in order under the dots, the step's line last", () => {
     render(<SummaryView model={model()} work={work({ sim })} simulation={status({ status: "stepping", step: { from: 11, to: 17 }, agentTurn: true, reviewSteps: steps })} />);

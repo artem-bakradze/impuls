@@ -4,7 +4,6 @@ import { BusinessDirectPlatform, ConfigError, handleWebJob, loadConfig, Simulati
 import type { ExecutionResult, LaunchPlan } from "@impuls/worker";
 import { describeFeature, loadFeature } from "@amiceli/vitest-cucumber";
 import { expect } from "vitest";
-import { isTestMode, parseWebConfig } from "../../../apps/web/src/lib/config-check";
 import { featurePath, launchedWorld } from "./world";
 
 const modes = await loadFeature(featurePath("platform-integration/modes.feature"), { language: "ru" });
@@ -41,7 +40,7 @@ describeFeature(modes, ({ Scenario }) => {
     });
   });
 
-  Scenario("Боевой режим", ({ Given, When, Then, And }) => {
+  Scenario("Боевой режим", ({ Given, When, Then }) => {
     const requests: string[] = [];
     let platform: BusinessDirectPlatform;
     Given("сервис запущен в режиме боевого API, и владелец бизнеса подключил свой Директ", () => {
@@ -80,21 +79,6 @@ describeFeature(modes, ({ Scenario }) => {
     });
     Then("запрос уходит в боевой API Директа с токеном владельца", () => {
       expect(requests).toEqual(["https://api.direct.yandex.com/json/v5/ads Bearer y0_owner"]);
-    });
-    And("плашка тестового режима не показывается", () => {
-      const web = parseWebConfig({
-        DATABASE_URL: "postgres://impuls@localhost/impuls",
-        AUTH_SECRET: "x".repeat(32),
-        AUTH_GOOGLE_ID: "id",
-        AUTH_GOOGLE_SECRET: "secret",
-        DIRECT_API_MODE: "production",
-        YANDEX_CLIENT_ID: "cid",
-        YANDEX_CLIENT_SECRET: "cs",
-        TOKEN_ENCRYPTION_KEY: "key",
-        APP_URL: "https://app.example",
-        SUPPORT_EMAIL: "support@impuls.test",
-      });
-      expect(isTestMode(web)).toBe(false);
     });
   });
 });

@@ -28,6 +28,13 @@ describe("the period review's instructions (simulation-breakdowns)", () => {
   it("name a 14- or 7-day window by the ads' days while the ads are younger than it", () => {
     expect(AGENT_INSTRUCTIONS).toContain("Сколько дней у рекламы есть цифры, сказано в snapshot.adsDays");
     expect(AGENT_INSTRUCTIONS).toContain("пиши «с начала рекламы», а не «за 14 дней», «за последние 14 дней»");
-    expect(AGENT_INSTRUCTIONS_VERSION).toBe("2026-11-07.1");
+    expect(AGENT_INSTRUCTIONS_VERSION).toBe("2026-11-08.1");
+  });
+
+  it("keep the breakdown's and the negative phrases' own words away from the owner, with plain words instead", () => {
+    expect(AGENT_INSTRUCTIONS).toContain("«Разрез», «срез», «сегмент», «минус-фраза» и «гипотеза» — тоже внутренние слова");
+    expect(AGENT_INSTRUCTIONS).toContain("«убрал показы по запросам со словом «фото»»");
+    expect(AGENT_INSTRUCTIONS).toContain("Число согласуй со словом: «одно обращение», «2 обращения», «5 обращений»");
+    expect(AGENT_INSTRUCTIONS).toContain("Не пиши «вернусь к вопросу» без того, что проверишь");
   });
 });

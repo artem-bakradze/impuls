@@ -45,11 +45,11 @@ describe("LoginCard (product-demo «Условия демосервиса», aut
     return (clone.textContent ?? "").split(/[\s—·]+/).filter((word) => /[\p{L}\d]/u.test(word));
   };
 
-  it("is one card: «Демо-режим» first, Google second, the demo's terms, and nothing more", () => {
+  it("is one card: «Демо-режим» first, Google second, and nothing more — no terms line", () => {
     card();
     expect(screen.getByRole("heading", { level: 1, name: "Реклама в Яндексе — без настройки" })).toBeTruthy();
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Демо-режим", "Войти через Google"]);
-    expect(screen.getByText("Демосервис без оплаты · деньги не списываются")).toBeTruthy();
+    expect(screen.queryByText(/деньги не списываются/)).toBeNull();
     expect(words().length).toBeLessThanOrEqual(30);
     expect(document.body.textContent).not.toMatch(/Попробовать на своём бизнесе|Учебная неделя|Посмотреть на примере|Контроль бюджета/);
     // No form to fill in: neither a test login nor anything else.
@@ -116,6 +116,27 @@ describe("BudgetStep", () => {
     expect(screen.getByTestId("auto-goal")).toHaveTextContent(/^Сколько будут стоить обращения/);
     fireEvent.click(screen.getByRole("radio", { name: "Укажу сумму" }));
     expect(screen.getByLabelText("Цена одного обращения")).toHaveValue("500");
+  });
+
+  it("keeps an empty sum empty when the owner only passes through the field", () => {
+    function Harness() {
+      const [draft, setDraft] = useState(withBudget(15_000));
+      return <BudgetStep draft={draft} onChange={setDraft} today="2026-11-01" />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("radio", { name: "Укажу сумму" }));
+    const field = screen.getByLabelText("Цена одного обращения");
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.blur(field);
+    // An empty field is no sum, not «1 ₽»: the smallest allowed value is not put in by itself.
+    expect(field).toHaveValue("");
+    expect(screen.getByTestId("auto-goal")).toHaveTextContent("дороже этой суммы");
+    const budget = screen.getByLabelText("Бюджет в месяц");
+    fireEvent.focus(budget);
+    fireEvent.change(budget, { target: { value: "" } });
+    fireEvent.blur(budget);
+    expect(budget).toHaveValue("");
   });
 
   it("shows under the goal field what to do when «Укажу сумму» has no sum", () => {

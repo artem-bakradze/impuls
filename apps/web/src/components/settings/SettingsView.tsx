@@ -30,8 +30,11 @@ const commandsFeedback = (section: string, outcome: JobOutcome<CommandResult[]>,
   return clamped ? { section, type: "warning", text: sentence(clamped.message) } : { section, type: "success", text: success };
 };
 
+/**
+ * «15 000». The field's own parser drops the spaces back; an empty field stays empty — a parser of ours that read it as
+ * 0 made the field put in its minimum, «1», when the owner only passed through it.
+ */
 const rubFormatter = (value: number | string | undefined): string => (value === undefined || value === "" ? "" : `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, " "));
-const rubParser = (value: string | undefined): number => Number((value ?? "").replace(/\D/g, ""));
 
 function SectionFeedback({ feedback, section, onConfirmBudget }: { feedback: Feedback; section: string; onConfirmBudget?: (amount: number) => void }) {
   if (feedback?.section !== section) return null;
@@ -361,7 +364,6 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
                     value={budget}
                     onChange={(v) => setBudget(typeof v === "number" ? Math.round(v) : null)}
                     formatter={rubFormatter}
-                    parser={rubParser}
                     suffix="₽"
                     aria-label="Бюджет в месяц"
                     style={{ width: 200 }}
@@ -400,7 +402,6 @@ export function SettingsView({ model }: { model: SettingsModel; simulated?: bool
                     value={goalRub}
                     onChange={(v) => setGoalRub(typeof v === "number" && v > 0 ? Math.round(v) : null)}
                     formatter={rubFormatter}
-                    parser={rubParser}
                     suffix="₽"
                     aria-label="Цена одного обращения"
                     style={{ width: 200 }}

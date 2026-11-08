@@ -134,7 +134,7 @@ describeFeature(feature, ({ Scenario }) => {
     And("в истории есть изменение минус-фраз «было нет → стало «бесплатно»» с кнопкой «Вернуть как было»", async () => {
       const [entry] = await agentEntries(sim, "AddNegativeKeywords");
       if (!entry) throw new Error("no history entry");
-      expect(describeDiff(entry.before, entry.after, salonNames)).toEqual([{ label: "Минус-фразы", before: "нет", after: "«бесплатно»" }]);
+      expect(describeDiff(entry.before, entry.after, salonNames)).toEqual([{ label: "Фразы-исключения", before: "нет", after: "«бесплатно»" }]);
       expect(ACTION_META.AddNegativeKeywords.reversible).toBe(true);
       expect(entry.insightId).not.toBeNull();
     });

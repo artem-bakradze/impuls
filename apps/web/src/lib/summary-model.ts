@@ -124,17 +124,21 @@ export const goalBadge = (goal: SummaryModel["goal"]): string | null => {
 
 /**
  * «Дальше» on the main screen (analytics spec «Сводка»): the nearest open check with its day, or the next morning's look,
- * which the daily evaluation makes with or without the agent. «Проверяю, останется ли …» → «16 ноября сервис проверит, останется ли …».
+ * which the daily evaluation makes with or without the agent. «Проверяю, останется ли …» → «16 ноября сервис проверит,
+ * останется ли …»; a statement of the assistant's guess → «16 ноября сервис проверит, верно ли, что …», the words of the
+ * review's «проверю, верно ли, что …» (`noteExpect`).
  */
-export const nextStepText = (next: { statement: string; checkOn: LocalDate; more: number } | null, today: LocalDate, words: DayWords = calendarWords): string => {
+export const nextStepText = (next: { statement: string; checkOn: LocalDate } | null, today: LocalDate, words: DayWords = calendarWords): string => {
   if (next === null) return "завтра утром сервис снова посмотрит рекламу";
   const when = next.checkOn < today ? "скоро" : next.checkOn === today ? "сегодня" : next.checkOn === addDays(today, 1) ? "завтра" : words.on(next.checkOn);
   const statement = words.text(next.statement.trim().replace(/[.…]+$/, ""));
   const asked = /^провер(?:яю|ю|яем|им)\s*[,:—-]?\s*/i.exec(statement);
   const lowered = `${statement[0]?.toLowerCase() ?? ""}${statement.slice(1)}`;
-  const text = asked ? `${when} сервис проверит, ${statement.slice(asked[0].length)}` : `${when} — итог проверки: ${lowered}`;
-  return next.more > 0 ? `${text} · ещё ${next.more} ${plural(next.more, "проверка", "проверки", "проверок")}` : text;
+  return asked ? `${when} сервис проверит, ${statement.slice(asked[0].length)}` : `${when} сервис проверит, верно ли, что ${lowered}`;
 };
+
+/** The other open checks under «Дальше»: «Ещё 1 проверка впереди»; null without them. */
+export const moreChecksText = (more: number): string | null => (more > 0 ? `Ещё ${more} ${plural(more, "проверка", "проверки", "проверок")} впереди` : null);
 
 /** The goal's explanation behind its words (analytics spec «Сводка»): where the number comes from and when it is refined. */
 export const goalExplanation = (goal: Pick<SummaryModel["goal"], "mode" | "learned">): string => {

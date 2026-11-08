@@ -229,14 +229,14 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(container.querySelector(".brief-number")).toHaveTextContent("450 ₽");
   });
 
-  it("puts the last change in one line with its day, its reason and an undo", () => {
-    const last = { text: "Цена перехода +10%", date: "2026-10-26", reason: "С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.", entryId: "e1", historyId: "c1", item: rollbackItem };
+  it("names the last change as such, with its day, the history's words, its reason and an undo", () => {
+    const last = { text: "Поднял цену перехода с компьютеров на 10%", date: "2026-10-26", reason: "С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.", entryId: "e1", historyId: "c1", item: rollbackItem };
     render(<SummaryView model={summary()} work={work({ lastChange: last, recentChanges: [last] })} />);
     const line = screen.getByTestId("last-change");
-    expect(plain(line)).toContain("вчераЦена перехода +10%Вернуть");
+    expect(plain(line)).toContain("Последнее изменение · вчераПоднял цену перехода с компьютеров на 10%Вернуть");
     expect(plain(line)).toContain("С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.");
     expect(plain(line)).not.toMatch(/клик/i);
-    fireEvent.click(within(line).getByRole("button", { name: "Вернуть как было: Цена перехода +10%" }));
+    fireEvent.click(within(line).getByRole("button", { name: "Вернуть как было: Поднял цену перехода с компьютеров на 10%" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
@@ -282,11 +282,20 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(screen.queryByTestId("goal-badge")).toBeNull();
   });
 
-  it("says the month's money pace against the even plan in words under a bar without marks", async () => {
-    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000, budgetForecast: null })} work={work()} />);
+  it("draws the month's money against the even plan and says its pace in words under it", async () => {
+    // October 1–27: 227 ₽ a day, 6 146 ₽ by the 27th; the even plan of 30 000 ₽ over 31 days is 26 129 ₽ by then.
+    const daily = Array.from({ length: 27 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, "0")}`, leads: 0, spend: i === 26 ? 614_600 - 22_763 * 26 : 22_763, decision: false }));
+    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000, budgetForecast: null, daily })} work={work()} />);
     expect(screen.queryByTestId("budget-plan")).toBeNull();
-    expect(plain(screen.getByTestId("budget-bar"))).toBe("");
-    expect(screen.getByTestId("budget-bar").querySelector("i")).toHaveStyle({ width: "20.486666666666668%" });
+    const chart = screen.getByTestId("spend-chart");
+    expect(chart).toHaveAttribute("role", "img");
+    expect(chart.getAttribute("aria-label")?.replace(/[\u00a0\u202f]/g, " ")).toBe("Потрачено 6 146 ₽ из 30 000 ₽. По ровному плану к 27 октября было бы 26 129 ₽.");
+    expect(plain(chart)).toBe("план1 октября31 октября");
+    // The spent dot stands under the plan's dot on the same day: the gap is the pace (20 000 ₽ of 30 000 ₽ apart).
+    const dot = chart.querySelector<HTMLElement>(".spend-dot");
+    const planDot = chart.querySelector<HTMLElement>(".spend-plan-dot");
+    expect(dot?.style.left).toBe(planDot?.style.left);
+    expect(parseFloat(dot?.style.top ?? "0")).toBeGreaterThan(parseFloat(planDot?.style.top ?? "0"));
     const pace = screen.getByTestId("budget-pace");
     expect(plain(pace)).toBe("тратим на 32% меньше плана");
     expect(pace).toHaveAttribute("data-tone", "neutral");
@@ -299,7 +308,13 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
   it("says when the month's money runs out from 80% of the budget", () => {
     render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 2_500_000, budgetPlan: 2_600_000, budgetForecast: { left: 500_000, exhaustOn: "2026-10-30" } })} work={work()} />);
     expect(plain(screen.getByTestId("budget-pace"))).toBe("хватит до 30 октября");
-    expect(screen.getByTestId("budget-bar")).toHaveAttribute("data-tone", "warning");
+    expect(screen.queryByTestId("spend-chart")).toBeNull();
+    const daily = [{ date: "2026-10-27", leads: 1, spend: 2_500_000, decision: false }];
+    render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 2_500_000, budgetPlan: 2_600_000, budgetForecast: { left: 500_000, exhaustOn: "2026-10-30" }, daily })} work={work()} />);
+    const chart = screen.getAllByTestId("spend-chart")[0];
+    expect(chart).toHaveAttribute("data-tone", "warning");
+    // 25 000 ₽ spent against 26 129 ₽ of the plan: the two dots would overlap, so only the spent one stands.
+    expect(chart?.querySelector(".spend-plan-dot")).toBeNull();
   });
 
   it("shows the first day as a word and a promise, without the old timeline", () => {
@@ -477,7 +492,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
   it("says what the service does next: the nearest check, or tomorrow morning's look", () => {
     const nextCheck = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-03", more: 1 };
     const { unmount } = render(<SummaryView model={summary()} work={work({ nextCheck })} />);
-    expect(plain(screen.getByTestId("next-step"))).toBe("Дальше3 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели · ещё 1 проверка");
+    expect(plain(screen.getByTestId("next-step"))).toBe("Дальше3 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже целиЕщё 1 проверка впереди");
     unmount();
     const { unmount: again } = render(<SummaryView model={summary()} work={work()} />);
     expect(plain(screen.getByTestId("next-step"))).toBe("Дальшезавтра утром сервис снова посмотрит рекламу");

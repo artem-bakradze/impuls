@@ -27,8 +27,8 @@ function GoogleG() {
 
 /**
  * The start page (product-demo spec «Условия демосервиса»): one card on the calm canvas of «Реклама» — the logo, a
- * title, one line, «Демо-режим», the Google button that is unavailable for now and the demo's terms. Nothing else: the
- * stands' test login has no form here, e2e signs in through the Auth.js endpoint.
+ * title, one line, «Демо-режим» and the Google button that is unavailable for now. Nothing else: the stands' test login
+ * has no form here, e2e signs in through the Auth.js endpoint.
  */
 export function LoginCard({ errorText, signInAsDemo }: Props) {
   const hintId = useId();
@@ -61,7 +61,6 @@ export function LoginCard({ errorText, signInAsDemo }: Props) {
             {GOOGLE_UNAVAILABLE}
           </span>
         </div>
-        <p className="t-small login-terms">Демосервис без оплаты · деньги не списываются</p>
       </section>
     </main>
   );

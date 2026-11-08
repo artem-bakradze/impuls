@@ -40,7 +40,7 @@ export const reviewStepLines = (steps: readonly TurnStep[], days: string | null,
         case "memory":
           return "Вспоминаю, что уже заметил и что проверяю";
         case "breakdown":
-          return step.dimension === "query" ? "Смотрю, по каким запросам показывалась реклама в поиске" : "Сравниваю телефоны и компьютеры";
+          return step.dimension === "query" ? "Смотрю, по каким запросам показывалась реклама в поиске" : "Смотрю, откуда обращения дешевле — с телефонов или с компьютеров";
         case "hypothesis_saved":
           return `Предполагаю: ${clause(step.statement)}`;
         case "hypothesis_closed":

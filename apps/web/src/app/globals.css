@@ -506,32 +506,6 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   letter-spacing: -0.02em;
 }
 
-/* ---------- Test banner ---------- */
-
-.test-banner {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 5px 16px;
-  text-align: center;
-  line-height: 1.35;
-  font-size: var(--fs-xs);
-  font-weight: 550;
-  color: #6e3a06;
-  background: repeating-linear-gradient(-45deg, #fdf1e1, #fdf1e1 10px, #fbead2 10px, #fbead2 20px);
-  border-bottom: 1px solid #f3dcb8;
-}
-.test-banner::before {
-  content: "";
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--warning);
-}
-
 /* ---------- App header & tab bar ---------- */
 
 .app-header {
@@ -691,9 +665,6 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-.login-terms {
-  margin: 0;
 }
 /* Unavailable for now: it looks off but stays focusable, so its hint is reachable from the keyboard. */
 .google-btn {
@@ -1101,24 +1072,6 @@ li[data-state="done"] .gen-dot {
   border: 1px solid var(--border);
   background: var(--surface);
   overflow: hidden;
-}
-.serp-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
-}
-/* A sample query, not an input: plain text without a field frame. */
-.serp-query {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-sm);
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .ad-card {
   position: relative;
@@ -2017,26 +1970,107 @@ button.log-link {
 .brief-budget {
   text-align: right;
 }
-/* The month's money as one wide bar without marks: its pace is said in words under it. */
-.brief-bar {
+/* The month's money against the even plan: spent as a line, the plan dashed to the whole budget; its pace in words under it. */
+.spend-chart {
+  margin: 18px 0 12px;
+}
+.spend-plot {
   position: relative;
-  height: 8px;
-  margin: 16px 0 12px;
-  border-radius: 99px;
-  background: var(--surface-3);
+  height: 96px;
+  margin: 0 8px;
 }
-.brief-bar > i {
-  display: block;
+@media (max-width: 720px) {
+  .spend-plot {
+    height: 80px;
+  }
+}
+.spend-plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #8b7df3, var(--accent));
-  transition: width 0.4s var(--ease);
+  overflow: visible;
 }
-.brief-bar[data-tone="warning"] > i {
+.spend-plan {
+  stroke: #c4c4d2;
+  stroke-width: 1.25;
+  stroke-dasharray: 5 6;
+}
+.spend-area {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+.spend-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.spend-chart[data-tone="warning"] .spend-line {
+  stroke: var(--warning);
+}
+.spend-chart[data-tone="warning"] .spend-area {
+  fill: var(--warning);
+}
+.spend-chart[data-tone="danger"] .spend-line {
+  stroke: var(--danger);
+}
+.spend-chart[data-tone="danger"] .spend-area {
+  fill: var(--danger);
+}
+.spend-dot,
+.spend-plan-dot {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.spend-dot {
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border: 2px solid var(--surface);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.spend-chart[data-tone="warning"] .spend-dot {
   background: var(--warning);
+  box-shadow: none;
 }
-.brief-bar[data-tone="danger"] > i {
+.spend-chart[data-tone="danger"] .spend-dot {
   background: var(--danger);
+  box-shadow: none;
+}
+/* Where the even plan is by the same day: a hollow dot on the dashed line, the gap to the spent dot is the pace. */
+.spend-plan-dot {
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border: 2px solid #a7a7ba;
+  background: var(--surface);
+}
+/* The plan's name on a plate under the end of its dashed line, where the money of the month would end. */
+.spend-plan-label {
+  position: absolute;
+  right: 0;
+  margin-top: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--text-2);
+  pointer-events: none;
+}
+.spend-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 8px 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
 }
 /* The pace of the month's money in words, under the sum it is about; its bottom space was the plan label's. */
 .brief-pace {
@@ -2091,6 +2125,15 @@ button.log-link {
   flex: 0 0 auto;
   font-weight: 600;
   color: var(--accent-ink);
+}
+.brief-next-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.brief-next-more {
+  color: var(--text-3);
 }
 .brief-next-text {
   min-width: 0;
@@ -2817,7 +2860,7 @@ button.log-link {
     flex-wrap: wrap;
     row-gap: 2px;
   }
-  .brief-next-text {
+  .brief-next-body {
     flex-basis: 100%;
   }
   .brief-action {
