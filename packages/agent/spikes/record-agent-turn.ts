@@ -51,6 +51,7 @@ const recordingFetch: typeof fetch = async (input, init) => {
 
 export const snapshot: TurnSnapshot = {
   today: "2026-10-29",
+  adsDays: 29,
   business: { category: "Маникюрный салон", services: [{ name: "Маникюр с покрытием", priceRub: 1_800 }], area: "Москва, м. Профсоюзная, радиус 3 км", hours: "Пн–Вс 10:00–22:00", advantages: ["Работаем без выходных"] },
   goal: { costPerLeadRub: 800, mode: "user" },
   budget: { monthRub: 30_000, spentRub: 12_400, leftRub: 17_600, evenPaceRub: 28_000 },

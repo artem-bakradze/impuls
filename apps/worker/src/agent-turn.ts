@@ -15,7 +15,7 @@ import type {
   TurnTrigger,
   TurnUsage,
 } from "@impuls/agent";
-import { addDays, catalogFacts, emptyStats, monthKey, toLocalDate, validateExplanation, validateInsight } from "@impuls/core";
+import { addDays, catalogFacts, daysBetween, emptyStats, monthKey, toLocalDate, validateExplanation, validateInsight } from "@impuls/core";
 import type { Command, Fact, InsightDraft, InsightFact, LocalDate } from "@impuls/core";
 import { breakdownForAgent, breakdownPeriod } from "./analyst";
 import type { AgentCosts, JobContext } from "./context";
@@ -66,8 +66,12 @@ export const buildSnapshot = async (ctx: JobContext, view: BusinessView, trigger
   ]);
   const running = experiments.find((e) => e.status === "running");
   const budget = budgetFigures(view);
+  // A simulation's today is the morning after the owner's period, with no numbers yet; Direct brings today's during the day.
+  const launchedOn = view.business.launchedOn;
+  const adsDays = launchedOn === null ? 0 : Math.max(0, daysBetween(launchedOn, view.today) + (view.business.mode === "simulation" ? 0 : 1));
   return {
     today: view.today,
+    adsDays,
     business: {
       category: redactPersonalData(card.category),
       services: card.services.map((s) => ({ name: redactPersonalData(s.name), priceRub: s.priceRub })),

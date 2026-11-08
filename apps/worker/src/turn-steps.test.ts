@@ -120,5 +120,8 @@ describe("the period's totals in the snapshot (ad-agent «Рассказ в ра
     const daily = new SnapshotPolicy();
     await runAgentTurn({ ...sim.ctx, agent: daily }, "b1", { kind: "daily_review" });
     expect((daily.snapshot?.facts ?? []).some((f) => f.period === "period")).toBe(false);
+    // Launched on October 1, eight days run: on the morning of October 9 Direct has numbers for nine days, today's included.
+    expect(daily.snapshot?.today).toBe("2026-10-09");
+    expect(daily.snapshot?.adsDays).toBe(9);
   });
 });

@@ -31,6 +31,11 @@ export type TurnTrigger =
  */
 export interface TurnSnapshot {
   today: LocalDate;
+  /**
+   * Days the ads have numbers for, from the launch to the last day with numbers. A 14- or 7-day window longer than this
+   * is all of them, «с начала рекламы» (ad-agent «Рассказ в разборе периода»).
+   */
+  adsDays: number;
   business: { category: string; services: { name: string; priceRub: number | null }[]; area: string; hours: string; advantages: string[] };
   goal: { costPerLeadRub: number; mode: "user" | "auto" };
   budget: { monthRub: number; spentRub: number; leftRub: number; evenPaceRub: number };

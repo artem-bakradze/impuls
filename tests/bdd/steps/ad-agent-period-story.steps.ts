@@ -1,3 +1,4 @@
+import { instructionsFor } from "@impuls/agent";
 import type { AgentRuntime, AgentToolbox, HypothesisResult, TurnResult, TurnSnapshot } from "@impuls/agent";
 import { factKey } from "@impuls/core";
 import type { InsightFact } from "@impuls/core";
@@ -16,8 +17,10 @@ class SnapshotAgent implements AgentRuntime {
   readonly instructionsVersion = "test";
   readonly decides = true;
   facts: InsightFact[] = [];
+  adsDays = 0;
   runTurn(input: { snapshot: TurnSnapshot }): Promise<TurnResult> {
     this.facts = input.snapshot.facts;
+    this.adsDays = input.snapshot.adsDays;
     return Promise.resolve({ summary: "Посмотрел цифры за эти дни.", calls: [], usage: null });
   }
 }
@@ -91,6 +94,27 @@ describeFeature(feature, ({ Scenario }) => {
       expect(agent.results.map((r) => r.status)).toEqual(["applied", "applied", "rejected"]);
       expect(agent.results[2]).toMatchObject({ message: "за этот разбор уже записаны две гипотезы — выбери главную" });
       expect((await w.store.hypotheses("b1")).filter((h) => h.status === "checking")).toHaveLength(2);
+    });
+  });
+
+  Scenario("Окно в 14 дней называется по дням рекламы", ({ Given, When, Then, And }) => {
+    const agent = new SnapshotAgent();
+    let w: OwnerWorld;
+    Given("реклама запущена в симуляции, и владелец внёс неделю статистики", async () => {
+      w = await ownerWorld(agent);
+      await w.enter(7, { [PLAIN]: { impressions: 700, clicks: 35, leads: 1, spendRub: 900 } });
+    });
+    When("владелец вносит ещё один день, и помощник разбирает его", async () => {
+      await w.enter(1, { [PLAIN]: { impressions: 100, clicks: 5, leads: 0, spendRub: 130 } });
+    });
+    Then("помощник знает, что у рекламы 8 дней с цифрами", () => {
+      // The morning of day 9 has no numbers yet: the review's window of 14 days holds all 8 days of the ads.
+      expect(agent.adsDays).toBe(8);
+    });
+    And("инструкция разбора велит называть окно в 14 дней «с начала рекламы» и говорить прежде всего об этом дне", () => {
+      const { text } = instructionsFor({ kind: "period_review", from: "2026-11-08", to: "2026-11-08" });
+      expect(text).toContain("пиши «с начала рекламы», а не «за 14 дней»");
+      expect(text).toContain("Говори прежде всего об этих днях");
     });
   });
 });
