@@ -11,7 +11,8 @@ import { rollback } from "./history";
 import { deleteAccount } from "./account";
 import { launchAds } from "./launch";
 import type { LaunchPlan } from "./launch";
-import { fetchPublicPage, findMetrikaCounter } from "./pages";
+import { createLogger } from "./logger";
+import { fetchPublicPage, findMetrikaCounter, PageFetchError } from "./pages";
 import { controlSimulation, launchSimulation, SimulationError, withSimulation } from "./simulation-mode";
 import type { SimulationControl } from "./simulation-mode";
 import { ADS_CHANGED_MESSAGE } from "./simulation-period";
@@ -75,12 +76,25 @@ export const checkCounter = async (siteUrl: string, fetchPage: (url: string) => 
   return counter.found ? { status: "found", counterId: counter.counterId } : { status: "not_found" };
 };
 
-/** Downloads an owner's page with the context's host resolution (the system DNS unless DNS over HTTPS is configured). */
-const readPage = (ctx: JobContext) => (url: string): Promise<string> => fetchPublicPage(url, fetch, ctx.resolveHost);
+/**
+ * Downloads an owner's page with the context's host resolution (the system DNS unless DNS over HTTPS is configured).
+ * `partial`: the first 2 MB of a heavier page, for the card; the Metrica check reads whole pages only.
+ */
+const readPage = (ctx: JobContext, options: { partial?: boolean } = {}) => (url: string): Promise<string> =>
+  fetchPublicPage(url, fetch, ctx.resolveHost, options);
+
+/** The host of an owner's page for logs: the business's public site, never a path or query. */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "invalid";
+  }
+};
 
 const CARD_UNREADABLE = "Не получилось прочитать страницу — расскажите о бизнесе своими словами";
 
-const extractCard = async (ctx: JobContext, sources: Extract<WebJob, { kind: "extract_card" }>["sources"]): Promise<ExtractCardResult> => {
+const extractCard = async (ctx: JobContext, businessId: string, sources: Extract<WebJob, { kind: "extract_card" }>["sources"]): Promise<ExtractCardResult> => {
   if (!ctx.creatives.readsPages) {
     return { card: await ctx.creatives.extractCard([]), unreadable: [] };
   }
@@ -89,10 +103,19 @@ const extractCard = async (ctx: JobContext, sources: Extract<WebJob, { kind: "ex
   for (const [source, url] of [["site", sources.siteUrl], ["maps", sources.mapsUrl], ["vk", sources.vkUrl]] as const) {
     if (url.trim() === "") continue;
     try {
-      const text = htmlToText(await readPage(ctx)(url));
+      const text = htmlToText(await readPage(ctx, { partial: true })(url));
       if (text.length < 40) throw new Error("page has almost no text");
       pages.push({ source, text });
-    } catch {
+    } catch (error) {
+      // The owner sees one plain message; the reason (an internal address behind a fake-IP VPN, a refused bot, a
+      // timeout) is only here.
+      createLogger().warn("Card source unreadable", {
+        businessId,
+        source,
+        host: hostOf(url),
+        errorCode: error instanceof PageFetchError ? error.code : "PAGE_WITHOUT_TEXT",
+        reason: error instanceof Error ? error.message : String(error),
+      });
       unreadable.push(source);
     }
   }
@@ -196,7 +219,7 @@ const handleJob = async (ctx: JobContext, job: WebJob): Promise<unknown> => {
       return ctx.executor.execute({ businessId: job.businessId, command: { type: "UpdateMiniSite", card: job.card }, actor: "user", reasonCode: "USER_MINISITE", explanation: "Вы изменили мини-сайт." });
     }
     case "extract_card":
-      return extractCard(ctx, job.sources);
+      return extractCard(ctx, job.businessId, job.sources);
     case "check_counter": {
       const result = await checkCounter(job.siteUrl, readPage(ctx));
       await ctx.locks.withLock(job.businessId, async () => {

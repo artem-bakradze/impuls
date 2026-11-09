@@ -43,6 +43,18 @@ describe("fetchPublicPage", () => {
     await expect(fetchPublicPage("https://a.example/", () => Promise.resolve(new Response("{}", { headers: { "content-type": "application/json" } })), publicDns)).rejects.toMatchObject({ code: "NOT_HTML" });
     await expect(fetchPublicPage("https://a.example/", () => Promise.resolve(html("а".repeat(PAGE_MAX_BYTES))), publicDns)).rejects.toMatchObject({ code: "TOO_LARGE" });
   });
+
+  it("gives the first 2 MB of a heavier page when a part is enough, and a page of exactly 2 MB whole", async () => {
+    const heavy = `<h1>Ноготок</h1>${"x".repeat(PAGE_MAX_BYTES)}<p>хвост</p>`;
+    const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
+    const partial = await fetchPublicPage("https://a.example/", () => Promise.resolve(html(heavy)), publicDns, { partial: true });
+    expect(bytes(partial)).toBe(PAGE_MAX_BYTES);
+    expect(partial.startsWith("<h1>Ноготок</h1>")).toBe(true);
+    const declared = html(heavy, { headers: { "content-type": "text/html", "content-length": String(bytes(heavy)) } });
+    expect(bytes(await fetchPublicPage("https://a.example/", () => Promise.resolve(declared), publicDns, { partial: true }))).toBe(PAGE_MAX_BYTES);
+    const exact = "x".repeat(PAGE_MAX_BYTES);
+    expect(await fetchPublicPage("https://a.example/", () => Promise.resolve(html(exact)), publicDns)).toBe(exact);
+  });
 });
 
 describe("dnsOverHttpsResolver", () => {

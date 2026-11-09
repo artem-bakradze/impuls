@@ -88,7 +88,36 @@ const checkUrl = async (raw: string, resolve: Resolver): Promise<URL> => {
   return url;
 };
 
-export const fetchPublicPage = async (raw: string, fetchImpl: typeof fetch = fetch, resolve: Resolver = dnsResolver): Promise<string> => {
+/** At most PAGE_MAX_BYTES of the body, and whether that is all of it; the rest of a longer page is not downloaded. */
+const readCapped = async (body: ReadableStream<Uint8Array> | null): Promise<{ bytes: Uint8Array; whole: boolean }> => {
+  if (body === null) return { bytes: new Uint8Array(), whole: true };
+  const reader = body.getReader();
+  const bytes = new Uint8Array(PAGE_MAX_BYTES);
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return { bytes: bytes.subarray(0, size), whole: true };
+    const room = PAGE_MAX_BYTES - size;
+    if (value.byteLength > room) {
+      bytes.set(value.subarray(0, room), size);
+      await reader.cancel();
+      return { bytes, whole: false };
+    }
+    bytes.set(value, size);
+    size += value.byteLength;
+  }
+};
+
+/**
+ * `partial`: a page longer than PAGE_MAX_BYTES gives its first PAGE_MAX_BYTES instead of TOO_LARGE. The card reads the
+ * beginning of a heavy page (a Wix site is ≈2.6 MB, mostly scripts); the Metrica check needs the whole page.
+ */
+export const fetchPublicPage = async (
+  raw: string,
+  fetchImpl: typeof fetch = fetch,
+  resolve: Resolver = dnsResolver,
+  options: { partial?: boolean } = {},
+): Promise<string> => {
   let url = await checkUrl(raw, resolve);
   for (let hop = 0; ; hop++) {
     let response: Response;
@@ -115,15 +144,15 @@ export const fetchPublicPage = async (raw: string, fetchImpl: typeof fetch = fet
     if (!(response.headers.get("content-type") ?? "").includes("html")) {
       throw new PageFetchError("NOT_HTML", `${url.host} did not return an HTML page`);
     }
-    const length = Number(response.headers.get("content-length") ?? 0);
-    if (length > PAGE_MAX_BYTES) {
-      throw new PageFetchError("TOO_LARGE", `${url.host} page is larger than ${PAGE_MAX_BYTES} bytes`);
+    const tooLarge = new PageFetchError("TOO_LARGE", `${url.host} page is larger than ${PAGE_MAX_BYTES} bytes`);
+    if (options.partial !== true && Number(response.headers.get("content-length") ?? 0) > PAGE_MAX_BYTES) {
+      throw tooLarge;
     }
-    const body = await response.arrayBuffer();
-    if (body.byteLength > PAGE_MAX_BYTES) {
-      throw new PageFetchError("TOO_LARGE", `${url.host} page is larger than ${PAGE_MAX_BYTES} bytes`);
+    const { bytes, whole } = await readCapped(response.body);
+    if (!whole && options.partial !== true) {
+      throw tooLarge;
     }
-    return new TextDecoder("utf-8").decode(body);
+    return new TextDecoder("utf-8").decode(bytes);
   }
 };
 

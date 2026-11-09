@@ -96,6 +96,8 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
 export const htmlToText = (html: string, maxChars = 20_000): string =>
   html
     .replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ")
+    // The beginning of a heavy page (the worker reads at most 2 MB) can end inside a script: its tail is not text.
+    .replace(/<(script|style|noscript|svg|template)\b[\s\S]*$/i, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, " ")

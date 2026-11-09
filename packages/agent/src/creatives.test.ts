@@ -48,6 +48,11 @@ describe("htmlToText", () => {
     expect(text).not.toMatch(absent);
   });
 
+  it("drops the tail of a script that the first 2 MB of a heavy page cut off", () => {
+    const text = htmlToText(`<h1>Йога Прана</h1><script>var a=1;</script><p>Хатха-йога – 900 ₽</p><svg><path d="M7 21.7c0 .9.5`);
+    expect(text).toBe("Йога Прана\nХатха-йога – 900 ₽");
+  });
+
   it("caps very long pages", () => {
     expect(htmlToText(`<p>${"а".repeat(50_000)}</p>`)).toHaveLength(20_000);
   });
