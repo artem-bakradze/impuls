@@ -133,4 +133,4 @@ Consult these files for specialized context when working on relevant subsystems:
 | Deployment | `docs/deployment.md` | Environments, migrations, runtime flags, egress proxy, mini-site hosting, monitoring |
 | Decisions | `docs/adr/` | Architectural decisions and their rationale |
 
-Files in `docs/` are created during implementation (task group 1 in `openspec/changes/bootstrap-ad-autopilot-mvp/tasks.md`); until then, use `design.md` of the active change.
+Files in `docs/` were created during implementation (task group 1 in `openspec/changes/archive/2026-11-02-bootstrap-ad-autopilot-mvp/tasks.md`); for a subsystem they do not cover yet, use `design.md` of the active change.

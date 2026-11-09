@@ -4,7 +4,8 @@
 а сервис сам запускает и оптимизирует рекламу в Яндекс Директе, объясняет каждое действие простым языком
 и позволяет его откатить. Бюджет не превышается ни при каких условиях.
 
-- Требования и план: [openspec/changes/bootstrap-ad-autopilot-mvp](openspec/changes/bootstrap-ad-autopilot-mvp/)
+- Требования: [openspec/specs](openspec/specs/); изменения в работе — [openspec/changes](openspec/changes/), исходный
+  план MVP — [в архиве](openspec/changes/archive/2026-11-02-bootstrap-ad-autopilot-mvp/)
 - Правила работы с кодом: [AGENTS.md](AGENTS.md)
 - Архитектура: [docs/architecture.md](docs/architecture.md), предметная область: [docs/domain.md](docs/domain.md)
 - Локальный запуск и тесты: [docs/development.md](docs/development.md)

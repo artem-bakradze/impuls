@@ -1,6 +1,6 @@
 # Architecture
 
-Source of truth: `openspec/changes/bootstrap-ad-autopilot-mvp/design.md` (decisions are referenced as D1…D16).
+Source of truth: `openspec/changes/archive/2026-11-02-bootstrap-ad-autopilot-mvp/design.md` (decisions are referenced as D1…D16).
 
 ## Components
 

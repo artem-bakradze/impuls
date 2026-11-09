@@ -1,6 +1,6 @@
 # Domain and invariants
 
-Specs: `openspec/changes/bootstrap-ad-autopilot-mvp/specs/*/spec.md`.
+Specs: `openspec/specs/*/spec.md`.
 
 ## Terms
 
