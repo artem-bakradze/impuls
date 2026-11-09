@@ -265,7 +265,9 @@ const capturePeriodReport = async (world: SimulationWorld): Promise<string> => {
 const lookAtPeriod = async (world: SimulationWorld, period: { from: LocalDate; to: LocalDate }): Promise<void> => {
   const { ctx, business } = world;
   await reconcile(ctx, business.id);
-  await syncStats(ctx, business.id);
+  // The morning's sync loads the last 7 days; a longer period loads from its first day, or its first week is lost.
+  const week = addDays(toLocalDate(ctx.clock.now(), business.timeZone), -7);
+  await syncStats(ctx, business.id, period.from < week ? period.from : week);
   await budgetGuard(ctx, business.id);
   await checkModerationAndBalance(ctx, business.id);
   await verifyBudget(ctx, business.id);
