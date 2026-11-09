@@ -88,7 +88,9 @@ Full stand in Docker (web on http://localhost:3000, Mailpit on http://localhost:
 
 ```bash
 export AUTH_SECRET=$(openssl rand -base64 32)
-docker compose --profile app up -d --build
+docker compose --profile app build
+docker compose --profile app run --rm worker pnpm db:migrate   # a new database has no tables until migrated
+docker compose --profile app up -d
 ```
 
 Behind a VPN with fake-IP DNS (Hiddify, Clash, sing-box: every host resolves to `198.18.x.x` / `fc00::…`, even
