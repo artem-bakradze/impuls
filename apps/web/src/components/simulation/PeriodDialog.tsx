@@ -88,8 +88,8 @@ export function PeriodDialog({
       open
       title={periodTitle(status.day, days)}
       onCancel={onClose}
-      width={680}
-      className="period-dialog"
+      width={720}
+      className="period-dialog dialog"
       footer={[
         <Button key="cancel" onClick={onClose}>
           Отмена
@@ -132,6 +132,13 @@ export function PeriodDialog({
                   {over}
                 </p>
               ) : null}
+              {/* One row of headings per advertising on a wide window; each field keeps its own label for a phone and a reader. */}
+              <div className="period-cols" aria-hidden="true">
+                <span>Объявление</span>
+                {FIELDS.map((f) => (
+                  <span key={f.key}>{f.label}</span>
+                ))}
+              </div>
               {direction.ads.map((ad) => (
                 <div key={ad.id} className="period-ad" data-testid="period-ad">
                   <span className="period-ad-title">{ad.title}</span>

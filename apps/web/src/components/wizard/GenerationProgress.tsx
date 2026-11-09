@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckOutlined } from "@ant-design/icons";
+import { CheckOutlined, EditOutlined, GlobalOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 
 export type GenerationKind = "extract" | "generate";
@@ -35,12 +35,20 @@ export function GenerationProgress({ kind }: { kind: GenerationKind }) {
 
   return (
     <div className="surface gen fade-in" role="status" aria-live="polite" data-testid="wizard-busy">
-      <div className="stack" style={{ "--gap": "18px" } as React.CSSProperties}>
-        <div>
-          <h2 className="t-h2">{stage.title}…</h2>
-          <p className="t-small" style={{ marginTop: 6 }}>
-            {stage.lead}
-          </p>
+      <div className="stack" style={{ "--gap": "22px" } as React.CSSProperties}>
+        <div className="gen-head">
+          <span className="gen-mark" aria-hidden="true">
+            {kind === "extract" ? <GlobalOutlined /> : <EditOutlined />}
+          </span>
+          <div>
+            <h2 className="t-h2">{stage.title}…</h2>
+            <p className="t-small" style={{ marginTop: 4 }}>
+              {stage.lead}
+            </p>
+          </div>
+        </div>
+        <div className="gen-bar" aria-hidden="true">
+          <i style={{ width: `${Math.round(((active + 0.5) / stage.steps.length) * 100)}%` }} />
         </div>
         <ol className="gen-steps">
           {stage.steps.map((label, index) => (
@@ -50,11 +58,6 @@ export function GenerationProgress({ kind }: { kind: GenerationKind }) {
             </li>
           ))}
         </ol>
-        <div className="stack" style={{ "--gap": "10px" } as React.CSSProperties} aria-hidden="true">
-          <div className="skeleton" style={{ height: 16, width: "55%" }} />
-          <div className="skeleton" style={{ height: 12, width: "90%" }} />
-          <div className="skeleton" style={{ height: 12, width: "72%" }} />
-        </div>
       </div>
     </div>
   );

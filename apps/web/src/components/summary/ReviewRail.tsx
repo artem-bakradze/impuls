@@ -1,11 +1,11 @@
 "use client";
 
-import { CheckCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled, ClockCircleOutlined } from "@ant-design/icons";
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties, MouseEvent } from "react";
 import type { HistoryItem } from "@/lib/history-view";
 import type { AdsWork } from "@/lib/server/simulation-screen";
-import { noteExpect, noteSeen, noteSentence, noteTitle } from "@/lib/review-note";
+import { leadSentence, noteExpect, noteSeen, noteSentence, noteTitle } from "@/lib/review-note";
 import type { JournalEntry } from "@/lib/service-work";
 import { AgentAvatar } from "../ui/AgentAvatar";
 import { useDayWords } from "../ui/DayWordsContext";
@@ -75,11 +75,17 @@ function Review({ review, reveal, onRollback, onMore }: { review: JournalEntry; 
   return (
     <article className={reveal ? "studio-msg studio-msg-reveal" : "studio-msg"} data-testid="studio-review">
       <div className="studio-bubble">
-        {seen.map((text, i) => (
-          <p key={`seen-${i}`} className="studio-msg-text" style={order()}>
-            {text}
-          </p>
-        ))}
+        {seen.map((text, i) => {
+          // The message opens with its first sentence as a lead: what the service looked at.
+          const [lead, rest] = i === 0 ? leadSentence(text) : ["", text];
+          return (
+            <p key={`seen-${i}`} className="studio-msg-text" style={order()}>
+              {lead !== "" ? <b className="studio-msg-lead">{lead}</b> : null}
+              {lead !== "" && rest !== "" ? " " : null}
+              {rest}
+            </p>
+          );
+        })}
         {review.changes.map((change, i) => {
           const undoable = change.item !== null && !change.reverted && change.item.rollback.kind === "available";
           return (
@@ -98,8 +104,9 @@ function Review({ review, reveal, onRollback, onMore }: { review: JournalEntry; 
           );
         })}
         {expected.length > 0 ? (
-          <p className="studio-msg-text" style={order()}>
-            {expected.join(" ")}
+          <p className="studio-msg-text studio-msg-expect" style={order()}>
+            <ClockCircleOutlined className="studio-msg-expect-icon" aria-hidden="true" />
+            <span>{expected.join(" ")}</span>
           </p>
         ) : null}
       </div>

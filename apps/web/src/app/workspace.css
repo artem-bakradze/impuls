@@ -2,30 +2,18 @@
  * Result-led workspace: white panels on a soft grey canvas, so the answer has a place and the rest steps back.
  * `--text-3` is dark enough for 4.5:1 on the canvas and on the soft fills. The public site and the wizard keep theirs.
  */
-html:has(.app-nav) { background: #f4f4f7; }
+html:has(.app-nav) { background: #f2f3f5; }
 body:has(.app-nav) {
-  --header-h: 72px;
-  --bg: #f4f4f7;
-  --canvas: #f4f4f7;
-  --text: #1d1e27;
-  --text-2: #555968;
-  --text-3: #666a77;
-  --accent: #6553e8;
-  --accent-hover: #5543d4;
-  --accent-soft: #efedff;
-  --accent-ink: #5543d4;
-  --border: #ececf1;
-  --border-strong: #d8d8e2;
-  --surface-2: #f6f6f9;
-  --surface-3: #eeeef3;
-  --panel-border: #e7e7ee;
-  --panel-radius: 20px;
-  --panel-shadow: 0 1px 2px rgba(22, 22, 40, 0.04), 0 12px 32px -20px rgba(22, 22, 40, 0.18);
+  --header-h: 68px;
+  --bg: #f2f3f5;
+  --canvas: #f2f3f5;
+  --panel-border: transparent;
+  --panel-radius: 24px;
+  --panel-shadow: 0 1px 2px rgba(22, 23, 29, 0.04), 0 8px 24px -12px rgba(22, 23, 29, 0.08);
   --shadow-sm: none;
   background: var(--canvas);
   min-height: 100svh;
 }
-body:has(.app-nav)::before { display: none; }
 .panel,
 .workspace .surface {
   background: var(--surface);
@@ -33,21 +21,11 @@ body:has(.app-nav)::before { display: none; }
   border-radius: var(--panel-radius);
   box-shadow: var(--panel-shadow);
 }
-.app-header:has(.app-nav) { background: rgba(255, 255, 255, 0.9); backdrop-filter: saturate(180%) blur(16px); -webkit-backdrop-filter: saturate(180%) blur(16px); border-bottom-color: var(--panel-border); }
-.app-header:has(.app-nav) .app-header-inner { width: calc(100% - 96px); max-width: 1280px; padding-inline: 0; }
-.app-header:has(.app-nav) .app-header-inner { height: 72px; }
-.app-header:has(.app-nav) .brand { font-size: var(--fs-lg); }
-.app-header:has(.app-nav) .brand > svg { width: 34px; height: 34px; }
-.app-header:has(.app-nav) .app-nav { background: none; padding: 0; gap: 28px; border-radius: 0; }
-.app-header:has(.app-nav) .app-nav a { position: relative; padding: 0 2px; height: 72px; border-radius: 0; font-weight: 500; font-size: var(--fs-sm); }
-.app-header:has(.app-nav) .app-nav a[aria-current="page"] { box-shadow: none; color: var(--accent-ink); }
-.app-header:has(.app-nav) .app-nav a[aria-current="page"]::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent); }
+.app-header:has(.app-nav) .brand { font-size: 19px; }
 .app-header .app-nav .nav-icon { display: none; }
-body:has(.app-nav) .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled) { background: var(--accent); box-shadow: none; border-radius: 8px; }
+body:has(.app-nav) .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled) { background: var(--accent); box-shadow: none; border-radius: 12px; }
 body:has(.app-nav) .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):hover { background: var(--accent-hover); transform: none; filter: none; box-shadow: none; }
-body:has(.app-nav) .ant-segmented { background: var(--surface-2); border-radius: 8px; }
-body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px solid var(--border-strong); }
-.workspace .page { width: calc(100% - 96px); max-width: 1280px; padding: 44px 0 80px; }
+.workspace .page { width: calc(100% - 64px); max-width: 1240px; padding: 28px 0 80px; }
 .workspace .page.page-narrow { max-width: 760px; }
 .workspace .t-h1 { font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.035em; }
 .workspace .t-h2 { font-size: var(--fs-lg); font-weight: 600; }
@@ -112,7 +90,7 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
 .workspace .settings-ad-preview { background: var(--surface-2); border-color: var(--border); border-radius: 10px; }
 .workspace .ad-row { padding-top: 0; }
 .workspace .ad-row:hover { background: transparent; }
-.workspace .settings-page .page-head > .ant-btn { font-size: var(--fs-sm); min-height: 40px; padding: 8px 14px; border: 1px solid var(--panel-border); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px rgba(22, 22, 40, 0.04); }
+.workspace .settings-page .page-head > .ant-btn { font-size: 15px; font-weight: 600; min-height: 44px; padding: 8px 18px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); box-shadow: none; }
 
 
 @media (max-width: 1000px) {
@@ -181,11 +159,11 @@ body:has(.app-nav) .ant-segmented-item-selected { box-shadow: none; outline: 1px
 .summary-kpis .kpi.budget-kpi > .budget-bar i { background: var(--accent); animation: none; }
 .summary-kpis .kpi.budget-kpi > .sub { order: 4; }
 
-/* Settings are one calm document, not a dashboard with a side menu. */
+/* Settings are one calm document of cards: the business across, where-and-when and money side by side. */
 .workspace .page.settings-page {
-  max-width: 760px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 44px 24px 80px;
+  padding: 36px 32px 80px;
 }
 @media (max-width: 720px) {
   .workspace .page.settings-page {

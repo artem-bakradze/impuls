@@ -3,7 +3,7 @@
 import { ArrowRightOutlined } from "@ant-design/icons";
 import { Alert, Button, Tooltip } from "antd";
 import { useId } from "react";
-import { Logo } from "./ui/Logo";
+import { LogoMark } from "./ui/Logo";
 
 interface Props {
   errorText: string | null;
@@ -35,7 +35,7 @@ export function LoginCard({ errorText, signInAsDemo }: Props) {
   return (
     <main className="login">
       <section className="login-card surface" aria-labelledby="login-title" data-testid="login-card">
-        <Logo size={32} />
+        <LogoMark size={48} />
         <div className="login-head">
           {/* A no-break space keeps the dash at the end of the first line. */}
           <h1 id="login-title" className="login-title">

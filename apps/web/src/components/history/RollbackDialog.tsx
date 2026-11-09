@@ -1,5 +1,6 @@
 "use client";
 
+import { SafetyCertificateOutlined, UndoOutlined } from "@ant-design/icons";
 import { Alert, Button, Flex, List, Modal, Typography } from "antd";
 import { useState } from "react";
 import { PENDING_TEXT, runWebJob } from "@/lib/client-api";
@@ -108,23 +109,40 @@ export function RollbackDialog({ item, items, names, onClose, run = (body) => ru
   const laterItem = (id: string) => items.find((i) => i.id === id);
 
   return (
-    <Modal open title="Вернуть как было?" onCancel={() => onClose(finished)} footer={footer} destroyOnHidden>
-      <Flex vertical gap={12}>
-        <Typography.Text strong>{item.object}</Typography.Text>
+    <Modal
+      open
+      title={
+        <span className="dialog-title">
+          <span className="dialog-mark" aria-hidden="true">
+            <UndoOutlined />
+          </span>
+          Вернуть как было?
+        </span>
+      }
+      onCancel={() => onClose(finished)}
+      footer={footer}
+      destroyOnHidden
+      className="dialog"
+    >
+      <Flex vertical gap={14}>
+        <p className="dialog-object">{item.object}</p>
         {phase.kind === "confirm" || phase.kind === "running" ? (
           <>
-            <Typography.Text>Что произойдёт:</Typography.Text>
-            <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="rollback-consequences">
-              {item.diff.map((row) => (
-                <li key={row.label}>
-                  {rollbackDiffText(row)}
-                </li>
-              ))}
-              {consequences.map((c) => (
-                <li key={c}>{sentence(c)}</li>
-              ))}
-              <li>Возврат запишется в историю, а бюджет на месяц по-прежнему не будет превышен</li>
-            </ul>
+            <div className="dialog-plate">
+              <p className="dialog-plate-title">Что произойдёт:</p>
+              <ul className="dialog-list" data-testid="rollback-consequences">
+                {item.diff.map((row) => (
+                  <li key={row.label}>{rollbackDiffText(row)}</li>
+                ))}
+                {consequences.map((c) => (
+                  <li key={c}>{sentence(c)}</li>
+                ))}
+              </ul>
+            </div>
+            <p className="dialog-safe">
+              <SafetyCertificateOutlined aria-hidden="true" />
+              Возврат запишется в историю, а бюджет на месяц по-прежнему не будет превышен
+            </p>
           </>
         ) : null}
         {phase.kind === "chain" ? (

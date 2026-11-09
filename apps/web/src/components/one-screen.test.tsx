@@ -148,7 +148,7 @@ const sim = { startedOn: "2026-11-01" };
 const plain = (node: Element | null): string => node?.textContent?.replace(/[  ]/g, " ") ?? "";
 
 describe("one «Реклама» in a simulation (simulation-mode spec «Симуляция как отдельный режим»)", () => {
-  it("puts the assistant's review beside the answer and the player with «Добавить статистику» under the review", () => {
+  it("puts the assistant's review beside the answer and the player with «Добавить статистику» in a strip over both", () => {
     const { container } = render(<SummaryView model={model()} work={work({ sim, lastChange: { text: "Цена перехода +10%", date: "2026-11-11", reason: null, entryId: review.id, historyId: "c1", item } })} simulation={status()} />);
     const player = screen.getByTestId("sim-player");
     expect(plain(player.querySelector("[data-testid=studio-day]"))).toBe("День 11");
@@ -161,9 +161,9 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     expect(screen.getByTestId("studio-disclaimer")).toHaveTextContent("Учебный рынок · деньги не списываются");
     expect([...container.querySelectorAll(".studio-primary")].map((b) => b.textContent)).toEqual(["Добавить статистику"]);
     expect(screen.queryByRole("button", { name: /Прожить/ })).toBeNull();
-    // The player is pressed where its result is read: in the review's column, right under the review.
-    expect(player.parentElement?.className).toBe("brief-aside");
-    expect(player.previousElementSibling).toBe(screen.getByTestId("review-rail"));
+    // The player is a strip over the answer and the review: «Симуляция · День 11», the note, the button and the menu.
+    expect(player.nextElementSibling).toHaveClass("brief-layout");
+    expect(plain(player.querySelector(".studio-day"))).toBe("СимуляцияДень 11");
     // A demo has no real ads: no «Запустить по-настоящему» in the player (demo-login).
     expect(screen.queryByRole("button", { name: "Запустить по-настоящему" })).toBeNull();
     expect(screen.getByTestId("brief")).toBeTruthy();
@@ -194,7 +194,7 @@ describe("one «Реклама» in a simulation (simulation-mode spec «Сим�
     const nextCheck = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16", more: 0 };
     render(<SummaryView model={model()} work={work({ sim, nextCheck, journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [expecting] }] })} simulation={status()} />);
     expect(screen.queryByTestId("data-period")).toBeNull();
-    expect(plain(screen.getByTestId("next-step"))).toBe("Дальшев день 16 сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
+    expect(plain(screen.getByTestId("next-step"))).toBe("Дальшечерез 5 дней · день 16Сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
     const texts = [...screen.getByTestId("studio-review").querySelectorAll(".studio-msg-text")].map((p) => plain(p));
     expect(texts).toEqual(["Сохранил наблюдение и проверю результаты ко дню 15.", "В день 16 проверю, останется ли стоимость обращений с компьютеров ниже цели."]);
     expect(plain(document.body)).not.toMatch(/ноябр/);
@@ -411,7 +411,7 @@ describe("«Реклама» in Direct keeps the calendar and has no player (sim
     const quiet: JournalEntry = { ...review, kind: "quiet", headline: null, paragraphs: ["Посмотрели рекламу — менять ничего не нужно."], changes: [] };
     const lastChange = { text: "Лимит 1 077 ₽", date: "2026-11-10", reason: "Реклама приводит клиентов дешевле цели.", entryId: "2026-11-10:day", historyId: "c9", item: { ...item, id: "c9" } };
     render(<SummaryView model={model({ simulation: null })} work={work({ lastChange, journal: [{ week: 2, from: "2026-11-09", to: "2026-11-15", entries: [quiet] }] })} />);
-    expect(plain(screen.getByTestId("last-change"))).toContain("Последнее изменение · вчераЛимит 1 077 ₽");
+    expect(plain(screen.getByTestId("last-change"))).toContain("Последнее изменение · вчераВернутьЛимит 1 077 ₽");
     expect(screen.getByTestId("studio-review").querySelector(".studio-msg-action")).toBeNull();
   });
 });

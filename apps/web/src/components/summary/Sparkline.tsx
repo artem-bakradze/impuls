@@ -90,8 +90,8 @@ const monotone = (pts: readonly Pt[]): string => {
 };
 
 /**
- * One line: the cost of a lead against its goal. No axes or legend — the brief already answers «сколько сейчас», and
- * this answers «становится лучше или хуже»; a hover, a tap or the arrow keys tell one day's numbers (analytics spec
+ * One line: the cost of a lead against its goal, with a key of the two in its title row and no axes — the brief already
+ * answers «сколько сейчас», and this answers «становится лучше или хуже»; a hover, a tap or the arrow keys tell one day's numbers (analytics spec
  * «Подсказка дня на графике цены»). The SVG stretches to the width; dots, words and the hint are HTML, so they keep
  * their size on a phone.
  */
@@ -162,7 +162,17 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
       onBlur={() => setActive(null)}
     >
       <div className="spark-title" aria-hidden="true">
-        цена обращения по дням
+        <span>Цена обращения по дням</span>
+        <span className="spark-legend">
+          <span>
+            <i className="spark-key-line" />
+            цена
+          </span>
+          <span>
+            <i className="spark-key-goal" />
+            {goalLabel} {formatRub(goal)}
+          </span>
+        </span>
       </div>
       <div
         className="spark-plot"
@@ -185,9 +195,6 @@ export function Sparkline({ points, goal, goalLabel }: { points: readonly TrendP
           {runs.map((run) => (run.length > 1 ? <path key={`a${run[0]?.index}`} d={area(run)} fill="url(#spark-area)" /> : null))}
           {runs.map((run) => (run.length > 1 ? <path key={`l${run[0]?.index}`} className="spark-line" d={path(run)} vectorEffect="non-scaling-stroke" /> : null))}
         </svg>
-        <span className="spark-goal-label" style={{ top: pct(goalY, HEIGHT) }} data-below={goalY < 22 || undefined}>
-          {goalLabel} {formatRub(goal)}
-        </span>
         {active !== null ? <i className="spark-guide" style={{ left: pct(x(active), WIDTH) }} aria-hidden="true" /> : null}
         {runs.flatMap((run) => (run.length === 1 && run[0] && run[0] !== lastSeen ? [<i key={`p${run[0].index}`} className="spark-point" style={{ left: pct(x(run[0].index), WIDTH), top: pct(y(run[0].value), HEIGHT) }} />] : []))}
         {lastSeen ? <i className="spark-dot" style={{ left: pct(x(lastSeen.index), WIDTH), top: pct(y(lastSeen.value), HEIGHT) }} /> : null}

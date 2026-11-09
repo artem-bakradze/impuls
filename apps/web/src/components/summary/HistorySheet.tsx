@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled, ClockCircleOutlined } from "@ant-design/icons";
 import { Drawer } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatLocalDate, formatRub } from "@/lib/format";
@@ -120,7 +120,12 @@ function Entry({ entry, sameDay, onRollback }: { entry: JournalEntry; sameDay: b
                 {p}
               </p>
             ))}
-            {expected.length > 0 ? <p className="studio-msg-text j-expect">{expected.join(" ")}</p> : null}
+            {expected.length > 0 ? (
+              <p className="studio-msg-text studio-msg-expect j-expect">
+                <ClockCircleOutlined className="studio-msg-expect-icon" aria-hidden="true" />
+                <span>{expected.join(" ")}</span>
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -142,9 +147,15 @@ function Section({ section, children }: { section: JournalSection; children: Rea
   const label = section.period ? capitalize(dates) : section.week ? `Неделя ${section.week}` : dates;
   return (
     <section className="j-section" data-week={section.week ?? undefined} aria-label={label}>
+      {/* «Дни 4–6 · разбор в день 7»: the dot between them is drawn as a rule across the sheet. */}
       <div className="j-week" data-testid="journal-week">
-        {section.period ? capitalize(dates) : `${section.week ? `Неделя ${section.week} · ` : ""}${dates}`}
-        {review ? ` · разбор ${words.simulation ? words.on(review) : formatLocalDate(review)}` : ""}
+        <span className="j-week-label">{section.period ? capitalize(dates) : `${section.week ? `Неделя ${section.week} · ` : ""}${dates}`}</span>
+        {review ? (
+          <>
+            <span className="j-week-rule"> · </span>
+            <span className="j-week-review">разбор {words.simulation ? words.on(review) : formatLocalDate(review)}</span>
+          </>
+        ) : null}
       </div>
       {children}
     </section>

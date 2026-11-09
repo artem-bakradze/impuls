@@ -1,6 +1,6 @@
 import { addDays, daysBetween } from "@impuls/core";
 import type { Kopecks, LocalDate } from "@impuls/core";
-import { calendarWords } from "./day-words";
+import { calendarWords, capitalize } from "./day-words";
 import type { DayWords } from "./day-words";
 import { formatRub, plural } from "./format";
 import type { InsightFeedModel } from "./insights-model";
@@ -135,6 +135,30 @@ export const nextStepText = (next: { statement: string; checkOn: LocalDate } | n
   const asked = /^провер(?:яю|ю|яем|им)\s*[,:—-]?\s*/i.exec(statement);
   const lowered = `${statement[0]?.toLowerCase() ?? ""}${statement.slice(1)}`;
   return asked ? `${when} сервис проверит, ${statement.slice(asked[0].length)}` : `${when} сервис проверит, верно ли, что ${lowered}`;
+};
+
+/**
+ * «Дальше» with how far off the check is: a pill «через 4 дня · день 11» (in Direct «через 7 дней · 16 ноября») beside
+ * the label and the sentence without the day: «Сервис проверит, …». A leaf of a calendar with the day read as today's
+ * date, so the day is said as a distance. A relative day («скоро», «сегодня», «завтра») or the next morning's look has no
+ * pill and keeps its word in the sentence. `full` is the whole line, as `nextStepText` says it.
+ */
+export interface NextStep {
+  due: { in: string; day: string } | null;
+  text: string;
+  full: string;
+}
+
+export const nextStep = (next: { statement: string; checkOn: LocalDate } | null, today: LocalDate, words: DayWords = calendarWords): NextStep => {
+  const full = nextStepText(next, today, words);
+  if (next === null || next.checkOn <= addDays(today, 1)) return { due: null, text: capitalize(full), full };
+  const days = daysBetween(today, next.checkOn);
+  const when = words.on(next.checkOn);
+  return {
+    due: { in: `через ${days} ${plural(days, "день", "дня", "дней")}`, day: words.date(next.checkOn) },
+    text: capitalize(full.slice(when.length).trim()),
+    full,
+  };
 };
 
 /** The other open checks under «Дальше»: «Ещё 1 проверка впереди»; null without them. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noteExpect, noteSeen, noteSentence, noteTitle } from "./review-note";
+import { leadSentence, noteExpect, noteSeen, noteSentence, noteTitle } from "./review-note";
 
 describe("the studio's review as a note (simulation-mode spec «Симуляция как отдельный режим»)", () => {
   it("names the review and its day", () => {
@@ -48,5 +48,12 @@ describe("the studio's review as a note (simulation-mode spec «Симуляци
   it("keeps what the service wrote when it opened no checks", () => {
     expect(noteExpect({ expects: ["К 15 ноября проверю расход и стоимость обращения."], checking: [] })).toEqual(["К 15 ноября проверю расход и стоимость обращения."]);
     expect(noteExpect({ expects: [], checking: [] })).toEqual([]);
+  });
+});
+
+describe("the message's lead line", () => {
+  it("takes the first sentence, not a number's comma or an abbreviation's dot", () => {
+    expect(leadSentence("Посмотрел цифры за дни 4–6. Цена обращения составила 530 ₽.")).toEqual(["Посмотрел цифры за дни 4–6.", "Цена обращения составила 530 ₽."]);
+    expect(leadSentence("Доля 1,5 т. д. и всё")).toEqual(["Доля 1,5 т. д. и всё", ""]);
   });
 });

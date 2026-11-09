@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarOutlined, HistoryOutlined, NotificationOutlined, RightOutlined } from "@ant-design/icons";
+import { CalendarOutlined, CaretDownOutlined, ControlOutlined, HistoryOutlined, NotificationOutlined, RightOutlined } from "@ant-design/icons";
 import { addDays, endOfMonth } from "@impuls/core";
 import { Alert, Popover } from "antd";
 import Link from "next/link";
@@ -17,7 +17,7 @@ import type { LastChange } from "@/lib/service-work";
 import { elapsedText, periodReviewText } from "@/lib/simulation-model";
 import { spendCurve } from "@/lib/spend-curve";
 import type { SimulationStatus } from "@/lib/simulation-model";
-import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, moreChecksText, nextStepText } from "@/lib/summary-model";
+import { adsState, adsStateText, goalBadge, goalComparable, goalExplanation, moreChecksText, nextStep } from "@/lib/summary-model";
 import type { SummaryModel } from "@/lib/summary-model";
 import { RollbackDialog } from "../history/RollbackDialog";
 import { isStepping, SimulationPlayer } from "../simulation/SimulationPlayer";
@@ -46,22 +46,27 @@ const relativeDay = (date: string, today: string, words: DayWords): string => (d
 const undoable = (change: LastChange): change is LastChange & { item: HistoryItem } => change.item !== null && !change.item.reverted && change.item.rollback.kind === "available";
 
 /**
- * The service's last change, named as such with its day, in the history's words, why in one line, and «Вернуть» for a
- * reversible one (change-history spec «Последнее изменение на главном экране»).
+ * The service's last change as a card: named as such with its day and «Вернуть» for a reversible one, then the change in
+ * the history's words and why in one line (change-history spec «Последнее изменение на главном экране»).
  */
 function ChangeItem({ change, today, words, onRollback, testId }: { change: LastChange; today: string; words: DayWords; onRollback: (item: HistoryItem) => void; testId: string }) {
   return (
     <div className="brief-change" data-testid={testId}>
-      <span className="brief-when">Последнее изменение · {relativeDay(change.date, today, words)}</span>
-      <div className="brief-change-line">
+      <span className="brief-change-icon" aria-hidden="true">
+        <ControlOutlined />
+      </span>
+      <div className="brief-change-body">
+        <div className="brief-change-head">
+          <span className="brief-when">Последнее изменение · {relativeDay(change.date, today, words)}</span>
+          {undoable(change) ? (
+            <button type="button" className="brief-undo" onClick={() => onRollback(change.item)} aria-label={`Вернуть как было: ${change.text}`}>
+              Вернуть
+            </button>
+          ) : null}
+        </div>
         <span className="brief-what">{change.text}</span>
-        {undoable(change) ? (
-          <button type="button" className="brief-action" onClick={() => onRollback(change.item)} aria-label={`Вернуть как было: ${change.text}`}>
-            Вернуть
-          </button>
-        ) : null}
+        {change.reason ? <p className="brief-reason">{words.text(change.reason)}</p> : null}
       </div>
-      {change.reason ? <p className="brief-reason">{words.text(change.reason)}</p> : null}
     </div>
   );
 }
@@ -153,7 +158,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
   // The month's money by day against the even plan, from the period's first day to the month's end (analytics spec «Сводка»).
   const curve = firstDay || model.dataPeriod === undefined ? null : spendCurve(model.daily ?? [], model.dataPeriod.from, endOfMonth(model.dataPeriod.from), model.monthBudget);
   // What the service does next, while the ads run and there is data (analytics spec «Сводка»).
-  const next = firstDay || state.kind === "paused" ? null : nextStepText(work.nextCheck, today, words);
+  const next = firstDay || state.kind === "paused" ? null : nextStep(work.nextCheck, today, words);
   const moreChecks = work.nextCheck === null ? null : moreChecksText(work.nextCheck.more);
 
   const status = sim.status;
@@ -165,6 +170,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
     <DayWordsContext.Provider value={words}>
       <div className="page brief-page">
         <h1 className="sr-only">Реклама</h1>
+        {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} /> : null}
         <div className="brief-layout" data-side>
           <div className="brief" data-testid={firstDay ? "first-day" : "brief"}>
             <div className="brief-card panel">
@@ -196,6 +202,7 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
                   )}
                   {badge !== null ? (
                     <span className="brief-badge" data-testid="goal-badge">
+                      <CaretDownOutlined aria-hidden="true" />
                       {badge}
                     </span>
                   ) : null}
@@ -205,19 +212,24 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
 
               <div className="brief-metrics">
                 <div className="brief-metric">
+                  <span className="brief-label">Обращения</span>
                   <span className="brief-value">{formatCount(model.leads.value)}</span>
-                  <span className="brief-label">{plural(model.leads.value, "обращение", "обращения", "обращений")}</span>
                 </div>
                 <div className="brief-metric brief-budget" data-testid="budget-tile">
-                  <span className="brief-value">{formatRub(model.spentMonth)}</span>
-                  <span className="brief-label">из {formatRub(model.monthBudget)}</span>
+                  <span className="brief-label">Потрачено</span>
+                  <span className="brief-value-line">
+                    <span className="brief-value">{formatRub(model.spentMonth)}</span> <span className="brief-of">из {formatRub(model.monthBudget)}</span>
+                  </span>
                 </div>
               </div>
-              {curve !== null ? <SpendChart curve={curve} tone={budgetTone} /> : null}
-              {/* The pace of the money against the even plan in words, under the sum it is about (analytics spec «Сводка»). */}
-              <div className="brief-pace">
-                <BudgetPaceChip model={model} firstDay={firstDay} />
-              </div>
+              {/* The pace of the money against the even plan in words, under the line it is about (analytics spec «Сводка»). */}
+              {curve !== null ? (
+                <SpendChart curve={curve} tone={budgetTone} pace={<BudgetPaceChip model={model} firstDay={firstDay} />} />
+              ) : (
+                <div className="brief-pace">
+                  <BudgetPaceChip model={model} firstDay={firstDay} />
+                </div>
+              )}
 
               {exception !== null ? (
                 <div className="brief-exception" data-tone={exception.tone} data-testid="brief-exception">
@@ -240,14 +252,24 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
               ) : null}
 
               {next !== null ? (
-                <p className="brief-next" data-testid="next-step" title={next}>
-                  <CalendarOutlined className="brief-next-icon" aria-hidden="true" />
-                  <span className="brief-next-label">Дальше</span>
+                <div className="brief-next" data-testid="next-step" title={next.full}>
+                  <span className="brief-next-icon" aria-hidden="true">
+                    <CalendarOutlined />
+                  </span>
                   <span className="brief-next-body">
-                    <span className="brief-next-text">{next}</span>
+                    <span className="brief-next-head">
+                      <span className="brief-next-label">Дальше</span>
+                      {/* How far off the check is, not a date that reads as today's. */}
+                      {next.due !== null ? (
+                        <span className="brief-next-due">
+                          {next.due.in} · {next.due.day}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="brief-next-text">{next.text}</span>
                     {moreChecks !== null ? <span className="brief-next-more">{moreChecks}</span> : null}
                   </span>
-                </p>
+                </div>
               ) : null}
 
               {error !== null ? <Alert className="brief-error" type="error" showIcon title={error} /> : null}
@@ -277,10 +299,9 @@ export function SummaryView({ model, work, focusWeek = null, simulation = null }
             </div>
           </div>
 
-          {/* The review, and in a simulation the player under it: the next step is pressed where its result is read. */}
+          {/* The service's review beside the answer on a wide screen, under it on a narrow one. */}
           <div className="brief-aside">
             <ReviewRail review={review} thinking={thinking} steps={stepping ? (status?.reviewSteps ?? []) : []} reveal={review !== null && review.id !== openedReview.current} onRollback={setRollback} onMore={openHistory} />
-            {status !== null ? <SimulationPlayer status={status} busy={sim.busy} error={sim.error} act={sim.act} /> : null}
           </div>
         </div>
 

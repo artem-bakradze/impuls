@@ -1,6 +1,6 @@
 "use client";
 
-import { ExperimentOutlined, MoreOutlined } from "@ant-design/icons";
+import { ExperimentOutlined, LoadingOutlined, MoreOutlined, PlusOutlined, RedoOutlined } from "@ant-design/icons";
 import { Alert, Button, Dropdown, Modal } from "antd";
 import type { MenuProps } from "antd";
 import { useState } from "react";
@@ -13,11 +13,11 @@ import { PeriodDialog } from "./PeriodDialog";
 export const isStepping = (status: SimulationStatus): boolean => status.status === "stepping" || status.agentTurn;
 
 /**
- * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»), under the review on a
- * wide screen and over the answer on a narrow one: the day, one main button «Добавить статистику» that opens the window
- * of the next period and also says when a period is being reviewed or broke off, and at its foot the training market's
- * note. «Начать заново» and «Новая кампания» are in its menu; there is no «Запустить по-настоящему», a demo has no real
- * ads (demo-login). Time moves only by the owner's periods.
+ * The simulation's player on «Реклама» (simulation-mode spec «Симуляция как отдельный режим»): a dark strip over the
+ * answer and the review on every screen — «Симуляция · День N», the training market's note, one main button «Добавить
+ * статистику» that opens the window of the next period and also says when a period is being reviewed or broke off, and
+ * the menu with «Начать заново» and «Новая кампания». There is no «Запустить по-настоящему», a demo has no real ads
+ * (demo-login). Time moves only by the owner's periods.
  */
 export function SimulationPlayer({
   status,
@@ -43,6 +43,13 @@ export function SimulationPlayer({
       content: "Цифры, история и объявления симуляции удалятся вместе с описанием бизнеса. Вы заново пройдёте подготовку: сайт, описание бизнеса, бюджет и объявления.",
       okText: "Начать новую кампанию",
       cancelText: "Отмена",
+      icon: (
+        <span className="dialog-mark dialog-mark-warn" aria-hidden="true">
+          <PlusOutlined />
+        </span>
+      ),
+      className: "dialog dialog-confirm",
+      okButtonProps: { className: "dialog-dark" },
       onOk: () => act({ action: "new_campaign" }),
     });
   const menu: MenuProps = {
@@ -58,35 +65,46 @@ export function SimulationPlayer({
   const primaryLabel = status.failed ? "Продолжить расчёт" : stepping ? "Сервис разбирает…" : "Добавить статистику";
   const primary = () => (status.failed ? run({ action: "continue" }) : setPeriodOpen(true));
 
+  const primaryIcon = status.failed ? <RedoOutlined aria-hidden="true" /> : stepping ? <LoadingOutlined aria-hidden="true" /> : <PlusOutlined aria-hidden="true" />;
+
   return (
-    <section className="sim-player panel" aria-label="Симуляция" data-testid="sim-player">
+    <section className="sim-player" aria-label="Симуляция" data-testid="sim-player">
       {modalHolder}
-      <div className="sim-player-head">
+      <div className="sim-player-main">
         <div className="studio-day">
+          <span className="studio-day-label">Симуляция</span>
           <span className="studio-day-num" data-testid="studio-day">
             День {status.day}
           </span>
         </div>
-        <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново, новая кампания" className="studio-menu" />
-        </Dropdown>
-      </div>
-      <div className="sim-player-actions">
-        <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
-          {primaryLabel}
-        </button>
-      </div>
-      {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
-      <div className="sim-player-foot">
         <p className="studio-disclaimer" data-testid="studio-disclaimer">
           <ExperimentOutlined aria-hidden="true" /> Учебный рынок · деньги не списываются
         </p>
       </div>
+      <div className="sim-player-actions">
+        <button type="button" className="studio-primary" onClick={primary} disabled={stepping || busy !== null}>
+          {primaryIcon}
+          {primaryLabel}
+        </button>
+        <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+          <Button type="text" icon={<MoreOutlined aria-hidden="true" />} aria-label="Ещё: начать заново, новая кампания" className="studio-menu" />
+        </Dropdown>
+      </div>
+      {error !== null ? <Alert className="studio-alert" type="error" showIcon title={error} /> : null}
 
       {periodOpen ? <PeriodDialog status={status} onClose={() => setPeriodOpen(false)} onSend={sendPeriod} /> : null}
       <Modal
         open={restartOpen}
-        title="Начать симуляцию заново?"
+        title={
+          <span className="dialog-title">
+            <span className="dialog-mark dialog-mark-warn" aria-hidden="true">
+              <RedoOutlined />
+            </span>
+            Начать симуляцию заново?
+          </span>
+        }
+        className="dialog"
+        okButtonProps={{ className: "dialog-dark" }}
         onCancel={() => setRestartOpen(false)}
         okText="Начать заново"
         cancelText="Отмена"

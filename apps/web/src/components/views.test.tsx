@@ -136,7 +136,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(plain(screen.getByTestId("goal-line"))).toBe("за обращение · цель 300 ₽");
     expect(container.querySelector(".brief-number")).toHaveTextContent("340 ₽");
     expect(container.querySelector(".brief-number")).toHaveAttribute("data-tone", "danger");
-    expect(plain(screen.getByTestId("budget-tile"))).toContain("6 300 ₽из 15 000 ₽");
+    expect(plain(screen.getByTestId("budget-tile"))).toBe("Потрачено6 300 ₽ из 15 000 ₽");
     expect(screen.queryByTestId("shown-ads")).toBeNull();
     expect(screen.queryByTestId("agent-journal")).toBeNull();
     expect(screen.getByRole("button", { name: /Объявления/ })).toHaveTextContent("0");
@@ -233,7 +233,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     const last = { text: "Поднял цену перехода с компьютеров на 10%", date: "2026-10-26", reason: "С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.", entryId: "e1", historyId: "c1", item: rollbackItem };
     render(<SummaryView model={summary()} work={work({ lastChange: last, recentChanges: [last] })} />);
     const line = screen.getByTestId("last-change");
-    expect(plain(line)).toContain("Последнее изменение · вчераПоднял цену перехода с компьютеров на 10%Вернуть");
+    expect(plain(line)).toContain("Последнее изменение · вчераВернутьПоднял цену перехода с компьютеров на 10%");
     expect(plain(line)).toContain("С компьютеров получено 3 обращения по 414 ₽ при цели 1 000 ₽.");
     expect(plain(line)).not.toMatch(/клик/i);
     fireEvent.click(within(line).getByRole("button", { name: "Вернуть как было: Поднял цену перехода с компьютеров на 10%" }));
@@ -288,9 +288,12 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     render(<SummaryView model={summary({ monthBudget: 3_000_000, spentMonth: 614_600, budgetPlan: 900_000, budgetForecast: null, daily })} work={work()} />);
     expect(screen.queryByTestId("budget-plan")).toBeNull();
     const chart = screen.getByTestId("spend-chart");
-    expect(chart).toHaveAttribute("role", "img");
-    expect(chart.getAttribute("aria-label")?.replace(/[\u00a0\u202f]/g, " ")).toBe("Потрачено 6 146 ₽ из 30 000 ₽. По ровному плану к 27 октября было бы 26 129 ₽.");
-    expect(plain(chart)).toBe("план1 октября31 октября");
+    const plate = chart.querySelector(".spend-plate");
+    expect(plate).toHaveAttribute("role", "img");
+    expect(plate?.getAttribute("aria-label")?.replace(/[\u00a0\u202f]/g, " ")).toBe("Потрачено 6 146 ₽ из 30 000 ₽. По ровному плану к 27 октября было бы 26 129 ₽.");
+    // The plan named on its line, the last day at the spent dot, the period's days under it with the pace between them.
+    expect(plain(plate)).toBe("ровный план27 октября");
+    expect(plain(chart.querySelector(".spend-axis"))).toBe("1 октябрятратим на 32% меньше плана31 октября");
     // The spent dot stands under the plan's dot on the same day: the gap is the pace (20 000 ₽ of 30 000 ₽ apart).
     const dot = chart.querySelector<HTMLElement>(".spend-dot");
     const planDot = chart.querySelector<HTMLElement>(".spend-plan-dot");
@@ -441,7 +444,7 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
     expect(second?.querySelector(".j-avatar")).not.toBeNull();
     expect(plain(second?.querySelector(".j-msg-who") ?? null)).toBe("Импульс · разбор недели");
     const bubble = second?.querySelector(".j-bubble");
-    expect([...(bubble?.children ?? [])].map((part) => part.className)).toEqual(["j-changes", "studio-msg-text", "j-more", "studio-msg-text", "studio-msg-text j-expect"]);
+    expect([...(bubble?.children ?? [])].map((part) => part.className)).toEqual(["j-changes", "studio-msg-text", "j-more", "studio-msg-text", "studio-msg-text studio-msg-expect j-expect"]);
     expect(bubble?.querySelector(".studio-msg-action [aria-label]")).toHaveAttribute("aria-label", "сделано");
     expect(plain(bubble?.querySelector(".j-more summary") ?? null)).toBe("Читать дальше");
     expect([...(bubble?.querySelectorAll(":scope > .studio-msg-text") ?? [])].map((p) => plain(p))).toEqual([
@@ -486,16 +489,23 @@ describe("«Реклама» — один ответ (analytics spec «Свод�
   it("titles the chart as the price of a lead by day", () => {
     const daily = ["2026-10-25", "2026-10-26", "2026-10-27"].map((date) => ({ date, leads: 2, spend: 60_000, decision: false }));
     render(<SummaryView model={summary({ daily })} work={work()} />);
-    expect(screen.getByTestId("cost-chart")).toHaveTextContent("цена обращения по дням");
+    expect(screen.getByTestId("cost-chart")).toHaveTextContent("Цена обращения по дням");
+    // The key of the two lines stands in the title row: the price and the goal.
+    expect(plain(screen.getByTestId("cost-chart").querySelector(".spark-legend"))).toBe("ценацель 300 ₽");
   });
 
   it("says what the service does next: the nearest check, or tomorrow morning's look", () => {
     const nextCheck = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-03", more: 1 };
     const { unmount } = render(<SummaryView model={summary()} work={work({ nextCheck })} />);
-    expect(plain(screen.getByTestId("next-step"))).toBe("Дальше3 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже целиЕщё 1 проверка впереди");
+    // How far off the check is by the label, then the sentence without the day; the whole line is its title.
+    const step = screen.getByTestId("next-step");
+    expect(plain(step.querySelector(".brief-next-head"))).toBe("Дальшечерез 7 дней · 3 ноября");
+    expect(plain(step.querySelector(".brief-next-text"))).toBe("Сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
+    expect(plain(step.querySelector(".brief-next-more"))).toBe("Ещё 1 проверка впереди");
+    expect(step).toHaveAttribute("title", "3 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели");
     unmount();
     const { unmount: again } = render(<SummaryView model={summary()} work={work()} />);
-    expect(plain(screen.getByTestId("next-step"))).toBe("Дальшезавтра утром сервис снова посмотрит рекламу");
+    expect(plain(screen.getByTestId("next-step"))).toBe("ДальшеЗавтра утром сервис снова посмотрит рекламу");
     again();
     // Nothing to promise on a pause or before the first data.
     const { unmount: paused } = render(<SummaryView model={summary({ state: "paused" })} work={work()} />);

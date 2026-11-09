@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { mapJobState } from "./job-state";
 import { loginErrorMessage } from "./login-error";
-import { adsState, adsStateText, budgetPlan, compareText, goalBadge, goalExplanation, moreChecksText, nextStepText, observedDaily, goalLine, moderationText } from "./summary-model";
+import { simulationWords } from "./day-words";
+import { adsState, adsStateText, budgetPlan, compareText, goalBadge, goalExplanation, moreChecksText, nextStep, nextStepText, observedDaily, goalLine, moderationText } from "./summary-model";
 import { formatRange, formatRub } from "./format";
 
 const plain = (text: string) => text.replace(/ /g, " ");
@@ -102,6 +103,25 @@ describe("what the numbers cover and what comes next (analytics spec «Свод�
     expect(moreChecksText(1)).toBe("Ещё 1 проверка впереди");
     expect(moreChecksText(3)).toBe("Ещё 3 проверки впереди");
     expect(moreChecksText(0)).toBeNull();
+  });
+
+  it("says how far off a check is, not a date that reads as today's, and the rest as a sentence", () => {
+    const check = { statement: "Проверяю, останется ли стоимость обращений с компьютеров ниже цели.", checkOn: "2026-11-16" };
+    expect(nextStep(check, "2026-11-09")).toEqual({
+      due: { in: "через 7 дней", day: "16 ноября" },
+      text: "Сервис проверит, останется ли стоимость обращений с компьютеров ниже цели",
+      full: "16 ноября сервис проверит, останется ли стоимость обращений с компьютеров ниже цели",
+    });
+    // In a simulation on the morning of day 7 a check of day 11 is four days off, as the player counts.
+    const guess = { statement: "Высокая стоимость обращений в поиске связана с запросом «фото».", checkOn: "2026-12-11" };
+    expect(nextStep(guess, "2026-12-07", simulationWords("2026-12-01"))).toMatchObject({
+      due: { in: "через 4 дня", day: "день 11" },
+      text: "Сервис проверит, верно ли, что высокая стоимость обращений в поиске связана с запросом «фото»",
+    });
+    expect(nextStep({ ...check, checkOn: "2026-11-11" }, "2026-11-09").due?.in).toBe("через 2 дня");
+    // Tomorrow and the next morning's look keep their word in the sentence, with no pill.
+    expect(nextStep({ ...check, checkOn: "2026-11-10" }, "2026-11-09")).toMatchObject({ due: null, text: "Завтра сервис проверит, останется ли стоимость обращений с компьютеров ниже цели" });
+    expect(nextStep(null, "2026-11-09")).toMatchObject({ due: null, text: "Завтра утром сервис снова посмотрит рекламу" });
   });
 
   it("falls back to the next morning's look without open checks", () => {

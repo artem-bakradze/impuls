@@ -45,14 +45,22 @@ const LEADS: Record<number, string> = {
   2: "По этой карточке мы напишем объявления. Чего не нашли, не придумываем — допишите сами.",
 };
 
-/** One progress indicator: three segments, read together with «Шаг N из 3». */
+/** The steps' short names under their segments; «Шаг N из 3» says the same to a screen reader. */
+const STEP_NAMES = ["Где вас найти", "Что мы поняли", "Объявления и запуск"] as const;
+
+/** One progress indicator: three labelled segments, read together with «Шаг N из 3». */
 function Progress({ step }: { step: number }) {
   return (
-    <div className="steps-bar" aria-hidden="true">
+    <ol className="steps-bar" aria-hidden="true">
       {WIZARD_STEPS.map((title, index) => (
-        <i key={title} data-state={index + 1 < step ? "done" : index + 1 === step ? "current" : "todo"} />
+        <li key={title} data-state={index + 1 < step ? "done" : index + 1 === step ? "current" : "todo"}>
+          <i />
+          <span>
+            {index + 1} · {STEP_NAMES[index]}
+          </span>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 

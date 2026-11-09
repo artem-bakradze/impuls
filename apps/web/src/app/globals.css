@@ -3,37 +3,37 @@
  * Tokens live here and feed the Ant Design theme (components/Providers.tsx), so custom and library parts match.
  */
 :root {
-  --font-sans: var(--font-golos), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-onest), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-  --bg: #f7f7fa;
+  --bg: #f2f3f5;
   --surface: #ffffff;
-  --surface-2: #fafafc;
-  --surface-3: #f2f2f6;
-  --border: #ebebf0;
-  --border-strong: #d9d9e1;
+  --surface-2: #f7f7f9;
+  --surface-3: #eef0f4;
+  --border: #e4e6eb;
+  --border-strong: #dadce3;
 
-  --text: #121217;
-  --text-2: #4f4f5c;
-  --text-3: #6b6b78;
+  --text: #16171d;
+  --text-2: #4b4f5c;
+  --text-3: #6a6f7c;
 
-  --accent: #5646f2;
-  --accent-hover: #4434df;
-  --accent-soft: #efedfe;
-  --accent-ring: rgba(86, 70, 242, 0.18);
-  --accent-ink: #3a2cc4;
+  --accent: #5a48f0;
+  --accent-hover: #4a38e0;
+  --accent-soft: #f1effe;
+  --accent-ring: rgba(90, 72, 240, 0.18);
+  --accent-ink: #3f2fd0;
   /* The brand gradient: progress, the live parts and the primary action; never under body text. */
-  --grad-accent: linear-gradient(90deg, #5646f2 0%, #624bdf 55%, #6650d8 100%);
+  --grad-accent: linear-gradient(90deg, #5a48f0 0%, #624bdf 55%, #6650d8 100%);
 
-  --success: #0c7c55;
+  --success: #0e7a54;
   --success-soft: #e6f5ee;
-  --warning: #a45106;
-  --warning-soft: #fdf1e1;
+  --warning: #a04a05;
+  --warning-soft: #fdf1e4;
   --danger: #c8261b;
   --danger-soft: #fdeceb;
 
   --radius-sm: 8px;
   --radius: 12px;
-  --radius-lg: 20px;
+  --radius-lg: 22px;
   --shadow-xs: 0 1px 2px rgba(18, 18, 23, 0.04);
   --shadow-sm: 0 1px 1px rgba(18, 18, 23, 0.03), 0 4px 14px -4px rgba(18, 18, 23, 0.06);
   --shadow-md: 0 1px 2px rgba(18, 18, 23, 0.04), 0 12px 32px -10px rgba(18, 18, 23, 0.12);
@@ -48,7 +48,7 @@
   --fs-2xl: 36px;
   --fs-3xl: 44px;
 
-  --header-h: 60px;
+  --header-h: 68px;
   --tabbar-h: 64px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -70,26 +70,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/*
- * A soft aurora at the top of every screen: light enough to stay behind the content, enough to make the product feel
- * alive. Fixed, so it does not scroll away with long feeds.
- */
-/* The page colour is on html only, so the aurora below (z-index −1) is painted above it. */
-body {
-  background: transparent;
-}
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 520px;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(600px 280px at 12% -60px, rgba(124, 109, 255, 0.16), transparent 70%),
-    radial-gradient(520px 260px at 88% -40px, rgba(92, 200, 255, 0.13), transparent 70%),
-    radial-gradient(420px 220px at 55% -80px, rgba(255, 140, 200, 0.08), transparent 70%);
-}
+/* One flat, calm ground on every screen; panels stand on it with a soft shadow. */
 
 a {
   color: var(--accent);
@@ -512,36 +493,46 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: saturate(180%) blur(18px);
   -webkit-backdrop-filter: saturate(180%) blur(18px);
-  border-bottom: 1px solid rgba(18, 18, 23, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 .app-header-inner {
   height: var(--header-h);
-  max-width: 1080px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 32px;
   display: flex;
   align-items: center;
   gap: 24px;
 }
+/* «Выйти»: a quiet framed button with its icon, as in the header of the new look. */
+.app-header-end .ant-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 500;
+}
 /* Sections as one capsule with the current one raised: the place in the product is always obvious. */
 .app-nav {
   display: flex;
-  gap: 2px;
+  gap: 4px;
   margin: 0 auto;
   padding: 4px;
-  border-radius: 14px;
-  background: rgba(18, 18, 23, 0.04);
+  border-radius: 12px;
+  background: var(--bg);
 }
 .app-nav a {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
-  padding: 0 14px;
-  border-radius: 10px;
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 9px;
   color: var(--text-2);
   text-decoration: none;
   font-size: var(--fs-sm);
@@ -554,7 +545,8 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 .app-nav a[aria-current="page"] {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 2px rgba(18, 18, 23, 0.06), 0 2px 8px -2px rgba(18, 18, 23, 0.08);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(22, 23, 29, 0.08);
 }
 .app-nav a[aria-current="page"] .nav-icon {
   color: var(--accent);
@@ -606,7 +598,11 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   .app-nav a[aria-current="page"] {
     background: transparent;
     box-shadow: none;
-    color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .app-header-end .ant-btn {
+    border: 0;
+    padding: 0 10px;
   }
   .app-nav .nav-icon {
     font-size: var(--fs-lg);
@@ -630,13 +626,15 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 }
 .login-card {
   width: 100%;
-  max-width: 420px;
-  padding: 32px;
+  max-width: 460px;
+  padding: 44px 40px 40px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  text-align: center;
+  align-items: flex-start;
+  gap: 28px;
+  text-align: left;
+  border-radius: 28px;
+  box-shadow: 0 1px 2px rgba(22, 23, 29, 0.04), 0 24px 48px -24px rgba(22, 23, 29, 0.16);
 }
 @media (max-width: 720px) {
   .login {
@@ -654,11 +652,22 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 }
 .login-title {
   margin: 0;
-  font-size: var(--fs-xl);
-  line-height: 1.15;
-  letter-spacing: -0.025em;
-  font-weight: 650;
+  font-size: 34px;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-weight: 700;
   text-wrap: balance;
+}
+.login-head .t-lead {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.login-actions .ant-btn-lg {
+  height: 54px;
+  border-radius: 14px;
+  font-size: var(--fs-md);
 }
 .login-actions {
   width: 100%;
@@ -673,16 +682,15 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   justify-content: center;
   gap: 10px;
   width: 100%;
-  height: 40px;
+  height: 54px;
   padding: 0 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--text);
+  color: var(--text-3);
   font: inherit;
-  font-size: var(--fs-sm);
+  font-size: 16px;
   font-weight: 500;
-  opacity: 0.5;
   cursor: not-allowed;
 }
 .google-btn:focus-visible {
@@ -725,84 +733,126 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 /* ---------- Wizard ---------- */
 
 .wizard {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 28px 24px 120px;
+  padding: 36px 24px 0;
 }
 @media (max-width: 720px) {
   .wizard {
-    padding: 16px 16px 120px;
+    padding: 16px 16px 0;
   }
 }
+/* Three labelled segments: the step's place in the preparation and its name. */
 .steps-bar {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 36px;
+  padding: 0;
+  list-style: none;
 }
-.steps-bar > i {
+.steps-bar > li {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.steps-bar > li > i {
   position: relative;
-  height: 6px;
+  height: 4px;
   border-radius: 99px;
-  background: rgba(18, 18, 23, 0.07);
+  background: var(--border-strong);
   overflow: hidden;
 }
-/* Each segment fills from the left with the brand gradient; the current one fills as the step opens. */
-.steps-bar > i::after {
+/* Each segment fills from the left with the accent; the current one fills as the step opens. */
+.steps-bar > li > i::after {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--grad-accent);
+  background: var(--accent);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.6s var(--ease);
 }
-.steps-bar > i[data-state="done"]::after,
-.steps-bar > i[data-state="current"]::after {
+.steps-bar > li[data-state="done"] > i::after,
+.steps-bar > li[data-state="current"] > i::after {
   transform: scaleX(1);
 }
-.steps-bar > i[data-state="current"]::after {
+.steps-bar > li[data-state="current"] > i::after {
   animation: bar-grow 0.7s var(--ease) both;
 }
+.steps-bar > li[data-state="done"] {
+  color: var(--text-2);
+}
+.steps-bar > li[data-state="current"] {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.steps-bar > li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .step-head {
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 .step-head .t-h1 {
-  margin-top: 10px;
+  margin: 0;
+  font-size: clamp(30px, 5vw, 38px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
 }
-/* «Шаг 2 из 6» as a small chip over the title. */
+/* «Шаг 2 из 3» is read by a screen reader; the labelled segments say it to the eye. */
 .step-head .t-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-  letter-spacing: 0.06em;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .step-head .t-lead {
-  margin-top: 8px;
+  margin-top: 12px;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--text-2);
 }
+.wizard .surface {
+  border: 0;
+  border-radius: 22px;
+  box-shadow: 0 1px 2px rgba(22, 23, 29, 0.04);
+}
+.wizard .surface-pad {
+  padding: 28px;
+}
+/* The buttons on a white bar across the window, pinned to its foot. */
 .wizard-footer {
   position: sticky;
   bottom: 0;
   z-index: 20;
-  margin-top: 20px;
-  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  margin-top: 40px;
+  padding: 14px 0 calc(14px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  /* The bar and its top rule are shadows across the window: a shadow never widens the page. */
+  box-shadow:
+    0 0 0 100vmax rgba(255, 255, 255, 0.96),
+    0 -1px 0 100vmax var(--border);
+  clip-path: inset(-1px -100vmax 0);
 }
 .wizard-footer-inner {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px;
-  border-radius: 18px;
-  background: var(--surface);
-  backdrop-filter: saturate(180%) blur(16px);
-  -webkit-backdrop-filter: saturate(180%) blur(16px);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-md);
+}
+.wizard-footer .ant-btn-lg {
+  height: 52px;
+  padding: 0 24px;
+  border-radius: 14px;
+  font-size: 16px;
 }
 .wizard-footer-inner .spacer {
   flex: 1;
@@ -910,9 +960,9 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 /* Ant Design's checkbox drops `data-checked`, so its own «checked» class is styled the same way. */
 .choice[data-checked="true"],
 .choice.ant-checkbox-wrapper-checked {
-  border-color: rgba(86, 70, 242, 0.55);
+  border-color: rgba(90, 72, 240, 0.55);
   background: linear-gradient(135deg, #f4f2ff 0%, #ffffff 70%);
-  box-shadow: 0 0 0 3px var(--accent-ring), 0 8px 20px -12px rgba(86, 70, 242, 0.5);
+  box-shadow: 0 0 0 3px var(--accent-ring), 0 8px 20px -12px rgba(90, 72, 240, 0.5);
 }
 .choice-icon {
   flex: none;
@@ -946,14 +996,14 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   flex-wrap: wrap;
 }
 .preset {
-  height: 32px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 16px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 550;
+  font-size: 14.5px;
+  font-weight: 500;
   color: var(--text-2);
   cursor: pointer;
 }
@@ -963,29 +1013,26 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 .preset:hover {
   border-color: var(--border-strong);
   color: var(--text);
-  transform: translateY(-1px);
 }
 .preset[aria-pressed="true"] {
-  border-color: transparent;
-  color: #fff;
-  background: var(--grad-accent);
-  box-shadow: 0 6px 16px -8px rgba(86, 70, 242, 0.6);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font-weight: 600;
 }
 .forecast {
   position: relative;
-  overflow: hidden;
-  padding: 22px 24px;
-  border-radius: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
   color: var(--text);
-  border: 1px solid rgba(86, 70, 242, 0.16);
-  background:
-    radial-gradient(420px 220px at 100% 0%, rgba(124, 109, 255, 0.18), transparent 70%),
-    radial-gradient(300px 180px at 0% 100%, rgba(92, 200, 255, 0.12), transparent 70%),
-    var(--surface);
-  animation: fadeIn 0.4s var(--ease) both;
+  background: var(--surface-2);
 }
 .forecast .t-eyebrow {
-  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 .forecast .big {
   font-size: var(--fs-3xl);
@@ -999,33 +1046,71 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
 
 /* Generation progress */
 .gen {
-  padding: 22px;
+  padding: 34px 36px;
+  border-radius: 24px;
+}
+.gen-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.gen-head .t-h2 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.gen-mark {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 24px;
+}
+.gen-bar {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.gen-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.6s var(--ease);
 }
 .gen-steps {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: 4px;
 }
 .gen-steps li {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: var(--fs-sm);
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 16px;
   color: var(--text-3);
-  transition: color 0.3s var(--ease);
+  transition: color 0.3s var(--ease), background 0.3s var(--ease);
 }
 .gen-steps li[data-state="active"] {
+  background: #f7f6ff;
   color: var(--text);
-  font-weight: 550;
+  font-weight: 600;
 }
 .gen-steps li[data-state="done"] {
   color: var(--text-2);
 }
 .gen-dot {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: 2px solid var(--border-strong);
   display: grid;
@@ -1035,13 +1120,14 @@ input, textarea, [role="combobox"] { scroll-margin-block: 180px 140px; }
   color: #fff;
 }
 li[data-state="active"] .gen-dot {
-  border-color: var(--accent);
-  border-top-color: transparent;
+  border: 3px solid #dcd8fc;
+  border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
 li[data-state="done"] .gen-dot {
-  background: var(--grad-accent);
+  background: var(--success-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230e7a54' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5 12.5 10 17 19 7'/%3E%3C/svg%3E") center / 15px no-repeat;
   border-color: transparent;
+  color: transparent;
   animation: pop 0.3s var(--ease) both;
 }
 @keyframes pop {
@@ -1238,7 +1324,7 @@ li[data-state="done"] .gen-dot {
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #efedfe, #e6f4ff);
+  background: linear-gradient(135deg, #f1effe, #e6f4ff);
   color: var(--accent);
   font-size: var(--fs-md);
 }
@@ -1285,7 +1371,7 @@ li[data-state="done"] .gen-dot {
 .kpi-hero {
   grid-column: span 2;
   overflow: hidden;
-  border-color: rgba(86, 70, 242, 0.16);
+  border-color: rgba(90, 72, 240, 0.16);
   background:
     radial-gradient(420px 220px at 100% 0%, rgba(124, 109, 255, 0.16), transparent 70%),
     radial-gradient(300px 180px at 0% 100%, rgba(92, 200, 255, 0.1), transparent 70%),
@@ -1299,7 +1385,7 @@ li[data-state="done"] .gen-dot {
   height: 8px;
   margin: 8px 0 2px;
   border-radius: 999px;
-  background: rgba(86, 70, 242, 0.1);
+  background: rgba(90, 72, 240, 0.1);
   overflow: hidden;
 }
 .budget-bar i {
@@ -1491,7 +1577,7 @@ li[data-state="now"] .tl-dot {
   background: var(--grad-accent);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 6px 16px -8px rgba(86, 70, 242, 0.6);
+  box-shadow: 0 6px 16px -8px rgba(90, 72, 240, 0.6);
 }
 .feed-avatar[data-author="cabinet"] {
   background: var(--warning-soft);
@@ -1532,8 +1618,62 @@ li[data-state="now"] .tl-dot {
 .settings-layout {
   display: block;
 }
+@media (min-width: 900px) {
+  .settings-layout > .stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+  .settings-layout > .stack > #business,
+  .settings-layout > .stack > #leads,
+  .settings-layout > .stack > :not(section) {
+    grid-column: 1 / -1;
+  }
+}
 .settings-section {
   scroll-margin-top: calc(var(--header-h) + 16px);
+}
+.settings-page .page-head .t-h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.settings-page .page-head .t-lead {
+  font-size: 16px;
+  color: var(--text-2);
+}
+.workspace .settings-section.surface {
+  border-radius: 22px;
+}
+.settings-section .surface-head {
+  padding: 26px 28px 0;
+  border-bottom: 0;
+}
+.settings-section .surface-body {
+  padding: 18px 28px 26px;
+}
+.settings-section .t-h3 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.settings-section .surface-head .t-small {
+  font-size: 14.5px;
+  color: var(--text-3);
+}
+.settings-edit.ant-btn {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+.settings-edit.ant-btn:not(:disabled):hover {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-ink);
 }
 .kv {
   display: grid;
@@ -1595,7 +1735,7 @@ li[data-state="now"] .tl-dot {
 }
 .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):hover {
   filter: brightness(1.06);
-  box-shadow: 0 8px 20px -8px rgba(86, 70, 242, 0.6);
+  box-shadow: 0 8px 20px -8px rgba(90, 72, 240, 0.6);
   transform: translateY(-1px);
 }
 .ant-btn.ant-btn-variant-solid.ant-btn-color-primary:not(:disabled):active {
@@ -1610,7 +1750,7 @@ li[data-state="now"] .tl-dot {
 pre.snippet {
   white-space: pre-wrap;
   word-break: break-all;
-  background: #121217;
+  background: #16171d;
   color: #e9e7ff;
   padding: 14px;
   border-radius: 12px;
@@ -1663,12 +1803,14 @@ pre.snippet {
 .trend-date { height: 20px; font-size: var(--fs-xs); color: var(--text-3); padding-top: 4px; }
 .trend-event { position: absolute; bottom: -5px; height: 5px; width: 5px; background: var(--accent); border-radius: 50%; }
 .settings-value { min-width: 0; }
-.settings-rows { display: flex; flex-direction: column; gap: 18px; }
-.settings-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.settings-row-value strong { font-weight: 500; }
-.settings-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.settings-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.settings-row { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.settings-row > .t-small { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.settings-row-value strong { font-size: 15.5px; font-weight: 500; line-height: 1.5; }
+.settings-value strong { font-size: 17px; font-weight: 600; }
+.settings-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .settings-hint { max-width: 52ch; font-size: var(--fs-xs); line-height: 1.5; color: var(--text-3); }
-.settings-chips li { padding: 4px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: var(--fs-xs); line-height: 1.4; color: var(--text); }
+.settings-chips li { padding: 6px 12px; border: 0; border-radius: 10px; background: var(--bg); font-size: 14.5px; line-height: 1.45; color: var(--text); }
 .settings-empty { color: var(--text-3); }
 .settings-editor { padding-top: 18px; }
 .settings-editor .ant-input { max-width: 100%; }
@@ -1824,10 +1966,10 @@ button.log-link {
 
 /* ---------- One answer: the brief, its sheets and the light history ---------- */
 
-/* The answer is one panel; the ways deeper are a second; on a wide screen what the service did is a third beside them. */
+/* The answer is one panel, the ways deeper a second; on a wide screen the service's review stands beside them. */
 .brief-page {
-  max-width: 720px;
-  padding-top: 40px;
+  max-width: 1240px;
+  padding-top: 28px;
 }
 .brief {
   display: flex;
@@ -1839,7 +1981,7 @@ button.log-link {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 26px 32px 28px;
+  padding: 30px 32px 28px;
 }
 .brief-date {
   display: flex;
@@ -1857,33 +1999,35 @@ button.log-link {
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
-/* The state of the ads: a calm dot that breathes while they run — the pulse the product is named after. */
+/* The state of the ads: a pill with a calm dot that breathes while they run — the pulse the product is named after. */
 .brief-state {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   margin-left: auto;
-  padding: 3px 10px 3px 9px;
+  padding: 5px 12px 5px 10px;
   border-radius: 99px;
-  background: var(--surface-2);
+  background: var(--surface-3);
   color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
 }
 /* Alone in its row (a simulation has no period over the number), the state starts the row. */
 .brief-state:first-child {
   margin-left: 0;
 }
 .brief-state i {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--text-3);
 }
 .brief-state[data-state="running"] {
   background: var(--success-soft);
-  color: var(--success);
+  color: #0e6b4a;
 }
 .brief-state[data-state="running"] i {
-  background: var(--success);
+  background: #12a06e;
   animation: briefPulse 2.4s ease-out infinite;
 }
 .brief-state[data-state="paused"],
@@ -1903,18 +2047,18 @@ button.log-link {
   background: var(--accent);
 }
 @keyframes briefPulse {
-  0% { box-shadow: 0 0 0 0 rgba(12, 124, 85, 0.35); }
-  70% { box-shadow: 0 0 0 7px rgba(12, 124, 85, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(12, 124, 85, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(18, 160, 110, 0.35); }
+  70% { box-shadow: 0 0 0 7px rgba(18, 160, 110, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(18, 160, 110, 0); }
 }
 .brief-hero {
   display: flex;
   flex-direction: column;
 }
 .brief-number {
-  font-size: clamp(3.4rem, 8vw, 4.75rem);
-  font-weight: 650;
-  letter-spacing: -0.055em;
+  font-size: clamp(3.6rem, 8vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
   line-height: 0.95;
   font-variant-numeric: tabular-nums;
 }
@@ -1925,27 +2069,31 @@ button.log-link {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px 12px;
   margin: 14px 0 0;
-  font-size: var(--fs-sm);
+  font-size: 16px;
   color: var(--text-2);
 }
 .brief-badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 99px;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
   background: var(--success-soft);
-  color: var(--success);
-  font-size: var(--fs-xs);
+  color: #0e6b4a;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
 }
+.brief-badge .anticon {
+  font-size: 11px;
+}
+/* The leads and the money as two labelled figures; the money's line and its pace go under them. */
 .brief-metrics {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   margin-top: 26px;
   padding-top: 22px;
   border-top: 1px solid var(--border);
@@ -1956,33 +2104,39 @@ button.log-link {
   gap: 4px;
   min-width: 0;
 }
+.brief-label {
+  font-size: 14px;
+  color: var(--text-3);
+}
 .brief-value {
-  font-size: var(--fs-xl);
-  font-weight: 650;
-  letter-spacing: -0.035em;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.brief-label {
-  font-size: var(--fs-xs);
+.brief-of {
+  font-size: 16px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .brief-budget {
+  align-items: flex-end;
   text-align: right;
 }
-/* The month's money against the even plan: spent as a line, the plan dashed to the whole budget; its pace in words under it. */
+/* The month's money against the even plan on a light plate: spent as a line, the plan dashed to the whole budget. */
 .spend-chart {
-  margin: 18px 0 12px;
+  margin: 18px 0 0;
+}
+.spend-plate {
+  padding: 14px 16px 10px;
+  border-radius: 14px;
+  background: var(--surface-2);
 }
 .spend-plot {
   position: relative;
-  height: 96px;
-  margin: 0 8px;
-}
-@media (max-width: 720px) {
-  .spend-plot {
-    height: 80px;
-  }
+  height: 72px;
 }
 .spend-plot svg {
   position: absolute;
@@ -1992,18 +2146,18 @@ button.log-link {
   overflow: visible;
 }
 .spend-plan {
-  stroke: #c4c4d2;
-  stroke-width: 1.25;
+  stroke: #a7aab6;
+  stroke-width: 1.5;
   stroke-dasharray: 5 6;
 }
 .spend-area {
   fill: var(--accent);
-  opacity: 0.12;
+  opacity: 0.14;
 }
 .spend-line {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke-width: 2.75;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -2029,55 +2183,75 @@ button.log-link {
   width: 11px;
   height: 11px;
   margin: -5.5px 0 0 -5.5px;
-  border: 2px solid var(--surface);
+  border: 2px solid var(--surface-2);
   background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 .spend-chart[data-tone="warning"] .spend-dot {
   background: var(--warning);
-  box-shadow: none;
 }
 .spend-chart[data-tone="danger"] .spend-dot {
   background: var(--danger);
-  box-shadow: none;
 }
 /* Where the even plan is by the same day: a hollow dot on the dashed line, the gap to the spent dot is the pace. */
 .spend-plan-dot {
   width: 9px;
   height: 9px;
   margin: -4.5px 0 0 -4.5px;
-  border: 2px solid #a7a7ba;
-  background: var(--surface);
+  border: 2px solid #a7aab6;
+  background: var(--surface-2);
 }
-/* The plan's name on a plate under the end of its dashed line, where the money of the month would end. */
 .spend-plan-label {
   position: absolute;
   right: 0;
-  margin-top: 6px;
+  top: 0;
   padding: 2px 9px;
   border: 1px solid var(--border);
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface);
   font-size: var(--fs-xs);
   line-height: 1.3;
   color: var(--text-2);
   pointer-events: none;
 }
+/* The last day with numbers, at the spent dot: right of it, or left of it near the period's end. */
+.spend-day {
+  position: absolute;
+  transform: translate(12px, -130%);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--accent-ink);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.spend-day[data-late] {
+  transform: translate(calc(-100% - 12px), -130%);
+}
+.spend-chart[data-tone="warning"] .spend-day {
+  color: var(--warning);
+}
+.spend-chart[data-tone="danger"] .spend-day {
+  color: var(--danger);
+}
 .spend-axis {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  margin: 10px 8px 0;
+  margin: 10px 0 0;
   font-size: var(--fs-xs);
   color: var(--text-3);
   white-space: nowrap;
 }
-/* The pace of the month's money in words, under the sum it is about; its bottom space was the plan label's. */
+.spend-axis .result-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+/* The pace in words when there is no line to put it under. */
 .brief-pace {
   display: flex;
   justify-content: flex-end;
-  min-height: 8px;
-  margin: 0 0 22px;
+  margin: 12px 0 0;
 }
 /* The goal's words open where the number comes from (analytics spec «Сводка»): a term, not a link elsewhere. */
 .brief-term {
@@ -2085,15 +2259,16 @@ button.log-link {
   background: none;
   padding: 0;
   font: inherit;
-  color: inherit;
+  font-weight: 500;
+  color: var(--text);
   cursor: pointer;
   text-decoration: underline dotted;
-  text-decoration-color: var(--text-3);
-  text-underline-offset: 3px;
+  text-decoration-color: #9a9eaa;
+  text-underline-offset: 4px;
 }
 .brief-term:hover,
 .brief-term:focus-visible {
-  color: var(--text);
+  color: var(--accent-ink);
 }
 .brief-explain {
   max-width: 280px;
@@ -2102,54 +2277,83 @@ button.log-link {
   line-height: 1.5;
   color: var(--text-2);
 }
-/* What the service does next: a soft note of the brand colour, after what it did. */
+/* What the service does next: a soft note of the brand colour; how far off the check is goes on a pill by the label. */
 .brief-next {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 16px;
   margin: 12px 0 0;
-  padding: 12px 16px;
-  border-radius: 14px;
+  padding: 18px 20px;
+  border-radius: 18px;
   background: var(--accent-soft);
-  font-size: var(--fs-xs);
-  line-height: 1.5;
-  color: var(--text-2);
+}
+.spend-chart + .brief-next,
+.brief-pace + .brief-next {
+  margin-top: 24px;
 }
 .brief-next-icon {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  font-size: var(--fs-sm);
-  color: var(--accent);
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(63, 47, 208, 0.12);
+  display: grid;
+  place-items: center;
+  color: var(--accent-ink);
+  font-size: 18px;
 }
-.brief-next-label {
-  flex: 0 0 auto;
+.brief-next-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.brief-next-due {
+  padding: 2px 10px;
+  border-radius: 99px;
+  background: var(--surface);
+  font-size: 13px;
   font-weight: 600;
   color: var(--accent-ink);
+  white-space: nowrap;
 }
 .brief-next-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
-.brief-next-more {
-  color: var(--text-3);
+.brief-next-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
 }
 .brief-next-text {
   min-width: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #2e313b;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.brief-next-more {
+  font-size: 14px;
+  color: #5b4fc9;
 }
 /* An exception is a note of its tone with its one action on the right. */
 .brief-exception {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
-  padding: 8px 10px 8px 16px;
-  border-radius: 14px;
+  min-height: 56px;
+  margin-top: 24px;
+  padding: 8px 10px 8px 18px;
+  border-radius: 18px;
   background: var(--surface-2);
   font-size: var(--fs-sm);
 }
@@ -2178,7 +2382,7 @@ button.log-link {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: 600;
   color: var(--text);
 }
 .brief-exception-count {
@@ -2188,15 +2392,16 @@ button.log-link {
 .brief-action {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 36px;
   margin-left: auto;
   flex: 0 0 auto;
   border: 0;
-  border-radius: 99px;
-  background: var(--accent-soft);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(22, 23, 29, 0.06);
   padding: 0 14px;
   font: inherit;
-  font-size: var(--fs-xs);
+  font-size: 14px;
   font-weight: 600;
   color: var(--accent-ink);
   cursor: pointer;
@@ -2206,45 +2411,81 @@ button.log-link {
 }
 .brief-action:hover,
 .brief-action:focus-visible {
-  background: #e3dffd;
+  background: var(--accent-soft);
   color: var(--accent-ink);
-}
-.brief-exception .brief-action {
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(22, 22, 40, 0.06);
 }
 .brief-action:disabled {
   color: var(--text-3);
   cursor: default;
 }
+/* The service's last change: a framed card with its mark, its day and «Вернуть» on top, then what and why. */
 .brief-change {
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: var(--surface-2);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 24px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.brief-change-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 18px;
+}
+.brief-change-body {
+  flex: 1;
+  min-width: 0;
+}
+.brief-change-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 .brief-when {
-  display: block;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
-.brief-change-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 2px;
+.brief-undo {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.brief-undo:hover,
+.brief-undo:focus-visible {
+  background: var(--accent-soft);
+  border-color: transparent;
 }
 .brief-what {
+  display: block;
+  margin-top: 2px;
   font-size: var(--fs-md);
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
   line-height: 1.35;
 }
 /* Why, in one line of numbers; the full story stays in the history sheet. */
 .brief-reason {
-  margin: 4px 0 0;
-  font-size: var(--fs-xs);
-  line-height: 1.5;
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  line-height: 1.55;
   color: var(--text-2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2259,19 +2500,22 @@ button.log-link {
   flex-direction: column;
   padding: 6px;
 }
+.workspace .brief-rows.panel {
+  border-radius: 20px;
+}
 .brief-row {
   width: 100%;
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  min-height: 60px;
-  padding: 10px 14px 10px 10px;
+  min-height: 64px;
+  padding: 12px 16px;
   border: 0;
   border-radius: 14px;
   background: transparent;
   font: inherit;
-  font-size: var(--fs-sm);
+  font-size: 16px;
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -2284,8 +2528,8 @@ button.log-link {
   content: "";
   position: absolute;
   top: -1px;
-  left: 62px;
-  right: 14px;
+  left: 68px;
+  right: 16px;
   height: 1px;
   background: var(--border);
 }
@@ -2303,24 +2547,24 @@ button.log-link {
   width: 38px;
   height: 38px;
   border-radius: 11px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: var(--fs-md);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 18px;
 }
 .brief-row-title {
-  font-weight: 550;
+  font-weight: 600;
 }
 .brief-row-end {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   color: var(--text-3);
-  font-size: var(--fs-xs);
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .brief-chev {
-  color: var(--text-3);
-  font-size: 12px;
+  color: #9a9eaa;
+  font-size: 13px;
   transition: transform 0.15s var(--ease);
 }
 .brief-row:hover .brief-chev {
@@ -2329,8 +2573,7 @@ button.log-link {
 }
 /*
  * The service's review beside the answer: the assistant's message on the right of a wide screen, under the answer on a
- * narrow one, before the ways deeper (analytics spec «Сводка»). A simulation's player stands under the review on a wide
- * screen and over the answer on a narrow one.
+ * narrow one, before the ways deeper (analytics spec «Сводка»). A simulation's player is a strip over all of them.
  */
 .brief-layout {
   display: flex;
@@ -2341,22 +2584,21 @@ button.log-link {
 .brief-aside {
   display: contents;
 }
-.sim-player { order: 0; }
 .brief-card { order: 1; }
 .brief-side { order: 2; }
 .brief-rows { order: 3; }
 .brief-side {
   min-width: 0;
-  padding: 18px 18px 20px;
+  padding: 20px;
 }
 @media (min-width: 1080px) {
   /* Outweighs the later narrow width of the page: the answer and the review side by side. */
   .workspace .page.brief-page:has(.brief-layout) {
-    max-width: 1128px;
+    max-width: 1240px;
   }
   .brief-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr) 400px;
     grid-template-rows: auto 1fr;
     grid-template-areas: "card side" "rows side";
     gap: 16px 24px;
@@ -2375,41 +2617,49 @@ button.log-link {
     gap: 16px;
     min-width: 0;
   }
-  .brief-aside .brief-side,
-  .brief-aside .sim-player {
-    order: 0;
-  }
   .brief-side {
-    padding: 22px 24px 24px;
-  }
-  .sim-player {
-    --sim-pad: 24px;
+    padding: 24px;
   }
 }
 
 /* Sheets */
 .sheet .ant-drawer-header {
-  padding: 18px 24px;
+  min-height: 68px;
+  padding: 0 16px 0 28px;
   border-bottom: 1px solid var(--border);
 }
+.sheet .ant-drawer-header-title {
+  flex-direction: row-reverse;
+  gap: 12px;
+}
+.sheet .ant-drawer-close {
+  margin: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: var(--text-2);
+}
 .sheet .ant-drawer-title {
-  font-size: var(--fs-md);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.sheet .ant-drawer-body {
+  background: #fafafb;
 }
 .sheet-body {
-  padding: 2px 24px 48px;
+  padding: 8px 28px 48px;
 }
 .sheet-note {
-  margin: 12px 0 0;
-  font-size: var(--fs-xs);
+  margin: 14px 0 0;
+  font-size: 14px;
   color: var(--text-3);
 }
 .sheet-title {
   margin: 20px 0 2px;
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .sheet-empty {
   margin: 28px 0;
@@ -2426,9 +2676,9 @@ button.log-link {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 28px 0 0;
-  font-size: var(--fs-sm);
-  font-weight: 600;
+  margin: 24px 0 0;
+  font-size: 15px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
 }
@@ -2446,17 +2696,18 @@ button.log-link {
 .sheet-group[data-verdict="ineffective"]::before { background: var(--danger); }
 /* Why an ad is in its group, in rubles of the goal: the estimate is a rule, not a mood. */
 .sheet-group-rule {
-  margin: 3px 0 0 16px;
-  font-size: var(--fs-xs);
+  margin: 4px 0 0 18px;
+  font-size: 13.5px;
   line-height: 1.45;
   color: var(--text-3);
 }
 /* In the sheet each ad is a framed card, as one result of a search. */
 .sheet .ad-row {
-  margin: 10px 0 0;
-  padding: 14px 16px;
+  margin: 12px 0 0;
+  padding: 16px 18px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 18px;
+  background: var(--surface);
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .sheet .ad-row::after {
@@ -2467,6 +2718,111 @@ button.log-link {
   background: var(--surface);
   border-color: var(--border-strong);
   box-shadow: 0 8px 20px -14px rgba(22, 22, 40, 0.3);
+}
+
+/* Windows: a mark beside the title, the object it is about, what happens on a light plate and a quiet promise. */
+.dialog .ant-modal-container,
+.dialog .ant-modal-content {
+  padding: 28px;
+  border-radius: 24px;
+}
+.dialog .ant-modal-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.dialog-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.dialog-mark {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 22px;
+}
+.dialog-mark-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.dialog-object {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: #2e313b;
+}
+.dialog-plate {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--surface-2);
+}
+.dialog-plate-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.dialog-list {
+  margin: 10px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 15px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dialog-list li::marker {
+  color: #9a9eaa;
+}
+.dialog-safe {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.dialog-safe .anticon {
+  margin-top: 3px;
+  color: var(--success);
+}
+.dialog .ant-modal-footer .ant-btn {
+  height: 48px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.dialog .ant-btn.dialog-dark:not(:disabled),
+body:has(.app-nav) .dialog .ant-btn.ant-btn-variant-solid.ant-btn-color-primary.dialog-dark:not(:disabled) {
+  background: #16171d;
+  color: #fff;
+}
+.dialog .ant-btn.dialog-dark:not(:disabled):hover,
+body:has(.app-nav) .dialog .ant-btn.ant-btn-variant-solid.ant-btn-color-primary.dialog-dark:not(:disabled):hover {
+  background: #2e313b;
+}
+/* A confirmation keeps the same mark over its title. */
+.dialog-confirm .ant-modal-confirm-body {
+  flex-direction: column;
+  gap: 16px;
+}
+.dialog-confirm .ant-modal-confirm-paragraph {
+  max-width: 100%;
+}
+.dialog-confirm .ant-modal-confirm-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+.dialog-confirm .ant-modal-confirm-content {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-2);
 }
 
 /* Ads sheet: each ad looks as it does in Yandex, and every number says what it is. */
@@ -2487,9 +2843,9 @@ button.log-link {
 /* A partner-site ad's picture next to its title and text, as on the partner sites. */
 .ad-row-image {
   flex: none;
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
+  width: 120px;
+  height: 120px;
+  border-radius: 12px;
   object-fit: cover;
   background: var(--surface-3);
 }
@@ -2501,34 +2857,38 @@ button.log-link {
   color: var(--text-3);
 }
 .ad-row-favicon {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-3);
+  color: var(--text-2);
   font-size: var(--fs-xs);
   font-weight: 700;
   line-height: 1;
 }
 .ad-row-title {
-  margin: 5px 0 0;
+  margin: 8px 0 0;
   font-size: var(--fs-md);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1.3;
-  color: #2a20b8;
+  color: #2944c9;
 }
 .ad-row-text {
-  margin: 3px 0 8px;
-  font-size: var(--fs-sm);
-  line-height: 1.45;
-  color: var(--text-2);
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #2e313b;
 }
+/* What the ad cost over 7 days, under a rule: the line the owner reads first. */
 .ad-row-stats {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--text);
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  color: #2e313b;
   font-variant-numeric: tabular-nums;
 }
 .ad-row-labels {
@@ -2546,13 +2906,15 @@ button.log-link {
   display: none;
 }
 .ad-row-action {
+  min-height: 34px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface);
-  padding: 5px 10px;
+  padding: 0 12px;
   font: inherit;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #2e313b;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2566,11 +2928,20 @@ button.log-link {
   .ad-row-touch {
     display: none;
   }
+  /* Over the card's top right corner, so the ad's words keep the card's width. */
+  .ad-row {
+    position: relative;
+  }
   .ad-row-hover {
+    position: absolute;
+    top: 12px;
+    right: 12px;
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
     gap: 6px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: 0 4px 14px -6px rgba(22, 23, 29, 0.25);
     opacity: 0;
     transition: opacity 0.15s var(--ease);
   }
@@ -2634,12 +3005,29 @@ button.log-link {
   position: sticky;
   top: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 20px 0 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  font-size: var(--fs-xs);
+  background: #fafafb;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.j-week-label {
   font-weight: 600;
-  color: var(--text);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+/* The dot between the days and their review, drawn as a rule across the sheet. */
+.j-week-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  font-size: 0;
+}
+.j-week-review {
+  white-space: nowrap;
 }
 /* The history reads as a conversation: a day's date once, the service's messages by its mark, the owner's on the right. */
 .j-entry {
@@ -2653,14 +3041,21 @@ button.log-link {
   color: var(--text-3);
 }
 .j-day time {
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: 99px;
   background: var(--surface-3);
+  font-weight: 500;
+  color: var(--text-2);
 }
 .j-msg {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
+}
+.j-bubble.studio-bubble {
+  border: 1px solid var(--border);
+  border-radius: 4px 18px 18px 18px;
+  background: var(--surface);
 }
 .j-avatar {
   flex: 0 0 auto;
@@ -2681,8 +3076,8 @@ button.log-link {
 }
 .j-msg-who {
   margin: 0;
-  font-size: var(--fs-xs);
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--text);
 }
 .j-tag {
@@ -2793,13 +3188,22 @@ button.log-link {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 88%;
-  padding: 12px 14px;
-  border-radius: 16px 4px 16px 16px;
-  background: var(--accent-soft);
-  font-size: var(--fs-sm);
+  max-width: 82%;
+  padding: 12px 16px;
+  border-radius: 18px 4px 18px 18px;
+  background: #16171d;
+  font-size: 14.5px;
   line-height: 1.5;
-  color: var(--text);
+  color: #fff;
+}
+.j-owner-bubble .studio-msg-undo {
+  border-color: #34363f;
+  background: transparent;
+  color: #d6d2ff;
+}
+.j-owner-bubble .studio-msg-undo:hover,
+.j-owner-bubble .studio-msg-undo:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
 }
 .j-owner-line {
   display: flex;
@@ -2811,13 +3215,17 @@ button.log-link {
   align-self: flex-start;
 }
 .j-earlier {
-  margin: 16px 0 0;
-  padding: 0;
-  border: 0;
-  background: none;
+  display: block;
+  min-height: 44px;
+  margin: 24px auto 0;
+  padding: 0 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
   font: inherit;
-  font-size: var(--fs-xs);
-  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  color: #2e313b;
   cursor: pointer;
 }
 .question-row {
@@ -2849,22 +3257,28 @@ button.log-link {
     padding-top: 18px;
   }
   .brief-value {
-    font-size: var(--fs-lg);
+    font-size: 28px;
   }
   .brief-change,
   .brief-next {
-    padding: 12px 14px;
+    padding: 16px;
+    gap: 14px;
   }
-  /* On a phone «Дальше» heads its note and the text takes the whole width under it. */
-  .brief-next {
+  .brief-change-icon {
+    display: none;
+  }
+  .spend-plot {
+    height: 64px;
+  }
+  /* The first and last days on one row, the pace in words under them. */
+  .spend-axis {
     flex-wrap: wrap;
-    row-gap: 2px;
   }
-  .brief-next-body {
+  .spend-pace {
+    order: 3;
     flex-basis: 100%;
-  }
-  .brief-action {
-    min-height: 36px;
+    display: flex;
+    justify-content: flex-end;
   }
   .brief-rows {
     padding: 4px;
@@ -2874,7 +3288,13 @@ button.log-link {
     padding: 8px 12px 8px 8px;
   }
   .brief-row + .brief-row::before {
-    left: 60px;
+    left: 16px;
+  }
+  .brief-row-icon {
+    display: none;
+  }
+  .brief-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .sheet-body {
     padding: 2px 16px 40px;
@@ -2889,20 +3309,29 @@ button.log-link {
   width: 100%;
   max-width: 756px;
   margin: 0 auto;
-  padding: 36px 24px 80px;
+  padding: 28px 32px 80px;
 }
 @media (max-width: 720px) {
   .workspace .page.brief-page {
     max-width: 100%;
-    padding: 16px 12px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 32px);
+    padding: 14px 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 32px);
   }
 }
 
+/* What the service changed about the advertising: a soft note of the brand colour over the groups. */
 .ad-direction-changes {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+}
+.ad-direction-changes .ad-mark {
+  margin: 0;
+  font-size: 14px;
+  color: #2e313b;
 }
 
 .j-clients {
@@ -2928,9 +3357,46 @@ button.log-link {
   outline-offset: 8px;
 }
 .spark-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
-  font-size: var(--fs-xs);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.spark-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-weight: 400;
   color: var(--text-3);
+}
+.spark-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.spark-key-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.spark-key-goal {
+  width: 16px;
+  border-top: 2px dashed #a7aab6;
+}
+.spark-legend > span,
+.spark-title > span:first-child {
+  white-space: nowrap;
+}
+/* On a phone the key keeps only the goal: the line is the price, the title says so. */
+@media (max-width: 480px) {
+  .spark-legend > span:first-child {
+    display: none;
+  }
 }
 .spark-plot {
   position: relative;
@@ -2947,7 +3413,7 @@ button.log-link {
   overflow: visible;
 }
 .spark-goal {
-  stroke: #c4c4d2;
+  stroke: #a7aab6;
   stroke-width: 1.25;
   stroke-dasharray: 5 6;
 }
@@ -3027,24 +3493,6 @@ button.log-link {
   background: var(--warning);
 }
 /* The goal's value on a plate over its dashed line, so the line never strikes through it. */
-.spark-goal-label {
-  position: absolute;
-  right: 0;
-  transform: translateY(-100%);
-  margin-top: -5px;
-  padding: 2px 9px;
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.94);
-  font-size: var(--fs-xs);
-  line-height: 1.3;
-  color: var(--text-2);
-  pointer-events: none;
-}
-.spark-goal-label[data-below] {
-  transform: none;
-  margin-top: 5px;
-}
 /* One day's numbers over the chart; it covers the chart's caption while it is open. */
 .spark-tip {
   position: absolute;
@@ -3053,7 +3501,7 @@ button.log-link {
   transform: translateX(-50%);
   padding: 6px 11px;
   border-radius: 10px;
-  background: #1d1e27;
+  background: #16171d;
   color: #fff;
   font-size: var(--fs-xs);
   line-height: 1.35;
@@ -3102,28 +3550,33 @@ button.log-link {
 .studio-day {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 10px;
+}
+.studio-day-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #b9bcc6;
 }
 .studio-day-num {
-  font-size: var(--fs-xl);
-  font-weight: 650;
-  letter-spacing: -0.035em;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
 }
-.studio-menu {
-  align-self: center;
-  color: var(--text-2);
-}
-/* The one note about the training market: a neutral caption, not a warning (simulation-mode spec). */
+/* The one note about the training market: a neutral caption in the strip, not a warning (simulation-mode spec). */
 .studio-disclaimer {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 18px;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  color: #c9cbd3;
 }
 .studio-alert {
-  margin: 0 0 16px;
+  margin: 0;
 }
 /* A result in words: a chip of its tone that opens its numbers; it reads as a fact, not as a button to press. */
 .result-chip {
@@ -3203,15 +3656,19 @@ button.log-link {
   color: var(--text-2);
 }
 .studio-primary {
-  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
   border: 0;
   border-radius: 12px;
   background: var(--accent);
   color: #fff;
   font: inherit;
-  font-size: var(--fs-sm);
+  font-size: 15px;
   font-weight: 600;
-  padding: 0 22px;
+  padding: 0 20px;
   cursor: pointer;
   transition: background 0.15s var(--ease);
 }
@@ -3219,8 +3676,8 @@ button.log-link {
   background: var(--accent-hover);
 }
 .studio-primary:disabled {
-  background: var(--surface-3);
-  color: var(--text-3);
+  background: #34363f;
+  color: #c9cbd3;
   cursor: default;
 }
 .studio-link {
@@ -3260,14 +3717,14 @@ button.log-link {
   min-width: 0;
 }
 .studio-msg-name {
-  font-size: var(--fs-sm);
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
 }
 .studio-msg-title {
   margin: 0;
-  font-size: var(--fs-xs);
+  font-size: 14px;
   font-weight: 400;
   color: var(--text-3);
 }
@@ -3282,26 +3739,51 @@ button.log-link {
   flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 4px 16px 16px 16px;
-  background: var(--surface-2);
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-  color: var(--text);
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 6px 18px 18px 18px;
+  background: #f5f6f8;
+  font-size: 15px;
+  line-height: 1.62;
+  color: #2e313b;
 }
 .studio-msg-text {
   margin: 0;
+}
+/* The message's first sentence: what the service looked at, as a lead line. */
+.studio-msg-lead {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+/* What the service expects and when it checks: a dashed note with a clock, apart from the reasoning. */
+.studio-msg-expect {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px dashed #d4d6de;
+  border-radius: 14px;
+  background: var(--surface);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.studio-msg-expect-icon {
+  flex: none;
+  margin-top: 3px;
+  color: #5b4fc9;
 }
 /* A change is a done action inside the message, with its undo at hand. */
 .studio-msg-action {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
+  padding: 12px 14px;
+  border: 1px solid #e1f2e9;
+  border-radius: 14px;
+  background: #f2fbf6;
 }
 /* Inside the action, so that it outweighs antd's later «.anticon { color: inherit }». */
 .studio-msg-action .studio-msg-done {
@@ -3327,28 +3809,29 @@ button.log-link {
 .studio-msg-undo {
   flex: 0 0 auto;
   align-self: center;
-  border: 0;
-  background: none;
-  padding: 0;
+  min-height: 34px;
+  border: 1px solid #cfe6da;
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 0 12px;
   font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 550;
+  font-size: 13.5px;
+  font-weight: 600;
   color: var(--accent-ink);
   white-space: nowrap;
-  text-decoration: underline;
-  text-decoration-color: rgba(85, 67, 212, 0.35);
-  text-underline-offset: 3px;
   cursor: pointer;
+  transition: background 0.15s var(--ease);
 }
 .studio-msg-undo:hover,
 .studio-msg-undo:focus-visible {
-  text-decoration-color: currentColor;
+  background: var(--accent-soft);
 }
 .studio-msg-more {
   align-self: flex-start;
   padding-left: 2px;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-ink);
   text-decoration: none;
 }
 .studio-msg-more:hover {
@@ -3378,10 +3861,10 @@ button.log-link {
   padding: 15px 18px;
 }
 .studio-typing i {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #9a9eaa;
   opacity: 0.35;
   animation: studioType 1.2s ease-in-out infinite;
 }
@@ -3392,24 +3875,47 @@ button.log-link {
   animation-delay: 0.3s;
 }
 .studio-thinking-line {
-  margin: 0 0 0 2px;
-  font-size: var(--fs-xs);
-  color: var(--text-2);
+  margin: 6px 0 0 2px;
+  font-size: 14px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 /* The assistant's steps while it reviews: one short line each, the newest last, as a quiet list under the dots. */
 .studio-steps {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0 0 0 2px;
+  margin: 8px 0 0;
+  padding: 0;
   list-style: none;
-  font-size: var(--fs-sm);
-  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-2);
   overflow-wrap: anywhere;
 }
+/* A done step with its check; the newest one is lit, the assistant is on it. */
 .studio-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 7px 0;
   animation: studioStepIn 0.3s ease-out both;
+}
+.studio-steps li::before {
+  content: "";
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 0;
+  border-radius: 50%;
+  background: var(--success-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230e7a54' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='5 12.5 10 17 19 7'/%3E%3C/svg%3E") center / 13px no-repeat;
+}
+.studio-steps li:last-child {
+  margin: 4px -12px 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: #f7f6ff;
+  color: var(--text);
+  font-weight: 600;
 }
 @keyframes studioStepIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -3444,48 +3950,43 @@ button.log-link {
 }
 
 /*
- * The simulation's player: under the review on a wide screen, over the answer on a narrow one. Its day and state, the
- * next step as the one main button with the week under it, and at its foot the training market's note with the real
- * launch.
+ * The simulation's player: a dark strip over the answer and the review — the day and the training market's note on the
+ * left, the one main button and the menu on the right. On a phone the button takes the strip's width.
  */
 .sim-player {
-  --sim-pad: 20px;
-  container-type: inline-size;
-  overflow: hidden;
-  padding: 18px var(--sim-pad) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin: 0 0 24px;
+  padding: 14px 16px 14px 22px;
+  border-radius: 18px;
+  background: #16171d;
+  color: #fff;
 }
-.sim-player-head {
+.sim-player-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  min-width: 0;
+}
+.sim-player-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.sim-player-head .studio-menu {
-  margin: -4px -8px -4px auto;
+.sim-player .studio-menu.ant-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #34363f;
+  border-radius: 12px;
+  color: #fff;
 }
-.sim-player-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  margin-top: 16px;
-}
-.sim-player-actions .studio-link {
-  align-self: center;
-  padding: 2px 4px;
-}
-.sim-player-foot {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  margin: 18px calc(-1 * var(--sim-pad)) 0;
-  padding: 14px var(--sim-pad) 16px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-}
-.sim-player .studio-disclaimer {
-  justify-content: center;
-  margin: 0;
+.sim-player .studio-menu.ant-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 /* Beside the answer the message is narrow: an action's undo goes under its words. */
 .review-rail .studio-msg-action {
@@ -3493,13 +3994,11 @@ button.log-link {
   row-gap: 4px;
 }
 .review-rail .studio-msg-undo {
-  flex-basis: 100%;
   align-self: flex-start;
-  padding-left: 26px;
-  text-align: left;
+  margin-left: 26px;
 }
 .sim-player .studio-alert {
-  margin: 14px 0 0;
+  flex-basis: 100%;
 }
 .studio-msg-more-button {
   border: 0;
@@ -3510,14 +4009,28 @@ button.log-link {
   cursor: pointer;
 }
 @media (max-width: 720px) {
+  /* The day and the menu on top, the button across the strip, the note at its foot. */
   .sim-player {
-    --sim-pad: 18px;
-    padding-top: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "day menu" "primary primary" "note note";
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 14px 14px 14px 18px;
   }
-  .studio-day-num { font-size: var(--fs-lg); }
+  .sim-player-main,
+  .sim-player-actions {
+    display: contents;
+  }
+  .sim-player .studio-day { grid-area: day; align-self: center; }
+  .sim-player .studio-disclaimer { grid-area: note; font-size: 13px; }
+  .sim-player .studio-primary { grid-area: primary; height: 48px; font-size: 16px; }
+  .sim-player .studio-menu.ant-btn { grid-area: menu; }
+  .sim-player .studio-alert { grid-column: 1 / -1; }
+  .studio-day-num { font-size: 20px; }
   /* On a phone the undo goes under the action's words, so they keep the width. */
-  .studio-msg-action { flex-wrap: wrap; row-gap: 4px; }
-  .studio-msg-undo { flex-basis: 100%; align-self: flex-start; padding-left: 26px; text-align: left; }
+  .studio-msg-action { flex-wrap: wrap; row-gap: 6px; }
+  .studio-msg-undo { align-self: flex-start; margin-left: 26px; }
 }
 
 /*
@@ -3549,34 +4062,69 @@ button.log-link {
 .period-dir {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  padding-bottom: 10px;
+}
+.period-dir-head {
+  padding: 14px 18px;
+  background: #fafafb;
+  border-bottom: 1px solid var(--border);
+}
+.period-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(4, 96px);
+  gap: 8px;
+  padding: 4px 18px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.period-ad {
+  padding: 0 18px;
+}
+.period-error[role="alert"] {
+  padding: 0 18px;
 }
 .period-dir-head {
   display: flex;
+  flex-wrap: wrap;
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 2px 12px;
 }
 .period-dir-name {
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
 }
+/* On a wide window an ad is one row: its title and its four numbers under the headings. */
 .period-ad {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(4 * 96px + 3 * 8px);
+  align-items: center;
+  gap: 8px;
 }
 .period-ad-title {
-  font-size: var(--fs-sm);
-  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.3;
+  color: var(--text);
   overflow-wrap: anywhere;
 }
 .period-fields {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px 10px;
+  gap: 8px;
+}
+.period-field label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .period-field {
   display: flex;
@@ -3597,6 +4145,19 @@ button.log-link {
   color: var(--danger);
 }
 @media (max-width: 560px) {
+  .period-cols {
+    display: none;
+  }
+  .period-ad {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .period-field label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
   .period-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

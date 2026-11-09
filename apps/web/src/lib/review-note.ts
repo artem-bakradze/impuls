@@ -24,6 +24,15 @@ export const noteSeen = (entry: Pick<JournalEntry, "headline" | "paragraphs" | "
   return [...reasoning, ...found].filter((p) => p.trim().length > 0).map((p) => words.text(p));
 };
 
+/**
+ * The first sentence of a paragraph and the rest, for the message's lead line: «Посмотрел цифры за дни 4–6.» and what
+ * follows. A number like «1,5» or «т. д.» does not end a sentence; a paragraph of one sentence is all lead.
+ */
+export const leadSentence = (text: string): [string, string] => {
+  const match = /^(.+?[.!?…])\s+(?=[А-ЯЁA-Z«])/.exec(text);
+  return match ? [match[1] ?? text, text.slice(match[0].length)] : [text, ""];
+};
+
 /** A change as a sentence of the message. */
 export const noteSentence = (text: string): string => text.trim().replace(/[.…]+$/, "");
 
